@@ -6,6 +6,9 @@
 #include <thread>
 #include <curl/curl.h>
 #include "Utils.h"
+#include <fstream>
+#include <string>
+#include <iostream>
 
 
 class Logger : public attest::AttestationLogger {
@@ -66,7 +69,9 @@ int main() {
         }
 
         std::string jwt_str = reinterpret_cast<char*>(jwt);
-        printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+        //printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+	std::ofstream file("jwt_encoded");
+	file << jwt_str.c_str();
         printf("%s\n", jwt_str.c_str());
         attestation_client->Free(jwt);
 
