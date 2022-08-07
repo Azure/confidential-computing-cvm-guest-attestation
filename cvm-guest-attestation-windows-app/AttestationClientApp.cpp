@@ -7,12 +7,15 @@
 #include <openssl/sha.h>
 #include <openssl/pem.h>
 #include <nlohmann/json.hpp>
-#include <iostream>
 #include <string>
 
 #include "Utils.h"
 #include <algorithm>
 #include <thread>
+
+#include <fstream>
+
+
 
 class Logger : public attest::AttestationLogger {
 public:
@@ -70,7 +73,9 @@ int main() {
         }
 
         std::string jwt_str = reinterpret_cast<char*>(jwt);
-        printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+        //printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+        std::ofstream file("jwt_encoded");
+	    file << jwt_str.c_str();
         printf("%s\n", jwt_str.c_str());
         attestation_client->Free(jwt);
 
