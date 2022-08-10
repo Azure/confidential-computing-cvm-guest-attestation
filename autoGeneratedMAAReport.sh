@@ -10,6 +10,6 @@ cd confidential-computing-cvm-guest-attestation/cvm-guest-attestation-linux-app
 cmake .
 make
 sudo ./AttestationClient
-bash generateAttestationReport.sh
-cat maa_report.json | jq
+bash generateAttestationReport.sh > /tmp/maa_report.json
+cat /tmp/maa_report.json | jq
 

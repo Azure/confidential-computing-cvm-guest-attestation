@@ -15,7 +15,6 @@ runcmd:
   - cmake .
   - make
   - sudo ./AttestationClient
-  - bash generateAttestationReport.sh
-  - cp maa_report.json /tmp
+  - bash generateAttestationReport.sh > /tmp/maa_report.json
   - cat /tmp/maa_report.json | jq
   - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
