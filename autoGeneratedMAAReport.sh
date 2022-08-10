@@ -12,3 +12,4 @@ make
 sudo ./AttestationClient
 bash generateAttestationReport.sh
 cat maa_report.json | jq
+
