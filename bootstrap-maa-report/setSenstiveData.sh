@@ -2,9 +2,6 @@
 
 export TF_VAR_appadminUsername=`cat /Users/appuser1/.secrets/sensitive.txt|grep appadminUsername|awk '{print $2}'`
 export TF_VAR_appadminPassword=`cat /Users/appuser1/.secrets/sensitive.txt|grep appadminPassword|awk '{print $2}'`
-export TF_VAR_dbadminUsername=`cat /Users/appuser1/.secrets/sensitive.txt|grep dbadminUsername|awk '{print $2}'`
-export TF_VAR_dbadminPassword=`cat /Users/appuser1/.secrets/sensitive.txt|grep dbadminPassword|awk '{print $2}'`
-export TF_VAR_sslExportPasswd=`cat /Users/appuser1/.secrets/sensitive.txt|grep sslExportPasswd|awk '{print $2}'`
 export TF_VAR_adminPublicKey=`cat ~/.ssh/app1_maa_key.pub`
 export TF_VAR_backendPoolId="/subscriptions/xxxxxxx-yyyyyyy-23dddddd34-zzzzzz332sgm/resourceGroups/app1-conf-compute/providers/Microsoft.Network/loadBalancers/app1-lb/backendAddressPools/app1-lbbepool"
 export TF_VAR_confidentialDiskEncryptionSetId="app1-mhsm-disk-encryption-set"
