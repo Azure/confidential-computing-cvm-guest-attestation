@@ -1,0 +1,21 @@
+#cloud-config
+package_upgrade: true
+packages:
+  - build-essential
+  - libcurl4-openssl-dev
+  - libjsoncpp-dev
+  - cmake
+  - git
+  - jq
+runcmd:
+  - wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.2_amd64.deb
+  - sudo dpkg -i azguestattestation1_1.0.2_amd64.deb
+  - git clone https://github.com/skondla/confidential-computing-cvm-guest-attestation.git
+  - cd confidential-computing-cvm-guest-attestation/cvm-guest-attestation-linux-app
+  - cmake .
+  - make
+  - sudo ./AttestationClient
+  - bash generateAttestationReport.sh
+  - cp maa_report.json /tmp
+  - cat /tmp/maa_report.json | jq
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
