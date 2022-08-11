@@ -6,6 +6,9 @@
 #include <thread>
 #include <curl/curl.h>
 #include "Utils.h"
+#include <fstream>
+#include <string>
+#include <iostream>
 
 
 class Logger : public attest::AttestationLogger {
@@ -32,7 +35,9 @@ public:
 };
 
 // Attestation URL + Guest attestation path + API version
-std::string attestation_url = "https://sharedeus.eus.test.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
+//std::string attestation_url = "https://sharedeus.eus.test.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
+//std::string attestation_url = "https://sharedeus2.eus2.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
+std::string attestation_url = "https://sharedwus.wus.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
 
 int main() {
     try {
@@ -65,7 +70,9 @@ int main() {
         }
 
         std::string jwt_str = reinterpret_cast<char*>(jwt);
-        printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+        //printf("Guest attestation passed successfully!! Printing the attestation token in next line....\n");
+	std::ofstream file("jwt_encoded");
+	file << jwt_str.c_str();
         printf("%s\n", jwt_str.c_str());
         attestation_client->Free(jwt);
 

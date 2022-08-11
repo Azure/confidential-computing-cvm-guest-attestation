@@ -1,0 +1,272 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "backendPoolId": {
+            "type": "string"
+        },
+        "storageUri": {
+            "type": "string"
+        },
+        "subnetId": {
+            "type": "string"
+        },
+        "osDiskType": {
+            "type": "string",
+            "defaultValue": "StandardSSD_LRS",
+            "allowedValues": [
+              "Premium_LRS",
+              "Standard_LRS",
+              "StandardSSD_LRS"
+            ],
+            "metadata": {
+              "description": "OS disk type of the VM."
+            }
+        },
+        "vmLocation": {
+            "type": "string",
+            "defaultValue":  "West US",
+            "allowedValues": [
+              "West US",
+              "North Europe"
+            ],
+            "metadata": {
+              "description": "Location of the VM."
+            }
+          },
+          "nicDeleteOption": {
+            "type": "string",
+            "defaultValue": "Detach",
+            "metadata": {
+              "description": "nicDeleteOption setting of the VM."
+            }
+          },
+
+        "networkInterfaceName": {
+            "type": "string"
+        },
+          "adminUsername": {
+            "type": "string"
+        },
+        "adminPublicKey": {
+            "type": "secureString"
+        },
+        "securityType": {
+            "type": "string",
+            "defaultValue": "DiskWithVMGuestState",
+            "allowedValues": [
+                "VMGuestStateOnly",
+                "DiskWithVMGuestState"
+            ],
+            "metadata": {
+                "description": "VM security type."
+            }
+        },
+        "secureBoot": {
+            "type": "bool"
+        },
+        "vTPM": {
+            "type": "bool"
+        },
+        "osImageName": {
+            "type": "string",
+            "allowedValues": [
+                "Windows Server 2022 Gen 2",
+                "Windows Server 2019 Gen 2",
+                "Ubuntu 20.04 LTS Gen 2"
+            ],
+            "metadata": {
+                "description": "OS Image for the Virtual Machine"
+            }
+        },
+        "authenticationType": {
+            "type": "string",
+            "defaultValue": "sshPublicKey",
+            "allowedValues": [
+                "password",
+                "sshPublicKey"
+            ],
+            "metadata": {
+                "description": "Type of authentication to use on the Virtual Machine."
+            }
+        },
+        "diskEncryptionSetId": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Disk encryption set Id for CVM provisioning with CMK."
+            }
+        },
+        "virtualMachineName": {
+            "type": "string"
+        },
+        "virtualMachineComputerName": {
+            "type": "string"
+        },
+        "virtualMachineRG": {
+            "type": "string"
+        },
+        "osType": {
+            "type": "string"
+        },
+        "osDiskSize": {
+            "type": "int",
+            "defaultValue": "30"
+        },
+        "virtualMachineSize": {
+            "type": "string"
+        },
+        "customData": {
+            "type": "secureString"
+        }
+
+    },
+    "variables": {
+        "networkInterfaceName": "[concat(parameters('virtualMachineName'), '-nic')]",
+        "linuxConfiguration": {
+            "disablePasswordAuthentication": "true",
+            "ssh": {
+                "publicKeys": [
+                    {
+                        "keyData": "[parameters('adminPublicKey')]",
+                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]"
+                    }
+                ]
+            }
+        }
+   },
+    "resources": [
+        {
+            "name": "[concat(parameters('virtualMachineName'), '-nic')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2021-03-01",
+            "location": "[parameters('vmLocation')]",
+            "dependsOn": [],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[parameters('subnetId')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic",
+                            "loadBalancerBackendAddressPools": [
+                                {
+                                    "id": "[parameters('backendPoolId')]"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2022-03-01",
+            "name": "[parameters('virtualMachineName')]",
+            "location": "westus",
+            "tags": {
+                "owner": "s.kondla@f5.com",
+                "cost_center_code": "7508",
+                "cost_center_name": "CEDI"
+            },
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_DC2as_v5"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "canonical",
+                        "offer": "0001-com-ubuntu-confidential-vm-focal",
+                        "sku": "20_04-lts-cvm",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[concat(parameters('virtualMachineName'), '_OsDisk_1')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "managedDisk": {
+                            "securityProfile": {
+                                "securityEncryptionType": "DiskWithVMGuestState",
+                                "diskEncryptionSet": {
+                                    "id": "[parameters('diskEncryptionSetId')]"
+                                }
+                            },
+                            "storageAccountType": "[parameters('osDiskType')]"
+                        },
+                        "deleteOption": "Delete",
+                        "diskSizeGB": 30
+                    },
+                    "dataDisks": []
+                },
+                "osProfile": {
+                    "computerName": "[parameters('virtualMachineName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPublicKey')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "keyData": "[parameters('adminPublicKey')]",
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]"
+                                }
+                            ]
+                        },
+                        "provisionVMAgent": true,
+                        "patchSettings": {
+                            "patchMode": "ImageDefault",
+                            "assessmentMode": "ImageDefault"
+                        }
+                    },
+                    "secrets": [],
+                    "allowExtensionOperations": true,
+                    "customData": "[parameters('customData')]"
+                },
+                "securityProfile": {
+                    "uefiSettings": {
+                        "secureBootEnabled": true,
+                        "vTpmEnabled": true
+                    },
+                    "securityType": "ConfidentialVM"
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('virtualMachineName'), '-nic'))]",
+                            "properties": {
+                                "deleteOption": "[parameters('nicDeleteOption')]"
+                            }
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        "storageUri": "[parameters('storageUri')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "apiVersion": "2022-03-01",
+            "name": "[concat(parameters('virtualMachineName'), '/AzureNetworkWatcherExtension')]",
+            "location": "westus",
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('virtualMachineName'))]"
+            ],
+            "properties": {
+                "autoUpgradeMinorVersion": true,
+                "publisher": "Microsoft.Azure.NetworkWatcher",
+                "type": "NetworkWatcherAgentLinux",
+                "typeHandlerVersion": "1.4"
+            }
+        }
+    ]
+}
