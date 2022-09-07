@@ -1,7 +1,7 @@
 
 # CVM Attestation Sample for AKS
 
-This solution is to be deployed on a CVM node in AKS cluster and will run a CVM attestation client and then decode the attestation report. It provides the following files:
+This solution is to be deployed on a CVM node in AKS cluster and will run a CVM attestation client, receive the attestation response and then decode the attestation report. It includes the following files:
 1. **attestation-client.Dockerfile**: The docker file to build the container image that runs the attestation app. The sample container image is pushed to MCR: mcr.microsoft.com/acc/samples/cvm-attestation:1.0.
 2. **get-attestation-report.sh**: The entry point script runs in the container image that triggers the attestation and then receive and decode the response.
 3. **cvm-attestation.yaml**: The yaml file to deploy an AKS pod that runs the attestation client.
