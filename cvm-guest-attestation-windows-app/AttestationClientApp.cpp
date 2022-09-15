@@ -38,7 +38,7 @@ public:
 };
 
 // Attestation tenant URI + Guest attestation path + API version
-std::string attestation_url = "https://sharedeus.eus.test.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
+std::string attestation_url = "https://sharedeus2.eus2.attest.azure.net/attest/AzureGuest?api-version=2020-10-01";
 
 int main() {
     try {
