@@ -6,7 +6,7 @@ metadata:
     app: cvm-attestation
 spec:
   containers:
-  - image: mcr.microsoft.com/acc/samples/cvm-attestation:1.0
+  - image: mcr.microsoft.com/acc/samples/cvm-attestation:1.1
     imagePullPolicy: IfNotPresent
     name: cvm-attestation
     volumeMounts:
