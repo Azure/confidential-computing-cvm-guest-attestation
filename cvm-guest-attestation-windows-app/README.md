@@ -23,3 +23,5 @@ Guest attestation is the process of cryptographically appraising a VM’s report
 2. Unzip the folder.
 3. Navigate inside the folder and run `VC_redist.x64.exe`. This will install Microsoft C and C++ ([MSVC](https://docs.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)) runtime libraries on the machine.
 4. Run the `AttestationClientApp.exe -a <attestation-url> -n <nonce-value> -o <token>` to trigger the sample client.
+
+![image](https://user-images.githubusercontent.com/32008026/191386248-830a3982-1696-40bb-92e5-e8b9d1d3a23b.png)
