@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.props" Condition="Exists('packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.props')" />
+  <Import Project="packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.props" Condition="Exists('packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.props')" />
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{d45b7323-9e07-4256-9afc-7c79b7c4c15f}</ProjectGuid>
+    <RootNamespace>AttestationClientApp</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;CURL_STATICLIB;/NODEFAULTLIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>
+	    packages\openssl-vc141-native.2.0.0\build\native\include;
+		packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\include;
+	  </AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+		packages\openssl-vc141-native.2.0.0\build\native\lib\x64;
+		packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\lib\x64;
+		packages\curl-vc140-static-32_64.7.53.0\lib\native\libs\x64\static\debug;
+	  </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+		  Wldap32.lib;
+		  Ws2_32.Lib;
+		  AttestationClientLib.lib;
+		  libssl.lib;
+		  libcrypto.lib;
+		  libcurl.lib;
+	  </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;CURL_STATICLIB;/NODEFAULTLIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>
+	    packages\openssl-vc141-native.2.0.0\build\native\include;
+		packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\include;
+	  </AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+		packages\openssl-vc141-native.2.0.0\build\native\lib\x64;
+		packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\lib\x64;
+		packages\curl-vc140-static-32_64.7.53.0\lib\native\libs\x64\static\release;
+	  </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+		  Wldap32.lib;
+		  Ws2_32.Lib;
+		  AttestationClientLib.lib;
+		  libssl.lib;
+		  libcrypto.lib;
+		  libcurl.lib;
+	  </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="AttestationClientApp.cpp" />
+    <ClCompile Include="Logger.cpp" />
+    <ClCompile Include="Utils.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitignore" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Logger.h" />
+    <ClInclude Include="Utils.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ContentWithTargetPath Include="certs\curl-ca-bundle.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>curl-ca-bundle.crt</TargetPath>
+    </ContentWithTargetPath>
+    <None Include="certs\curl-ca-bundle.*" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.targets" Condition="Exists('packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.targets')" />
+    <Import Project="packages\nlohmann.json.3.10.1\build\native\nlohmann.json.targets" Condition="Exists('packages\nlohmann.json.3.10.1\build\native\nlohmann.json.targets')" />
+    <Import Project="packages\curl-vc140-static-32_64.7.53.0\build\native\curl-vc140-static-32_64.targets" Condition="Exists('packages\curl-vc140-static-32_64.7.53.0\build\native\curl-vc140-static-32_64.targets')" />
+    <Import Project="packages\boost.1.66.0.0\build\native\boost.targets" Condition="Exists('packages\boost.1.66.0.0\build\native\boost.targets')" />
+    <Import Project="packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.targets" Condition="Exists('packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.targets')" />
+  </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.props'))" />
+    <Error Condition="!Exists('packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\openssl-vc141-native.2.0.0\build\native\openssl-vc141-native.targets'))" />
+    <Error Condition="!Exists('packages\nlohmann.json.3.10.1\build\native\nlohmann.json.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\nlohmann.json.3.10.1\build\native\nlohmann.json.targets'))" />
+    <Error Condition="!Exists('packages\boost.1.66.0.0\build\native\boost.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\boost.1.66.0.0\native\build\boost.targets'))" />
+    <Error Condition="!Exists('packages\curl-vc140-static-32_64.7.53.0\build\native\curl-vc140-static-32_64.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\curl-vc140-static-32_64.7.53.0\build\native\curl-vc140-static-32_64.targets'))" />
+    <Error Condition="!Exists('packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.props'))" />
+    <Error Condition="!Exists('packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Azure.Security.GuestAttestation.1.0.1\build\native\Microsoft.Azure.Security.GuestAttestation.targets'))" />
+  </Target>
+</Project>

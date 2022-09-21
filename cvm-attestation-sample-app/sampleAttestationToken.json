@@ -1,0 +1,98 @@
+{
+  "exp": 1653021894,
+  "iat": 1652993094,
+  "iss": "https://sharedeus.eus.test.attest.azure.net",
+  "jti": "df7d7ed26168e8f550cac34c8f9a227da664429f5df50bf72db60b19621a9d55",
+  "nbf": 1652993094,
+  "secureboot": true,
+  "x-ms-attestation-type": "azurevm",
+  "x-ms-azurevm-attestation-protocol-ver": "2.0",
+  "x-ms-azurevm-attested-pcrs": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    11,
+    12,
+    13
+  ],
+  "x-ms-azurevm-bootdebug-enabled": false,
+  "x-ms-azurevm-dbvalidated": true,
+  "x-ms-azurevm-dbxvalidated": true,
+  "x-ms-azurevm-debuggersdisabled": true,
+  "x-ms-azurevm-default-securebootkeysvalidated": true,
+  "x-ms-azurevm-elam-enabled": true,
+  "x-ms-azurevm-flightsigning-enabled": false,
+  "x-ms-azurevm-hvci-policy": 0,
+  "x-ms-azurevm-hypervisordebug-enabled": false,
+  "x-ms-azurevm-is-windows": true,
+  "x-ms-azurevm-kerneldebug-enabled": false,
+  "x-ms-azurevm-osbuild": "NotApplicable",
+  "x-ms-azurevm-osdistro": "Microsoft",
+  "x-ms-azurevm-ostype": "Windows",
+  "x-ms-azurevm-osversion-major": 10,
+  "x-ms-azurevm-osversion-minor": 0,
+  "x-ms-azurevm-signingdisabled": true,
+  "x-ms-azurevm-testsigning-enabled": false,
+  "x-ms-azurevm-vmid": "2DEDC52A-6832-46CE-9910-E8C9980BF5A7",
+  "x-ms-isolation-tee": {
+    "x-ms-attestation-type": "sevsnpvm",
+    "x-ms-compliance-status": "azure-compliant-cvm",
+    "x-ms-runtime": {
+      "keys": [
+        {
+          "e": "AQAB",
+          "key_ops": [
+            "encrypt"
+          ],
+          "kid": "HCLAkPub",
+          "kty": "RSA",
+          "n": "r6rCrAAAxuVmTsLPG9Em43Ley0MHbjTNrbWfyczxo5yLs4obtrY7Gm0Cme4uPxFlEtL1tpFuCv8tg9DikczxjVmuMs9wZdsplIp9k559Wcb4jkaXjnbCx2YbXjIZHzueSRKkPg_JsiUOb0bD7I9S0gYgeKl5TZ-SXbJB2xkk3NpAu6CN4UPLBRuK_2giN-VIE0bu9P_9lleutmJtLmKo2-JXrafF605mKAwRlKYnkbZN0ZcICot1taa7L3W7gL8fPXJmyZIC8GMni22XGH484-u_gM3N-WadrZMLfK8sC9UCbmJUDzMwo1niKNGLkyl9y1ssdBuZER8NHbQ6LFslkQ"
+        }
+      ],
+      "vm-configuration": {
+        "console-enabled": true,
+        "current-time": 1652993091,
+        "secure-boot": true,
+        "tpm-enabled": true,
+        "vmUniqueId": "2DEDC52A-6832-46CE-9910-E8C9980BF5A7"
+      }
+    },
+    "x-ms-sevsnpvm-authorkeydigest": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "x-ms-sevsnpvm-bootloader-svn": 2,
+    "x-ms-sevsnpvm-familyId": "01000000000000000000000000000000",
+    "x-ms-sevsnpvm-guestsvn": 1,
+    "x-ms-sevsnpvm-hostdata": "0000000000000000000000000000000000000000000000000000000000000000",
+    "x-ms-sevsnpvm-idkeydigest": "cd7cee161cad4160b883c9440db0920507aaab03ca6903fed8be467cf9d27b7ad0c69411a2c714ea5581f7fde86696fc",
+    "x-ms-sevsnpvm-imageId": "02000000000000000000000000000000",
+    "x-ms-sevsnpvm-is-debuggable": false,
+    "x-ms-sevsnpvm-launchmeasurement": "fe353d3026450365d599293bf0ed9b97defc3976602750dff3e087d88b9bbde05031b356f8d9296b8b138ae6000d0370",
+    "x-ms-sevsnpvm-microcode-svn": 55,
+    "x-ms-sevsnpvm-migration-allowed": false,
+    "x-ms-sevsnpvm-reportdata": "2065309a0fa9c05222a4455ecd25945995ee5f51952afb22e5661796d2704ee30000000000000000000000000000000000000000000000000000000000000000",
+    "x-ms-sevsnpvm-reportid": "1d5a776d6997b1b2207f3858e6b4bfd18e5bca9e292eb86fd49d0b9fe99eafaf",
+    "x-ms-sevsnpvm-smt-allowed": true,
+    "x-ms-sevsnpvm-snpfw-svn": 2,
+    "x-ms-sevsnpvm-tee-svn": 0,
+    "x-ms-sevsnpvm-vmpl": 0
+  },
+  "x-ms-policy-hash": "wm9mHlvTU82e8UqoOy1Yj1FBRSNkfe99-69IYDq9eWs",
+  "x-ms-runtime": {
+    "keys": [
+      {
+        "e": "AQAB",
+        "key_ops": [
+          "encrypt"
+        ],
+        "kid": "TpmEphemeralEncryptionKey",
+        "kty": "RSA",
+        "n": "3j6coAAAH_rEZn4n2nAcPpGPF3i-c8OptjkPqzpLGCfwJAHCnYMzAKyhHqhBSx9PZIift3PY1ecbUUZjhAFM98e7EpRtGgMggql0itQf_tr2fy6tVJXv4w6kwCB4dX3Lnr2TKH4T-6TsbzEK-uTZLxbS5kzldYx5WRJBGhE1BW4jJXOB-QGHmCyH7jHIEP61RunHOEy8pmZcAcgvGHCt3AK2s166g0YolD-t9s4F3Kr3bnVh9hdc548DkHdGK0WLAq8wa2cXujzzWdRCnM8e3t95GbZFpwVQCOJm3dGm2yYlQe53W1Egdfll6ccipHQ1lCOWpFTOzOjPovQFkwpoaQ"
+      }
+    ]
+  },
+  "x-ms-ver": "1.0"
+}
