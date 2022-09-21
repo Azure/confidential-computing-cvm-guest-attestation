@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/AttestationClient >> /attestation_output
+/AttestationClient -o token>> /attestation_output
 
 OUTPUT=$(cat /attestation_output)
 JWT=$(echo -n $OUTPUT | rev | cut -d " " -f1 | rev)
