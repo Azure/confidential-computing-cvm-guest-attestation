@@ -2,13 +2,6 @@
 #include <vector>
 
 /**
- * Get MSI token from Instance metadata service
- *
- * returns: the MSI token as string
- */
-std::string GetMSI();
-
-/**
  * Given a base64 encoded string, convert it to binary byte vector
  *
  * param[in] base64_data : string of base64 encoded data
@@ -43,3 +36,12 @@ std::string binary_to_base64url(const std::vector<unsigned char>& binary_data);
  * returns: vector of unsigned char (byte)
  */
 std::vector<unsigned char> base64url_to_binary(const std::string& base64url_data);
+
+/**
+ * Given a string, convert it to base64 encoded string
+ *
+ * param[in] data : string data
+ *
+ * returns: base64 encoded string
+ */
+std::string base64_decode(const std::string& data);
