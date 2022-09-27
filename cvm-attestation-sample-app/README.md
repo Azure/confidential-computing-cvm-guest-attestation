@@ -47,7 +47,7 @@ Once the above packages have been installed, use the below steps to build and ru
 $ cd attestation-app-linux/
 $ cmake .
 $ make
-$ sudo ./AttestationClient
+$ sudo ./AttestationClient -o token
 ```
 
 ![image](https://user-images.githubusercontent.com/32008026/170384716-d13876e2-4078-47bd-9994-5ca44318b4d4.png)
