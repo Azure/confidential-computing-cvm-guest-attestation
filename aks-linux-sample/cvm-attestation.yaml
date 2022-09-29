@@ -16,6 +16,8 @@ spec:
         name: tpmrm0
     securityContext:
       privileged: true
+  nodeSelector:
+    kubernetes.azure.com/security-type: ConfidentialVM
   volumes:
     - name: tcg
       hostPath:
@@ -24,4 +26,3 @@ spec:
       hostPath:
         path: /dev/tpmrm0
   restartPolicy: Never
-
