@@ -1,4 +1,5 @@
-FROM ubuntu:18.04
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y
 RUN apt-get  install -y \
     build-essential \
@@ -18,5 +19,6 @@ RUN git clone https://github.com/Azure/confidential-computing-cvm-guest-attestat
 RUN cd confidential-computing-cvm-guest-attestation/cvm-attestation-sample-app && cmake . && make && cp ./AttestationClient /
 
 COPY get-attestation-report.sh /
+RUN chmod a+x /get-attestation-report.sh
 
 ENTRYPOINT ["/get-attestation-report.sh"]
