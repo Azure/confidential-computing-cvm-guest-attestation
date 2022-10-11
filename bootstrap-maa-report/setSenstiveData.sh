@@ -7,6 +7,6 @@ export TF_VAR_backendPoolId="/subscriptions/xxxxxxxx-23sdsd-23333yyyds-ccss3-ssh
 export TF_VAR_confidentialDiskEncryptionSetId="App1-HSM-Encryption-Set"
 export TF_VAR_resource_group_name="app1-conf-compute"
 export TF_VAR_resource_group_name_des="cc-app1-rg"
-export TF_VAR_storage_account="confcomputesa"
+export TF_VAR_storage_account="confapp1"
 export TF_VAR_virtual_network_name="app1-vnet1"
 export TF_VAR_vnet_resource_group="app1-conf-compute"

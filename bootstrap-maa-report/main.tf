@@ -1,7 +1,7 @@
 resource "null_resource" "storage-container" {
   provisioner "local-exec" {
     command = <<EOT
-      az storage container create -n "cvm-custom-data-attestation-report-tfstate" --account-name "confcomptfstateokweo8hp"
+      az storage container create -n "cvm-custom-data-attestation-report-tfstate" --account-name "confapp182dr4321"
     EOT
   }
 }
@@ -15,7 +15,7 @@ terraform {
   }
     backend "azurerm" {
         resource_group_name  = "conf-compute-tfstate"
-        storage_account_name = "confcomptfstateokweo8hp"
+        storage_account_name = "confapp182dr4321"
         container_name       = "cvm-custom-data-attestation-report-tfstate"
         key                  = "terraform.tfstate"
     }
