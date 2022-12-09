@@ -13,8 +13,8 @@
 using json = nlohmann::json;
 
 
-#define OUTPUT_TYPE_JWT "TOKEN"
-#define OUTPUT_TYPE_BOOL "BOOL"
+#define OUTPUT_TYPE_JWT "token"
+#define OUTPUT_TYPE_BOOL "bool"
 
 // default guest attestation url
 std::string default_attestation_url = "https://sharedeus2.eus2.attest.azure.net/";
@@ -58,7 +58,7 @@ static int getopt(int argc, char* const argv[], const char* optstring)
 #endif //!PLATFORM_UNIX
 
 void usage(char* programName) {
-    printf("Usage: %s -a <attestation-endpoint> -n <nonce> -o JWT\n", programName);
+    printf("Usage: %s -a <attestation-endpoint> -n <nonce> -o <%s|%s>\n", programName, OUTPUT_TYPE_BOOL, OUTPUT_TYPE_JWT);
 }
 
 int main(int argc, char* argv[]) {
