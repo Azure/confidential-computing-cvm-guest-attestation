@@ -28,4 +28,6 @@ dpkg-buildpackage -us -uc
 
 cd ${CURRENT_DIR}
 
+rm -rf ${TEMP}
+
 mv *.deb ${PACKAGE_DIR}/

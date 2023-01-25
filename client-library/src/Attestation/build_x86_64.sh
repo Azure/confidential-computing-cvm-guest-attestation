@@ -42,7 +42,6 @@ VERSION="1.0.2"
 mkdir -p $BUILD_DIR
 mkdir -p $PACKAGE_DIR
 mkdir -p $LOG_DIR
-mkdir -p ${PACKAGE}/attestationlibrary
 cd $BUILD_DIR
 
 cmake $CMAKE_BUILDTYPE_OPT ../.. > $LOG_DIR/cmake.build.log
@@ -50,7 +49,7 @@ make -j`nproc` > $LOG_DIR/make.build.log
 
 cd ${ATTESTATION_LIB_SHARED_DIR}
 
-cp ${BUILD_DIR}/AttestationClient/lib/DynamicLibrary/libazguestattestation.so.${VERSION} ${PACKAGE_DIR}/attestationlibrary
+cp ${BUILD_DIR}/AttestationClient/lib/DynamicLibrary/libazguestattestation.so.${VERSION} ${PACKAGE_DIR}
 
 ./createDebPackage.sh
 
