@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+export DH_VERBOSE = 1
+
+# see FEATURE AREAS in dpkg-buildflags(1)
+#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+LIBRARY=lib${PACKAGE}.so
+
+%:
+	dh $@ 
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_install:
+override_dh_install:
+	dh_install libazguestattestation.so.${VERSION} /usr/lib/${PACKAGE}
+	dh_install ../../include/* usr/include/${PACKAGE}/.
+override_dh_link:
+	dh_link usr/lib/${PACKAGE}/libazguestattestation.so.${VERSION} usr/lib/libazguestattestation.so.1
+	dh_link usr/lib/${PACKAGE}/libazguestattestation.so.${VERSION} usr/lib/libazguestattestation.so
