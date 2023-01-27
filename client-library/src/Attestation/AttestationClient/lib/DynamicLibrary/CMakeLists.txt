@@ -13,7 +13,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src
-    ${CMAKE_SOURCE_DIR}/../external/VbsVmCrypto
+    ${CMAKE_SOURCE_DIR}/../external/SnpVmReport
 )
 
 add_library(${CMAKE_PROJECT_TARGET} SHARED ../../AttestationHelperBase64.cpp

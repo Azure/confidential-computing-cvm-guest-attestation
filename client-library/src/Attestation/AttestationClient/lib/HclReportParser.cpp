@@ -11,7 +11,7 @@
 #include "AttestationParameters.h"
 #include "AttestationClient.h"
 #include "HclReportParser.h"
-#include "VbsVmCrypto.h"
+#include "SnpVmReport.h"
 
 AttestationResult HclReportParser::ExtractSnpReportAndRuntimeDataFromHclReport(const attest::Buffer& hcl_report,
                                                                   attest::Buffer& snp_report,

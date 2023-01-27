@@ -1,28 +1,8 @@
-/*++
-
-Copyright (c) 2014  Microsoft Corporation
-
-Module Name:
-
-    vbsvmcrypto.h
-
-Abstract:
-
-    Contains type definitions used by the crypto and attesation in Isolated VM.
-
-Author:
-
-    Jingbo Wu (jingbowu) 17-April-2018 - Created
-
-Revision History:
-
---*/
-
-/*
-History: 
-    This header file is copied from the below NuGet version published by the cosine team
-    NuGet Version: microsoft.windows.igvmagent.amd64fre.10.0.25114.1000-220505-1700.rs-onecore-base2-hyp.nupkg
-*/
+//-------------------------------------------------------------------------------------------------
+// <copyright file="SnpVmReport.h" company="Microsoft Corporation">
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// </copyright>
+//-------------------------------------------------------------------------------------------------
 
 #pragma once
 
@@ -39,142 +19,6 @@ extern "C" {
 // (Copied from VSM_SK_SECURE_SIGNING_HASH_ALG_SHA_256)
 //
 #define SVC_VSM_SK_SECURE_SIGNING_HASH_ALG_SHA_256 (32780)
-
-#define VBS_VM_REPORT_PKG_HEADER_VERSION_CURRENT (1)
-#define VBS_VM_REPORT_SIGNATURE_SCHEME_SHA256_RSA_PSS_SHA256 (1)
-
-//
-// VBS Report package header
-//
-
-typedef struct VBS_VM_REPORT_PKG_HEADER
-{
-    uint32_t PackageSize;
-    uint32_t Version;
-    uint32_t SignatureScheme;
-    uint32_t SignatureSize;
-    uint32_t Reserved;
-
-} VBS_VM_REPORT_PKG_HEADER;
-
-//
-// VBS Report body
-//
-
-#define VBS_VM_IDENTITY_SVN_CURRENT (1)
-#define VBS_VM_SHA256_SIZE (32)
-#define VBS_VM_HOST_DATA_SIZE (32)
-
-typedef struct _VBS_VM_IDENTITY
-{
-    //
-    // Owner ID is the runtime ID assigned to VBS VM when the instance is created.
-    // It is an input parameter when VM is created.
-    //
-    uint8_t OwnerId[VBS_VM_SHA256_SIZE];
-
-    //
-    // Measurement is the hash of VBS VM (memory pages, VP, page tables etc.).
-    //
-    uint8_t Measurement[VBS_VM_SHA256_SIZE];
-
-    //
-    // The value of the signer measurement (SHA256 of Signer RSA key pub).
-    // V1 VBS VM only supports Windows signed binaries.
-    //
-    uint8_t Signer[VBS_VM_SHA256_SIZE];
-
-    //
-    // Data passed by the host on VM creation.
-    //
-    uint8_t HostData[VBS_VM_HOST_DATA_SIZE];
-
-    //
-    // SVN of VBS VM platform isolation support, which including SK extention and
-    // hypervisor to support VM isolation.
-    //
-    uint32_t PlatformIsolationSvn;
-
-    //
-    // SVN of secure kernel.
-    //
-    uint32_t SecureKernelSvn;
-
-    //
-    // SVN of VBS platform boot chain.
-    //
-    uint32_t PlatformBootChainSvn;
-
-    //
-    // The guest VTL level that CreateReport called from.
-    //
-    uint32_t GuestVtl;
-
-    uint8_t Reserved2[32];
-
-} VBS_VM_IDENTITY;
-
-#define VBS_VM_LENGTH_16 (16)
-#define VBS_VM_FLAG_DEBUG_ENABLED         (0x00000001)
-
-//
-// VBS VM Module description.
-//
-typedef struct _VBS_VM_MODULE
-{
-    uint8_t ImageHash[VBS_VM_SHA256_SIZE];
-
-    //
-    // The value of the signer measurement (SHA256 of Signer RSA key pub).
-    // V1 VBS VM supports sigStruct signing rather than individual image signing.
-    //
-    uint8_t Signer[VBS_VM_SHA256_SIZE];
-
-    //
-    // User configured data when image is compiled. {ImageId, FamilyId} represents product ID.
-    //
-    uint8_t FamilyId[VBS_VM_LENGTH_16];
-    uint8_t ImageId[VBS_VM_LENGTH_16];
-
-    //
-    // VBS VM security attributes that describe the runtime policy. For example, debug policy.
-    //
-    uint32_t Attributes;
-
-    //
-    // VBS VM module security version.
-    //
-    uint32_t Svn;
-
-    //
-    // The VTL where the root module runs.
-    //
-    uint32_t Vtl;
-
-    uint8_t Reserved[32];
-
-} VBS_VM_MODULE;
-
-#define VBS_VM_REPORT_VERSION_CURRENT (1)
-#define VBS_VM_REPORT_DATA_LENGTH (64)
-#define VBS_VM_NUMBER_OF_MODULES  (2)
-#define VBS_VM_MAX_SIGNATURE_SIZE (256)
-typedef struct _VBS_VM_REPORT
-{
-    VBS_VM_REPORT_PKG_HEADER Header;
-
-    uint32_t Version;
-
-    uint8_t ReportData[VBS_VM_REPORT_DATA_LENGTH];
-
-    // The identity conatins the module information and VBS platform security
-    // properties.
-    VBS_VM_IDENTITY Identity;
-
-    VBS_VM_MODULE Modules[VBS_VM_NUMBER_OF_MODULES];
-    uint8_t Signature[VBS_VM_MAX_SIGNATURE_SIZE];
-
-} VBS_VM_REPORT;
 
 //
 // AMD SEV-SNP Report (per spec).
@@ -272,7 +116,6 @@ typedef struct _HW_ATTESTATION
     union
     {
         SNP_VM_REPORT SnpReport; // SnpReportData holds hash of HclData
-        VBS_VM_REPORT VbsReport; // ReportData holds hash of HclData
     } Report;
 } HW_ATTESTATION;
 
@@ -284,7 +127,6 @@ typedef struct _HW_ATTESTATION
 typedef enum _IGVM_REPORT_TYPE
 {
     InvalidReport = 0,
-    VbsVmReport,
     SnpVmReport,
     TvmReport
 } IGVM_REPORT_TYPE, *PIGVM_REPORT_TYPE;
@@ -358,8 +200,6 @@ typedef struct _ATTESTATION_REPORT
 } ATTESTATION_REPORT;
 
 
-#define VBS_VM_AES_GCM_KEY_LENGTH 32
-
 //
 // Attestation response structures.
 //
@@ -396,4 +236,3 @@ typedef struct _IGVM_CERT_MESSAGE_HEADER
 #ifdef __cplusplus
 }
 #endif
-
