@@ -8,7 +8,7 @@ _More information on AMD SEV-SNP technology can be found in [this](https://www.a
 
 ## CVM Architecture
 
-![Confidential VM](\AMD.png)
+![Confidential VM](https://github.com/Azure/confidential-computing-cvm-guest-attestation/blob/main/AMD.png)
 
 This diagram illustrates the high-level components that make up a CVM.
 As depicted in the diagram, the root-of-trust for the CVM is AMD’s PSP (Platform Security
