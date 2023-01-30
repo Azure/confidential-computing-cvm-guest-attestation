@@ -10,14 +10,9 @@ _More information on AMD SEV-SNP technology can be found in [this](https://www.a
 
 ![Confidential VM](AMD.png)
 
-This diagram illustrates the high-level components that make up a CVM.
-As depicted in the diagram, the root-of-trust for the CVM is AMD’s PSP (Platform Security
-Processor).
+This diagram illustrates the high-level components that make up a CVM. As depicted in the diagram, the root-of-trust for the CVM is AMD’s PSP (Platform Security Processor).
 
-
-As shown in the diagram above, HCL, vTPM and UEFI make up the firmware components for a
-CVM with Azure default firmware. These firmware components are provided and managed by
-Microsoft and are currently closed source.
+As shown in the diagram above, HCL, vTPM and UEFI make up the firmware components for a CVM with Azure default firmware. These firmware components are provided and managed by Microsoft and are currently closed source.
 
 ## Host Compatibility Layer (HCL) and Virtual TPM (vTPM)
 
