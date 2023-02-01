@@ -88,9 +88,7 @@ other trusted CVM or non-CVM machine.
     sevtool binary is in the <repo root>/src folder.
 
 ```
-% sudo ./sevtool – -ofolder <location of vcek.pem & guest_report.bin>
-```
-- -validate_guest_report
+% sudo ./sevtool – -ofolder <location of vcek.pem & guest_report.bin> --validate_guest_report
 
 If you see the below output, it means that the SNP report is valid, and that HCL has
 cryptographically verified that it is running on a genuine AMD processor and that SNP is
