@@ -14,15 +14,9 @@ extern "C" {
 #pragma pack(1)
 
 //
-// Hashing algorithm ID to use for SK Secure Signing using IDK_S
-// The value used is CALG_SHA_256 = (ALG_CLASS_HASH | ALG_TYPE_ANY | ALG_SID_SHA_256).
-// (Copied from VSM_SK_SECURE_SIGNING_HASH_ALG_SHA_256)
+// AMD SEV-SNP Report per spec (https://www.amd.com/en/support/tech-docs/sev-secure-nested-paging-firmware-abi-specification)
 //
-#define SVC_VSM_SK_SECURE_SIGNING_HASH_ALG_SHA_256 (32780)
 
-//
-// AMD SEV-SNP Report (per spec).
-//
 typedef struct _SNP_SIGNATURE
 {
     uint8_t RComponent[72];
