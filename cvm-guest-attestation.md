@@ -96,8 +96,6 @@ enabled for confidentiality on this processor.
 
 ```
 Guest report validated successfully! 
-    
-Command Successful
 ```
     
 It is important to note that the SNP report only certifies/measures the HCL (Microsoft firmware) and UEFI binary. You will not be able to generate arbitrary SNP reports by directly calling hardware APIs.
