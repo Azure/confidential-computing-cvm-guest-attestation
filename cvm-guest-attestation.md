@@ -35,7 +35,7 @@ You may or may not choose to trust the MAA service to attest your CVMs. You also
 | Are you willing to trust MAA? | Are you willing to trust HCL? | Recommendation |
 | --- | --- | --- |
 | Yes | Yes | Use CVM with default firmware with multiple options (client library or attestation extension, see above) for guest attestation
-| No | Yes | Yes Fetch SNP reports using virtual TPM APIs as described in the FAQ
+| No | Yes | Fetch SNP reports using virtual TPM APIs as described in the FAQ
 
 # Customer FAQ
 
@@ -55,7 +55,7 @@ You can obtain the VCEK certificate by following the instructions here:
 
 The mechanism to fetch the report is described below.
 
-# LINUX
+# Linux
 
 1. For cryptographic verification, install the tpm2-tss library, which is a widely used open source
     TPM software stack – all the relevant OS distribution instances supported by CVMs have
@@ -98,7 +98,7 @@ It is important to note that the SNP report only certifies/measures the HCL (Mic
 + UEFI binary. You will not be able to generate arbitrary SNP reports by directly calling hardware
 APIs.
 
-# WINDOWS
+# Windows
 
 Instructions to be updated soon.
 
