@@ -28,7 +28,7 @@ Please spend a few minutes watching this [video](https://youtu.be/M7kWKN7fXbs) f
 
 Guest attestation can be accomplished via two mechanisms: a [Microsoft-built client library](https://github.com/Azure/confidential-computing-cvm-guest-attestation) (DLL or shared object) and Microsoft VM extension. The client library transparently obtains the report
 and conducts remote attestation flows. Remote attestation via client library can be done programmatically using API, or a wrapper executable. The client library is open source. The VM extension is called “Guest Attestation Extension” that transparently obtains the report and conducts remote attestation flows, optionally providing the status of attestation in Microsoft Defender for Cloud. Both client library and guest attestation mechanisms gather evidence for
-attestation (especially associated with the Trusted Execution Environment (TEE)) that is rooted to the CPU manufacturer (AMD).
+attestation (especially associated with the Trusted Execution Environment (TEE) that is rooted to the CPU manufacturer (AMD).
 
 You may or may not choose to trust the MAA service to attest your CVMs. You also may or may not choose to trust the HCL firmware that intercepts every call into the AMD SEV-SNP-enabled hardware. Depending on your willingness to trust Microsoft-owned components and services, below are Microsoft’s recommendations.
 
