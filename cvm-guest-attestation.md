@@ -1,4 +1,4 @@
-# Azure confidential VMs attestation guidance & FAQ
+# Azure Confidential VMs attestation guidance & FAQ
 
 ## Introduction
 
