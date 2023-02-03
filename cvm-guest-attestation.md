@@ -94,6 +94,12 @@ If you see the below output, it means that the SNP report is valid, and that HCL
 cryptographically verified that it is running on a genuine AMD processor and that SNP is
 enabled for confidentiality on this processor.
 
+```
+Guest report validated successfully! 
+    
+Command Successful
+```
+    
 It is important to note that the SNP report only certifies/measures the HCL (Microsoft firmware) and UEFI binary. You will not be able to generate arbitrary SNP reports by directly calling hardware APIs.
 
 # Windows
