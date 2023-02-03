@@ -77,8 +77,8 @@ The mechanism to fetch the report is described below.
     boot) by executing the following command which will dump the report in binary form. Note
     that this is **not** a dynamically generated report.
 ```    
-    % tpm2_nvread -C o 0x01400001 > ./snp_report.bin
-    % dd skip=32 bs=1 count=1184 if=./snp_report.bin of=./guest_report.bin
+% tpm2_nvread -C o 0x01400001 > ./snp_report.bin
+% dd skip=32 bs=1 count=1184 if=./snp_report.bin of=./guest_report.bin
 ```
 _Note_ : Once the VCEK cert and SNP report are available, the steps below can be done on any
 other trusted CVM or non-CVM machine.
