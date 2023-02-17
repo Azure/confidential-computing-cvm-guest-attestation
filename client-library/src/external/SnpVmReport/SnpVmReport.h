@@ -121,6 +121,7 @@ typedef struct _HW_ATTESTATION
 typedef enum _IGVM_REPORT_TYPE
 {
     InvalidReport = 0,
+    ReservedReportType,
     SnpVmReport,
     TvmReport
 } IGVM_REPORT_TYPE, *PIGVM_REPORT_TYPE;
