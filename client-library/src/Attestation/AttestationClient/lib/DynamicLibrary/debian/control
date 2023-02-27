@@ -1,0 +1,14 @@
+Source: azguestattestation1
+Section: unknown
+Priority: optional
+Maintainer: Microsoft Corp
+Build-Depends: debhelper (>=9)
+Standards-Version: 3.9.6
+
+Package: azguestattestation1
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Azure Guest Attestation Library
+ The guest attestation library can be used to 
+ perform attestation on Trusted Launch and 
+ Confidential VMs in Azure.
