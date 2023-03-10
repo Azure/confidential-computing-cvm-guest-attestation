@@ -1,0 +1,23 @@
+Source: cvm-guest-attestation
+Maintainer: Jeremi Piotrowski <jpiotrowski@microsoft.com>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends: debhelper (>= 9), ninja-build, cmake,
+  libcurl4-openssl-dev, libboost-dev, nlohmann-json3-dev, libjsoncpp-dev,
+  libtss2-dev, libssl-dev, libgtest-dev, libgmock-dev, rapidjson-dev
+
+Package: cvm-guest-attestation-client
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: CVM Attestation Sample App
+
+Package: libazguestattestation1
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: CVM Attestation Library
+
+Package: libazguestattestation-dev
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: CVM Attestation Library
