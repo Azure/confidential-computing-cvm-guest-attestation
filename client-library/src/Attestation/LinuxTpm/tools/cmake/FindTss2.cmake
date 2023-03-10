@@ -7,10 +7,11 @@ set (TSS2_SYS TSS2_SYS-NOTFOUND)
 set (TSS2_MU TSS2_MU-NOTFOUND)
 set (TSS2_TCTI_DEVICE TSS2_TCTI_DEVICE-NOTFOUND)
 
-find_library(TSS2_ESYS names libtss2-esys.a tss2-esys PATHS /usr/local/lib /usr/lib NO_DEFAULT_PATH)
-find_library(TSS2_SYS names libtss2-sys.a tss2-sys PATHS /usr/local/lib /usr/lib NO_DEFAULT_PATH)
-find_library(TSS2_MU NAMES libtss2-mu.a tss2-mu PATHS /usr/local/lib /usr/lib NO_DEFAULT_PATH)
-find_library(TSS2_TCTI_DEVICE NAMES libtss2-tcti-device.a tss2-tcti-device PATHS /usr/local/lib /usr/lib NO_DEFAULT_PATH)
+set(TSS2_LIB_PATHS /usr/local/lib /usr/lib /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE})
+find_library(TSS2_ESYS names libtss2-esys.a tss2-esys PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
+find_library(TSS2_SYS names libtss2-sys.a tss2-sys PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
+find_library(TSS2_MU NAMES libtss2-mu.a tss2-mu PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
+find_library(TSS2_TCTI_DEVICE NAMES libtss2-tcti-device.a tss2-tcti-device PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
 
 set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} gcrypt dl TssStaticShim)
 
