@@ -38,6 +38,10 @@ PACKAGE_DIR=${BUILD_DIR}/packages
 LOG_DIR=${BUILD_DIR}/log
 ATTESTATION_LIB_SHARED_DIR=${ATTESTATION_DIR}/AttestationClient/lib/DynamicLibrary
 VERSION="1.0.2"
+: ${CC:=/usr/bin/gcc-8}
+: ${CXX:=/usr/bin/g++-8}
+export CC
+export CXX
 # Create all directories
 mkdir -p $BUILD_DIR
 mkdir -p $PACKAGE_DIR
