@@ -7,6 +7,7 @@ project(azguestattestation VERSION 1.0.2)
 
 set(CMAKE_PROJECT_TARGET azguestattestation)
 
+include(GNUInstallDirs)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(RapidJSON REQUIRED)
@@ -44,3 +45,8 @@ target_link_libraries(${CMAKE_PROJECT_TARGET} CURL::libcurl)
 
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES VERSION ${PROJECT_VERSION})
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES SOVERSION 1)
+
+install(TARGETS ${CMAKE_PROJECT_TARGET}
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CMAKE_PROJECT_TARGET}1"
+)

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(AttestationClient)
 
+include(GNUInstallDirs)
 find_package(CURL REQUIRED)
 find_package(Boost REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -33,3 +34,6 @@ target_link_libraries(${CMAKE_PROJECT_TARGET}
     nlohmann_json::nlohmann_json
 )
 target_link_libraries(${CMAKE_PROJECT_TARGET} jsoncpp_lib)
+install(TARGETS ${CMAKE_PROJECT_TARGET}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
