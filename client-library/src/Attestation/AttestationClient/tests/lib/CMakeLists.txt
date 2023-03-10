@@ -24,8 +24,8 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../lib
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../LinuxTpm/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/include
-    ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src
-    ${CMAKE_SOURCE_DIR}/../external/SnpVmReport
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/jsoncpp-0.10.7/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/SnpVmReport
 )
 
 add_executable(${CMAKE_PROJECT_TARGET} ClientLibTests.cpp
@@ -42,7 +42,7 @@ add_executable(${CMAKE_PROJECT_TARGET} ClientLibTests.cpp
                                        ../../lib/IsolationInfo.cpp
                                        ../../lib/HclReportParser.cpp
                                        ../../lib/HttpClient.cpp
-                                       ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
+                                       ../../../../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${GTEST_LIBRARIES} pthread)
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${GMOCK_LIBRARIES})
