@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+
 #MUST be same as the version in the latest entry in debian/changelog file.
 project(azguestattestation VERSION 1.0.2)
 
@@ -16,7 +18,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/../external/SnpVmReport
 )
 
-add_library(${CMAKE_PROJECT_TARGET} SHARED ../../AttestationHelperBase64.cpp
+add_library(${CMAKE_PROJECT_TARGET} ../../AttestationHelperBase64.cpp
                                            ../../AttestationHelperJson.cpp
                                            ../AttestationClientImpl.cpp
                                            ../AttestationClient.cpp

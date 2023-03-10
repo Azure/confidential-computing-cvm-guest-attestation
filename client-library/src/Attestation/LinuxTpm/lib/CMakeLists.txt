@@ -10,7 +10,7 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
 file(GLOB SOURCES "*.cpp")
 
-add_library(${CMAKE_PROJECT_TARGET} ${SOURCES})
+add_library(${CMAKE_PROJECT_TARGET} STATIC ${SOURCES})
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${TSS2_LIBRARIES})
 target_link_libraries(${CMAKE_PROJECT_TARGET} ssl crypto)
 target_link_libraries(${CMAKE_PROJECT_TARGET} dl)
