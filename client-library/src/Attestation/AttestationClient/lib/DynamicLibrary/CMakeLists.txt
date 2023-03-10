@@ -7,6 +7,10 @@ project(azguestattestation VERSION 1.0.2)
 
 set(CMAKE_PROJECT_TARGET azguestattestation)
 
+find_package(CURL REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(RapidJSON REQUIRED)
+
 add_definitions (-DPLATFORM_UNIX)
 
 include_directories(
@@ -34,8 +38,9 @@ add_library(${CMAKE_PROJECT_TARGET} ../../AttestationHelperBase64.cpp
                                            ../HttpClient.cpp
                                            ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
 
+target_include_directories(${CMAKE_PROJECT_TARGET} PRIVATE ${OPENSSL_INCLUDE_DIR} ${RAPIDJSON_INCLUDE_DIRS})
 target_link_libraries(${CMAKE_PROJECT_TARGET} Tpm2)
-target_link_libraries(${CMAKE_PROJECT_TARGET} curl)
+target_link_libraries(${CMAKE_PROJECT_TARGET} CURL::libcurl)
 
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES VERSION ${PROJECT_VERSION})
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES SOVERSION 1)
