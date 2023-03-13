@@ -13,7 +13,9 @@ find_library(TSS2_SYS names libtss2-sys.a tss2-sys PATHS ${TSS2_LIB_PATHS} NO_DE
 find_library(TSS2_MU NAMES libtss2-mu.a tss2-mu PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
 find_library(TSS2_TCTI_DEVICE NAMES libtss2-tcti-device.a tss2-tcti-device PATHS ${TSS2_LIB_PATHS} NO_DEFAULT_PATH)
 
-set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} gcrypt dl TssStaticShim)
+include(FindPkgConfig)
+pkg_check_modules(gcrypt REQUIRED IMPORTED_TARGET libgcrypt)
+set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} PkgConfig::gcrypt dl TssStaticShim)
 
 set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 
