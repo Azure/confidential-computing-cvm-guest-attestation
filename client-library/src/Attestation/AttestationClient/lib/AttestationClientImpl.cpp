@@ -37,6 +37,8 @@
 #include "ImdsOperations.h"
 #include "HclReportParser.h"
 
+#include "TdxAttestationUtils.h"
+
 #define MAX_ATTESTATION_RETRIES 3
 
 #ifdef PLATFORM_UNIX
@@ -169,6 +171,44 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
     std::memcpy(jwt_token, token_decrypted.data(), token_decrypted.size());
     jwt_token[token_decrypted.size()] = '\0';
     *jwt_token_out = jwt_token;
+    return result;
+}
+
+AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string &evidence,
+                                                                     unsigned char *client_payload) noexcept {
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+
+    CLIENT_LOG_INFO("Getting Td Report from driver...");
+
+    // creates hash of the client_payload json object
+    unsigned char* report_data = NULL;
+    if (client_payload != NULL) {
+
+    }
+
+    std::unique_ptr<std::string> buffer = std::make_unique<std::string>(TD_REPORT_SIZE, 0);
+    if (GetTdReport((char *)buffer.get()->data()) == TDX_GET_REPORT_FAILED) {
+        CLIENT_LOG_ERROR("Failed to get report from tdx-attest driver");
+        return AttestationResult::ErrorCode::ERROR_READING_TD_REPORT;
+    }
+    std::string hardware_report(buffer.release()->data(), TD_REPORT_SIZE);
+
+    std::string encoded_report = attest::base64::base64_encode(hardware_report);
+    std::string imds_request = "{\"Report\":\"" + encoded_report + "\"}";
+
+    CLIENT_LOG_INFO("Starting request to get td quote");
+
+    ImdsOperations imds_ops;
+    std::string imds_response;
+    result = imds_ops.GetPlatformEvidence(imds_request, imds_response);
+    if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
+        CLIENT_LOG_ERROR("Failed to retrieve the TD Quote from IMDS");
+        return result;
+    }
+    CLIENT_LOG_INFO("Received td quote successfully");
+
+    evidence = imds_response;
+
     return result;
 }
 

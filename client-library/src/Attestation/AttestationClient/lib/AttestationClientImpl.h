@@ -45,6 +45,19 @@ public:
                                      unsigned char** jwt_token) noexcept override;
 
     /**
+     * @brief This API initiates retrieves the Hardware Platform Evidence.
+     * @param[out] evidence The Hardware Evidence as a JSON string from the Machine VM is running on.
+     * @param[in] client_payload (Optional) Well formed JSON object used to generate the Hardware
+     * Report. Ex.: {"nonce": "User data"}
+     * @return In case of success, AttestationResult object with error code
+     * ErrorCode::Success will be returned.
+     * In case of failure, an appropriate ErrorCode will be set in the
+     * AttestationResult object and error description will be provided.
+     */
+    attest::AttestationResult GetHardwarePlatformEvidence(std::string &evidence,
+                                                          unsigned char *client_payload = NULL) noexcept override;
+
+    /**
      * @brief This API encrypts the data based on the EncryptionType
      * @param[in] encryption_type: the type of encryption
      * currently the only encryption type supported is 'NONE', which expects the
