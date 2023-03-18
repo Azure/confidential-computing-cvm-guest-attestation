@@ -32,7 +32,8 @@
 attest::AttestationResult HttpClient::InvokeHttpImdsRequest(std::string& http_response,
     const std::string& url,
     const HttpClient::HttpVerb& http_verb,
-    const std::string& request_body) {
+    const std::string& request_body,
+    const std::string& content_type) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     CURL* curl = curl_easy_init();
@@ -46,6 +47,10 @@ attest::AttestationResult HttpClient::InvokeHttpImdsRequest(std::string& http_re
     // Set the the HTTPHEADER object to send Metadata in the response.
     struct curl_slist* headers = NULL;
     headers = curl_slist_append(headers, "Metadata:true");
+
+    if (!content_type.empty()) {
+        headers = curl_slist_append(headers, content_type);
+    }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
     // Send a pointer to a std::string to hold the response from the end

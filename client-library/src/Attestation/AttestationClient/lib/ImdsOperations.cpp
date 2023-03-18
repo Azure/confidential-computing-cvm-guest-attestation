@@ -70,13 +70,20 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
 attest::AttestationResult ImdsOperations::GetPlatformEvidence(const std::string &imds_request,
                                                               std::string &imds_response) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+    std::string content_type = "Content-Type:application/json";
     std::string http_response;
     std::string url = std::string(imds_endpoint) + std::string(td_quote_path);
 
     CLIENT_LOG_INFO("Starting request to IMDS");
 
     HttpClient http_client;
-    result = http_client.InvokeHttpImdsRequest(http_response, url, HttpClient::HttpVerb::POST, imds_request);
+    result = http_client.InvokeHttpImdsRequest(
+        http_response,
+        url,
+        HttpClient::HttpVerb::POST,
+        imds_request,
+        content_type);
+
     if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to retrieve Td Quote Data from IMDS: %s",
                          result.description_.c_str());
