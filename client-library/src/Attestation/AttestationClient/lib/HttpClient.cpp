@@ -49,7 +49,7 @@ attest::AttestationResult HttpClient::InvokeHttpImdsRequest(std::string& http_re
     headers = curl_slist_append(headers, "Metadata:true");
 
     if (!content_type.empty()) {
-        headers = curl_slist_append(headers, content_type);
+        headers = curl_slist_append(headers, content_type.c_str());
     }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
