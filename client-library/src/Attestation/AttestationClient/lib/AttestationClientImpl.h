@@ -55,7 +55,7 @@ public:
      * AttestationResult object and error description will be provided.
      */
     attest::AttestationResult GetHardwarePlatformEvidence(std::string &evidence,
-                                                          unsigned char *client_payload = NULL) noexcept override;
+                                                          const std::string &client_payload = std::string()) noexcept override;
 
     /**
      * @brief This API encrypts the data based on the EncryptionType

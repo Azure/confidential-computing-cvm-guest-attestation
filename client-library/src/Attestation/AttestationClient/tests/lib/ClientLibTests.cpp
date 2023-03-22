@@ -796,9 +796,9 @@ TEST_F(ClientLibTests, TestParseMaaResponse_positive) {
 }
 
 TEST_F(ClientLibTests, TestRequestPlatformEvidence) {
-    std::string runtime_data = "{\"nonce\":\"\"}";
+    const std::string runtime_data = "{\"nonce\":\"\"}";
     std::string evidence;
-    attest::AttestationResult result = client->GetHardwarePlatformEvidence(evidence, (unsigned char*)runtime_data.c_str());
+    attest::AttestationResult result = client->GetHardwarePlatformEvidence(evidence, runtime_data);
     EXPECT_EQ(result.code_, attest::AttestationResult::ErrorCode::SUCCESS);
 }
 

@@ -26,6 +26,7 @@
 #include <openssl/x509v3.h> 
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include "Exceptions.h"
 #include "AttestationHelper.h"
 
@@ -175,20 +176,27 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
 }
 
 AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string &evidence,
-                                                                     unsigned char *client_payload) noexcept {
+                                                                     const std::string &client_payload) noexcept {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     CLIENT_LOG_INFO("Getting Td Report from driver...");
 
-    // creates hash of the client_payload json object
-    unsigned char* report_data = NULL;
-    if (client_payload != NULL) {
-
+    std::unique_ptr<std::string> buffer = std::make_unique<std::string>(TD_REPORT_SIZE, 0);
+    int status = TDX_GET_REPORT_SUCCESS;
+    if (!client_payload.empty()) {
+        unsigned char hash[SHA256_DIGEST_LENGTH];
+        SHA256_CTX sha256;
+        SHA256_Init(&sha256);
+        SHA256_Update(&sha256, client_payload.c_str(), client_payload.size());
+        SHA256_Final(hash, &sha256);
+        status = GetTdReport((char *)buffer.get()->data(), hash, SHA256_DIGEST_LENGTH);
+    }
+    else {
+        status = GetTdReport((char *)buffer.get()->data(), NULL, 0);
     }
 
-    std::unique_ptr<std::string> buffer = std::make_unique<std::string>(TD_REPORT_SIZE, 0);
-    if (GetTdReport((char *)buffer.get()->data()) == TDX_GET_REPORT_FAILED) {
-        CLIENT_LOG_ERROR("Failed to get report from tdx-attest driver");
+    if (status == TDX_GET_REPORT_FAILED) {
+        CLIENT_LOG_ERROR("Failed to get report from tdx driver");
         return AttestationResult::ErrorCode::ERROR_READING_TD_REPORT;
     }
     std::string hardware_report(buffer.release()->data(), TD_REPORT_SIZE);

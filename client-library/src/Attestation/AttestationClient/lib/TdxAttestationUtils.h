@@ -66,25 +66,25 @@ typedef struct TdxReportRequest_t {
  * @param out_request_data
  * @return int
  */
-int GetTdReport(char* out_request_data)
-{
+int GetTdReport(char* out_request_data, unsigned char *report_data, size_t report_data_size) {
     TdxReportRequest_t report;
-    if (out_request_data == NULL)
-    {
+    if (out_request_data == NULL) {
         return TDX_GET_REPORT_FAILED;
+    }
+
+    if (report_data != NULL && report_data_size <= TDX_REPORTDATA_LEN) {
+        memcpy(report.reportdata, report_data, report_data_size);
     }
 
     //TODO: Allow report to be generated with report data
 
     int device_fd = open(TDX_ATTEST_DEV_PATH, O_RDWR | O_SYNC);
-    if (device_fd == -1)
-    {
+    if (device_fd == -1) {
         return TDX_GET_REPORT_FAILED;
     }
 
     int return_code = ioctl(device_fd, TDX_CMD_GET_REPORT, &report);
-    if (return_code != 0)
-    {
+    if (return_code != 0) {
         close(device_fd);
         return TDX_GET_REPORT_FAILED;
     }

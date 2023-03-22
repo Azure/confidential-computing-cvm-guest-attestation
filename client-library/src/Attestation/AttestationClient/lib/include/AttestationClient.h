@@ -44,7 +44,7 @@ public:
      * AttestationResult object and error description will be provided.
      */
     virtual attest::AttestationResult GetHardwarePlatformEvidence(std::string &evidence,
-                                                                  unsigned char *client_payload = NULL) noexcept = 0;
+                                                                  const std::string &client_payload = std::string()) noexcept = 0;
 
     /**
      * @brief This API encrypts the data based on the EncryptionType paramter
