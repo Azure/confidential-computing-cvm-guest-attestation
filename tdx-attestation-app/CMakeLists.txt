@@ -16,7 +16,7 @@ link_directories(
     /usr/lib/x86_64-linux-gnu
 )
 
-add_executable(${CMAKE_PROJECT_TARGET} main.cpp Logger.cpp Utils.cpp)
+add_executable(${CMAKE_PROJECT_TARGET} main.cpp Logger.cpp Utils.cpp HttpClient.cpp)
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation)
 target_link_libraries(${CMAKE_PROJECT_TARGET} curl)

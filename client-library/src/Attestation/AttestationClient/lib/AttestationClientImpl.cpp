@@ -12,6 +12,8 @@
 #include <math.h>
 #include <numeric>
 #include <cstring>
+#include <sstream>
+#include <iostream>
 #ifdef PLATFORM_UNIX
 #include <unistd.h>
 #else
@@ -185,10 +187,7 @@ AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string
     int status = TDX_GET_REPORT_SUCCESS;
     if (!client_payload.empty()) {
         unsigned char hash[SHA256_DIGEST_LENGTH];
-        SHA256_CTX sha256;
-        SHA256_Init(&sha256);
-        SHA256_Update(&sha256, client_payload.c_str(), client_payload.size());
-        SHA256_Final(hash, &sha256);
+        SHA256((unsigned char *)client_payload.data(), client_payload.length(), hash);
         status = GetTdReport((char *)buffer.get()->data(), hash, SHA256_DIGEST_LENGTH);
     }
     else {
@@ -202,7 +201,7 @@ AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string
     std::string hardware_report(buffer.release()->data(), TD_REPORT_SIZE);
 
     std::string encoded_report = attest::base64::base64_encode(hardware_report);
-    std::string imds_request = "{\"Report\":\"" + encoded_report + "\"}";
+    std::string imds_request = "{\"report\":\"" + encoded_report + "\"}";
 
     CLIENT_LOG_INFO("Starting request to get td quote");
 

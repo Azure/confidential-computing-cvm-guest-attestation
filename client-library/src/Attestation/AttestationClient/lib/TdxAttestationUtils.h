@@ -76,8 +76,6 @@ int GetTdReport(char* out_request_data, unsigned char *report_data, size_t repor
         memcpy(report.reportdata, report_data, report_data_size);
     }
 
-    //TODO: Allow report to be generated with report data
-
     int device_fd = open(TDX_ATTEST_DEV_PATH, O_RDWR | O_SYNC);
     if (device_fd == -1) {
         return TDX_GET_REPORT_FAILED;

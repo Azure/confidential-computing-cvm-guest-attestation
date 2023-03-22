@@ -30,10 +30,10 @@
 #define MAX_RETRIES 3
 
 attest::AttestationResult HttpClient::InvokeHttpImdsRequest(std::string& http_response,
-    const std::string& url,
-    const HttpClient::HttpVerb& http_verb,
-    const std::string& request_body,
-    const std::string& content_type) {
+                                                            const std::string& url,
+                                                            const HttpClient::HttpVerb& http_verb,
+                                                            const std::string& request_body,
+                                                            const std::string& content_type) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     CURL* curl = curl_easy_init();
