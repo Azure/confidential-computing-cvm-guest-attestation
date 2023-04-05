@@ -48,7 +48,9 @@ public:
     attest::EphemeralKey GetEphemeralKey(const attest::PcrSet& pcrSet) const;
 
     attest::Buffer DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
-                                           const attest::Buffer& encryptedBlob) const;
+                                           const attest::Buffer& encryptedBlob,
+                                           const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                           const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) const;
 
     void WriteAikCert(const attest::Buffer& aikCert) const;
     attest::Buffer GetHCLReport() const;

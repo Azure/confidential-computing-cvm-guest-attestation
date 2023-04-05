@@ -571,7 +571,9 @@ attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) 
 }
 
 attest::Buffer Tss2Wrapper::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
-                                                    const attest::Buffer& encryptedBlob) {
+                                                    const attest::Buffer& encryptedBlob,
+                                                    const attest::RsaScheme rsaWrapAlgId,
+                                                    const attest::RsaHashAlg rsaHashAlgId) {
     // Create an ephemeral key here and then use that key to decrypted the encrypted blob.
     TPM2B_PUBLIC *outPublic = NULL;
 
@@ -601,7 +603,8 @@ attest::Buffer Tss2Wrapper::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet
     cipher_msg.size = static_cast<UINT16>(encryptedBlob.size());
 
     TPMT_RSA_DECRYPT scheme;
-    scheme.scheme = TPM2_ALG_RSAES;
+    scheme.scheme = rsaWrapAlgId;
+    scheme.details.oaep.hashAlg = rsaHashAlgId;
     TPM2B_PUBLIC_KEY_RSA* decrypted = NULL;
 
      TSS2_RC ret = Esys_RSA_Decrypt(this->ctx->Get(), primaryHandle,

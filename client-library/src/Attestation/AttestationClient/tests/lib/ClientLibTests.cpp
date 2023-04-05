@@ -11,6 +11,7 @@
 #include <streambuf>
 #include <numeric>
 #include <json/json.h>
+#include <random>
 #include <openssl/bio.h>
 
 #include "AttestationHelper.h"
@@ -123,6 +124,70 @@ TEST_F(ClientLibTests, Decrypt_positive) {
     EXPECT_EQ(result.code_, attest::AttestationResult::ErrorCode::SUCCESS);
     printf("Result Description:%s\n", result.description_.c_str());
     printf("Decrypted Data:%s\n", json_decrypted.c_str());
+}
+*/
+
+// This is similar to the test above. Tpm simulator is needed for live enc/dec.
+// This is encrypted with use RSAES and Sha256 hash.
+/*
+TEST_F(ClientLibTests, Encrypt_Decrypt_RSAPKCS1_Sha256_positive) {
+
+    // I obtained this token from a live CVM. It expires in 8 hours.
+    const std::string jwt_token = "eyJhbGciOiJSUzI1NiIs...";
+
+    // initialize payload (AES key) with random bytes.
+    std::vector<unsigned char> aes_key(32);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(0, 255);
+    for (auto& i : aes_key) {
+        i = distrib(gen);
+    }
+
+    unsigned char* encrypted_data = nullptr;
+    uint32_t encrypted_data_size = 0;
+    unsigned char* encryption_metadata = nullptr;
+    uint32_t encryption_metadata_size = 0;
+    unsigned char* jwt = (unsigned char*)malloc((sizeof(unsigned char) * jwt_token.size()) + 1);
+    std::memcpy(jwt, jwt_token.data(), jwt_token.size());
+    jwt[jwt_token.size()] = '\0';
+
+    attest::AttestationResult result = client->Encrypt(attest::EncryptionType::NONE,
+        jwt,
+        &aes_key.front(),
+        aes_key.size(),
+        &encrypted_data,
+        &encrypted_data_size,
+        &encryption_metadata,
+        &encryption_metadata_size,
+        RsaScheme::RsaEs,
+        RsaHashAlg::RsaSha256);
+
+    EXPECT_EQ(result.code_, attest::AttestationResult::ErrorCode::SUCCESS);
+    EXPECT_EQ(encrypted_data_size, 256);
+
+    // Try decrypting now
+    int RSASize = 2048;
+    int ModulusSize = RSASize / 8;
+    uint8_t* decryptedBytes = nullptr;
+    uint32_t decryptedBytesSize = 0;
+    result = client->Decrypt(attest::EncryptionType::NONE,
+        encrypted_data,
+        encrypted_data_size,
+        NULL,
+        0,
+        &decryptedBytes,
+        &decryptedBytesSize,
+        attest::RsaScheme::RsaEs,
+        attest::RsaHashAlg::RsaSha256);
+
+    EXPECT_EQ(result.code_, attest::AttestationResult::ErrorCode::SUCCESS);
+    EXPECT_EQ(decryptedBytesSize, 32);
+    std::vector<unsigned char> decrypted_AES(decryptedBytes, decryptedBytes+decryptedBytesSize);
+    EXPECT_EQ(decrypted_AES, aes_key);
+    for (int i = 0; i < aes_key.size(); ++i) {
+        EXPECT_EQ(aes_key[i], decrypted_AES[i]) << "Vectors aes_key and decrypted_AES differ at index " << i;
+    }
 }
 */
 

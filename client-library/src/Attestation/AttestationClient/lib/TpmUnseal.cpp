@@ -130,7 +130,9 @@ bool attest::GetEncryptedJwt(const Json::Value& json_obj,
 }
 
 attest::AttestationResult attest::DecryptInnerKey(const attest::Buffer& encrypted_inner_key,
-                                                  attest::Buffer& decrypted_key) {
+                                                  attest::Buffer& decrypted_key,
+                                                  const attest::RsaScheme rsaWrapAlgId,
+                                                  const attest::RsaHashAlg rsaHashAlgI) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     try {
@@ -141,7 +143,7 @@ attest::AttestationResult attest::DecryptInnerKey(const attest::Buffer& encrypte
 
         attest::PcrSet pcrValues = tpm.GetPCRValues(list, attestation_hash_alg);
 
-        decrypted_key = tpm.DecryptWithEphemeralKey(pcrValues, encrypted_inner_key);
+        decrypted_key = tpm.DecryptWithEphemeralKey(pcrValues, encrypted_inner_key, rsaWrapAlgId, rsaHashAlgId);
     }
     catch(const Tss2Exception& e) {
         // Since tss2 errors are throw Tss2Exception exception. Catch it here.

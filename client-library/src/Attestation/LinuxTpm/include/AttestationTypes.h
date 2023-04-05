@@ -25,6 +25,25 @@ struct RsaPublicKey
     std::vector<unsigned char> modulus;
 };
 
+#ifndef RsaScheme_enum
+#define RsaScheme_enum
+// Borrowed from tss2_tpm2_types.h, which is not public
+enum RsaScheme : uint16_t
+{
+    RsaNull = 0x0010, // TPM2_ALG_NULL
+    RsaEs = 0x0015,   // TPM2_ALG_RSAES
+    RsaOaep = 0x0017, // TPM2_ALG_OAEP
+};
+
+enum RsaHashAlg : uint16_t
+{
+    RsaSha1 = 0x0004,   // TPM2_ALG_SHA1
+    RsaSha256 = 0x000B, // TPM2_ALG_SHA256
+    RsaSha384 = 0x000C, // TPM2_ALG_SHA384
+    RsaSha512 = 0x000D, // TPM2_ALG_SHA512
+};
+#endif
+
 enum HashAlg
 {
     Sha1,

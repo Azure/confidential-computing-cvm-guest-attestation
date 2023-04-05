@@ -59,6 +59,8 @@ public:
      * @param[out] encryption_metadata: the encryption metadata in form of base64 encoded JSON (the memory 
      * is allocated by the method and the caller is expected to free this memory by calling Attest::Free() method)
      * @param[out] encryption_metadata_size: the size of the encryption metadata
+     * @param[in] rsaWrapAlgId: Rsa wrap algorithm id.
+     * @param[in] rsaHashAlgId: Rsa hash algorithm id.
      * @return In case of success, AttestationResult object with error code ErrorCode::Success
      * will be returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -69,7 +71,9 @@ public:
                                       unsigned char** encrypted_data,
                                       uint32_t* encrypted_data_size,
                                       unsigned char** encryption_metadata,
-                                      uint32_t* encryption_metadata_size) noexcept override;
+                                      uint32_t* encryption_metadata_size,
+                                      const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                      const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
 
     /**
      * @brief This API decrypts the data based on the EncryptionType
@@ -81,6 +85,8 @@ public:
      * @param[in] encrypted_data_size: The size of encrypted data
      * @param[in] encryption_metadata: The encryption metadata
      * @param[in] encryption_metadata_size: The size of encryption metadata
+     * @param[in] rsaWrapAlgId: Rsa wrap algorithm id.
+     * @param[in] rsaHashAlgId: Rsa hash algorithm id.
      * @param[out] decrypted_data: The decrypted data (the memory is allocated by the method and the
      * caller is expected to free this memory by calling Attest::Free() method)
      * @param[out] decrypted_data_size: The size of decrypted data
@@ -93,7 +99,9 @@ public:
                                       const unsigned char* encryption_metadata,
                                       uint32_t encryption_metadata_size,
                                       unsigned char** decrypted_data,
-                                      uint32_t* decrypted_data_size) noexcept override;
+                                      uint32_t* decrypted_data_size,
+                                      const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                      const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
 
     /*
      * @brief This API deallocates the memory previously allocated by the library

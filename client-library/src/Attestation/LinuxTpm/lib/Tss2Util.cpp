@@ -519,7 +519,8 @@ void Tss2Util::PopulateEphemeralKeyPublicTemplate(Tss2Ctx& ctx,
                                             TPMA_OBJECT_NODA);
 
     inPub.publicArea.unique.rsa.size = 256;
-    inPub.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_RSAES;
+    // Set the alg to TPM2_ALG_NULL so the caller can specify the alg such as TPM2_ALG_OAEP or TPM2_ALG_RSAES
+    inPub.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
     inPub.publicArea.parameters.rsaDetail.exponent = 0;
     inPub.publicArea.parameters.rsaDetail.keyBits = 2048;
     inPub.publicArea.parameters.rsaDetail.symmetric.algorithm =  TPM2_ALG_NULL;
