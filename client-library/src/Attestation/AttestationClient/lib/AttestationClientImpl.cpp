@@ -179,7 +179,9 @@ AttestationResult AttestationClientImpl::Encrypt(const attest::EncryptionType en
                                                  unsigned char** encrypted_data,
                                                  uint32_t* encrypted_data_size,
                                                  unsigned char** encryption_metadata,
-                                                 uint32_t* encryption_metadata_size) noexcept {
+                                                 uint32_t* encryption_metadata_size,
+                                                 const attest::RsaScheme rsaWrapAlgId,
+                                                 const attest::RsaHashAlg rsaHashAlgId) noexcept {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     if (jwt_token == nullptr ||
         data == nullptr ||
@@ -218,7 +220,7 @@ AttestationResult AttestationClientImpl::Encrypt(const attest::EncryptionType en
     std::vector<unsigned char> in_data(data, data + data_size);
     std::vector<unsigned char> out_data;
     // Use RSA public key to encrypt the input data
-    if ((result = crypto::EncryptDataWithRSAPubKey(pkey_bio, in_data, out_data)).code_ !=
+    if ((result = crypto::EncryptDataWithRSAPubKey(pkey_bio, rsaWrapAlgId, rsaHashAlgId, in_data, out_data)).code_ !=
         AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to encrypt the buffer");
         BIO_free(pkey_bio);
@@ -241,7 +243,9 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
                                                  const unsigned char* ,
                                                  uint32_t ,
                                                  unsigned char** decrypted_data,
-                                                 uint32_t* decrypted_data_size) noexcept {
+                                                 uint32_t* decrypted_data_size,
+                                                 const attest::RsaScheme rsaWrapAlgId,
+                                                 const attest::RsaHashAlg rsaHashAlgId) noexcept {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     if (encrypted_data == nullptr ||
         encrypted_data_size <= 0  ||
@@ -261,7 +265,7 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
         // For encryption type 'NONE', the encrypted data is expected to be the encrypted symmetric key
         std::vector<unsigned char> in_data(encrypted_data, encrypted_data + encrypted_data_size);
         std::vector<unsigned char> out_data;
-        out_data = tpm.DecryptWithEphemeralKey(pcrValues, in_data);
+        out_data = tpm.DecryptWithEphemeralKey(pcrValues, in_data, rsaWrapAlgId, rsaHashAlgId);
 
         *decrypted_data = (unsigned char*)malloc(sizeof(unsigned char) * out_data.size());
         std::memcpy((void*)*decrypted_data, (void*)out_data.data(), out_data.size());
@@ -360,7 +364,10 @@ AttestationResult AttestationClientImpl::DecryptMaaToken(const std::string& jwt_
     }
 
     attest::Buffer decrypted_key;
-    if((result = DecryptInnerKey(encrypted_inner_key, decrypted_key)).code_ !=
+    if((result = DecryptInnerKey(encrypted_inner_key,
+                                 decrypted_key,
+                                 attest::RsaScheme::RsaEs,
+                                 attest::RsaHashAlg::RsaSha256)).code_ !=
                                                             AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to decrypt inner key");
         return result;

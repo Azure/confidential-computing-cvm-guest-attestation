@@ -94,9 +94,11 @@ attest::EphemeralKey Tpm::GetEphemeralKey(const attest::PcrSet& pcrSet) const
 }
 
 attest::Buffer Tpm::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
-                                            const attest::Buffer& encryptedBlob) const
+                                            const attest::Buffer& encryptedBlob,
+                                            const attest::RsaScheme rsaWrapAlgId,
+                                            const attest::RsaHashAlg rsaHashAlgId) const
 {
-    return this->tssWrapper->DecryptWithEphemeralKey(pcrSet, encryptedBlob);
+    return this->tssWrapper->DecryptWithEphemeralKey(pcrSet, encryptedBlob, rsaWrapAlgId, rsaHashAlgId);
 }
 
 void Tpm::WriteAikCert(const attest::Buffer& aikCert) const

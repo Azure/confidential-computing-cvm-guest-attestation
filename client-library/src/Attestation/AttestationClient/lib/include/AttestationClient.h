@@ -49,6 +49,8 @@ public:
      * (the memory is allocated by the method and the caller is expected to free this memory by 
      * calling Attest::Free() method)
      * @param[out] encryption_metadata_size: the size of the encryption metadata
+     * @param[in] rsaWrapAlgId: Rsa wrap algorithm id.
+     * @param[in] rsaHashAlgId: Rsa hash algorithm id.
      * @return In case of success, AttestationResult object with error code ErrorCode::Success is
      * returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -59,7 +61,9 @@ public:
                                               unsigned char** encrypted_data,
                                               uint32_t* encrypted_data_size,
                                               unsigned char** encryption_metadata,
-                                              uint32_t* encryption_metadata_size) noexcept = 0;
+                                              uint32_t* encryption_metadata_size,
+                                              const attest::RsaScheme tpm2RsaAlgId = attest::RsaScheme::RsaEs,
+                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1) noexcept = 0;
 
     /**
      * @brief This API decrypts the data based on the EncryptionType paramter
@@ -74,6 +78,8 @@ public:
      * @param[out] decrypted_data: The decrypted data (the memory is allocated by the method and the
      * caller is expected to free this memory by calling Attest::Free() method)
      * @param[out] decrypted_data_size: The size of decrypted data
+     * @param[in] rsaWrapAlgId: Rsa wrap algorithm id. Defaults to RSAES for backcompat with MAA.
+     * @param[in] rsaHashAlgId: Rsa hash algorithm id. Defaults to SHA1 for backcompat with mHSM.
      * @return In case of success, AttestationResult object with error code ErrorCode::Success
      * will be returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -83,7 +89,9 @@ public:
                                               const unsigned char* encryption_metadata,
                                               uint32_t encryption_metadata_size,
                                               unsigned char** decrypted_data,
-                                              uint32_t* decrypted_data_size) noexcept = 0;
+                                              uint32_t* decrypted_data_size,
+                                              const attest::RsaScheme tpm2RsaAlgId = attest::RsaScheme::RsaEs,
+                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1) noexcept = 0;
 
     /**
      * @brief This API deallocates the memory previously allocated by the library

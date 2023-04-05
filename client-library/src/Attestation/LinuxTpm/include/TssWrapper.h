@@ -154,11 +154,14 @@ public:
      *
      * param[in] pcrSet PcrSet that will be used to create the Ephemeral key auth policy
      * param[in] encryptedBlob: Encrypted data that needs to be decrypted.
-     *
+     * param[in] rsaWrapAlgId: RSA wrap algorithm id. Defaults to TPM2_ALG_RSAES for backward compatibility.
+     * param[in] rsaHashAlgId: RSA hash algorithm id. Defaults to TPM2_ALG_SHA1 for backward compatibility.
      * returns: Decrypted data.
      */
     virtual attest::Buffer DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
-                                                   const attest::Buffer& encryptedBlob) = 0;
+                                                   const attest::Buffer& encryptedBlob,
+                                                   const attest::RsaScheme rsaWrapAlgId,
+                                                   const attest::RsaHashAlg rsaHashAlgId) = 0;
     /**
     * Writes AIK cert to TPM
     *
