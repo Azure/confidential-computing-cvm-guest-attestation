@@ -132,7 +132,7 @@ bool attest::GetEncryptedJwt(const Json::Value& json_obj,
 attest::AttestationResult attest::DecryptInnerKey(const attest::Buffer& encrypted_inner_key,
                                                   attest::Buffer& decrypted_key,
                                                   const attest::RsaScheme rsaWrapAlgId,
-                                                  const attest::RsaHashAlg rsaHashAlgI) {
+                                                  const attest::RsaHashAlg rsaHashAlgId) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     try {
