@@ -597,7 +597,7 @@ TEST_F(ClientLibTests, TestEncryptDataWithRSAPubKey) {
     BIO* bio = BIO_new_mem_buf(k, (int)sizeof(k));
     attest::Buffer input_data(32); // 256-bit symmetric key
     attest::Buffer encrypted_data;
-    attest::AttestationResult res = attest::crypto::EncryptDataWithRSAPubKey(bio, input_data, encrypted_data);
+    attest::AttestationResult res = attest::crypto::EncryptDataWithRSAPubKey(bio, RsaScheme::RsaEs, RsaHashAlg::RsaSha256, input_data, encrypted_data);
     EXPECT_EQ(encrypted_data.size(), 256);
 }
 
