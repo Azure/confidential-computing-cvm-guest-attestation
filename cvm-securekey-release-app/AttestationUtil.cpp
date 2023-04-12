@@ -108,6 +108,29 @@ std::string Util::base64_decode(const std::string &data)
                                                 { return c == '\0'; });
 }
 
+/// \copydoc Util::url_encode()
+std::string Util::url_encode(const std::string &data)
+{
+    std::string encoded_str{data};
+
+    CURL *curl = curl_easy_init();
+    if (!curl)
+    {
+        TRACE_ERROR_EXIT("curl_easy_init() failed")
+    }
+
+    char *output = curl_easy_escape(curl, data.c_str(), data.length());
+    if (output)
+    {
+        encoded_str = data;
+        curl_free(output);
+    }
+
+    curl_easy_cleanup(curl);
+
+    return encoded_str;
+}
+
 /// <summary>
 /// Callback for curl perform operation.
 /// </summary>
@@ -122,6 +145,19 @@ size_t Util::CurlWriteCallback(char *data, size_t size, size_t nmemb, std::strin
     return result;
 }
 
+
+/// Retrieve IMDS token retrieval URL for a resource url.
+/// eg, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net"};
+static inline std::string GetImdsTokenUrl(std::string url)
+{
+    std::ostringstream oss;
+    oss << Constants::IMDS_TOKEN_URL;
+    oss << "?api-version=" << Constants::IMDS_API_VERSION;
+    oss << "&resource=" << Util::url_encode(url);
+
+    return oss.str();
+}
+
 /// \copydoc Util::GetIMDSToken()
 std::string Util::GetIMDSToken()
 {
@@ -133,7 +169,7 @@ std::string Util::GetIMDSToken()
         TRACE_ERROR_EXIT("curl_easy_init() failed")
     }
 
-    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, Constants::IMDS_TOKEN_URL.c_str());
+    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL).c_str());
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")

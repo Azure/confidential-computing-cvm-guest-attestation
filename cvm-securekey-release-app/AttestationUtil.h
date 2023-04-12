@@ -117,11 +117,18 @@ public:
     static std::vector<BYTE> base64url_to_binary(const std::string &base64url_data);
 
     /// <summary>
-    /// Convert a bse64 decoded string to string.
+    /// Convert a base64 decoded string to string.
     /// </summary>
     /// <param name="data">Base64 encoded string.</param>
     /// <returns>Plain string</returns>
     static std::string base64_decode(const std::string &data);
+
+    /// <summary>
+    /// Encode input string for url
+    /// </summary>
+    /// <param name="data">input data</param>
+    /// <returns>Escaped string</returns>
+    static std::string url_encode(const std::string &data);
 
     /// <summary>
     /// Callback for curl perform operation.
