@@ -92,9 +92,11 @@ int main(int argc, char *argv[]) {
     json config = json::parse(config_file);
     config_file.close();
 
-    std::string output_filename = config["output_filename"];
     std::string attestation_url = config["attestation_url"];
-    std::string api_key = config["api_key"];
+    std::string api_key;
+    if (config.contains("api_key")) {
+      api_key = config["api_key"];
+    }
 
     std::string attestation_type = config["attestation_type"];
     if (!case_insensitive_compare(attestation_type, "amber") && !case_insensitive_compare(attestation_type, "maa")) {
@@ -122,12 +124,17 @@ int main(int argc, char *argv[]) {
       if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
         const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
         if (api_key_value == nullptr) {
-          fprintf(stderr, "Attestation endpoint API key value missing\n\n");
+          fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
           usage(argv[0]);
           exit(1);
         }
         api_key = std::string(api_key_value);
       }
+    }
+
+    std::string output_filename;
+    if (config.contains("output_filename")) {
+      output_filename = config["output_filename"];
     }
 
     AttestationClient *attestation_client = nullptr;
