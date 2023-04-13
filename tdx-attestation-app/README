@@ -25,6 +25,7 @@ sudo ./TdxAttest -c config.json
 ```
 {
   "attestation_url": "<attestation endpoint to validate the hardware evidence>",
+  "attestation_type": "<type of attestation (allowed values: amber or maa)>",
   "api_key": "<the api key if needed>",
   "output_filename": "<to the hardware evidence (Td Quote) into a file>",
   "claims": <a well formed json object for generating the hardware evidence>

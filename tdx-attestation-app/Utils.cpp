@@ -98,7 +98,7 @@ std::string Attest(AttestationData &attestation_data) {
     std::string request_body = stream.str();
     HttpClient http_client;
 
-    std::cout << "Starting guest attestation request..." << std::endl;
+    std::cout << "Starting attestation request..." << std::endl;
     std::cout << "Attestation endpoint: " << url << std::endl;
 
     int status = http_client.InvokeHttpRequest(

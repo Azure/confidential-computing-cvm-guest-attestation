@@ -94,8 +94,14 @@ int main(int argc, char *argv[]) {
 
     std::string output_filename = config["output_filename"];
     std::string attestation_url = config["attestation_url"];
-    std::string attestation_type = config["attestation_type"];
     std::string api_key = config["api_key"];
+
+    std::string attestation_type = config["attestation_type"];
+    if (!case_insensitive_compare(attestation_type, "amber") && !case_insensitive_compare(attestation_type, "maa")) {
+      fprintf(stderr, "Attestation type was incorrect\n\n");
+      usage(argv[0]);
+      exit(1);
+    }
 
     // check for user claims
     std::string client_payload;
@@ -106,7 +112,7 @@ int main(int argc, char *argv[]) {
 
     // Check the attestation url being used
     if (attestation_url.empty()) {
-      fprintf(stderr, "Attestation url endpoint is missing\n");
+      fprintf(stderr, "Attestation url endpoint is missing\n\n");
       usage(argv[0]);
       exit(1);
     }
@@ -116,7 +122,7 @@ int main(int argc, char *argv[]) {
       if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
         const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
         if (api_key_value == nullptr) {
-          fprintf(stderr, "Attestation endpoint API key value missing\n");
+          fprintf(stderr, "Attestation endpoint API key value missing\n\n");
           usage(argv[0]);
           exit(1);
         }
@@ -129,7 +135,7 @@ int main(int argc, char *argv[]) {
 
     // Initialize attestation client
     if (!Initialize(log_handle, &attestation_client)) {
-      fprintf(stderr, "Failed to create attestation client object\n");
+      fprintf(stderr, "Failed to create attestation client object\n\n");
       Uninitialize();
       exit(1);
     }
@@ -187,7 +193,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
 
-      cout << "Guest attestation passed successfully!!" << endl;
+      cout << "Hardware attestation passed successfully!!" << endl;
       cout << "TOKEN:\n" << endl;
       std::cout << jwt_token << std::endl
                 << std::endl;
