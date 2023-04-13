@@ -1,0 +1,32 @@
+# Hardware Attestation
+
+## Build Instructions for Linux
+
+Create a Linux Tursted Domain virtual machine in Azure and clone the application.
+
+Use the below command to install all the dependencies necessary to run this sample app.
+```sh
+$ sudo ./install.sh
+```
+
+Once the above install script is done, use the below steps to build and run the app
+
+```sh
+cmake .
+```
+```sh
+make
+```
+```sh
+sudo ./TdxAttest -c config.json
+```
+
+## Config Definition
+```
+{
+  "attestation_url": "<attestation endpoint to validate the hardware evidence>",
+  "api_key": "<the api key if needed>",
+  "output_filename": "<to the hardware evidence (Td Quote) into a file>",
+  "claims": <a well formed json object for generating the hardware evidence>
+}
+```

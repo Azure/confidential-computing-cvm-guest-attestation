@@ -5,10 +5,6 @@
     },
     "keys": [
       {
-        "e": "AQAB",
-        "key_ops": [
-          "encrypt"
-        ],
         "kid": "SampleKey",
         "kty": "RSA",
         "n": "AAAAB3NzaC1yc2EAAAADAQABAAABgQC8QryNgsWbr/oWQNNPVrB3W2XFPh62z1Jv7bTF+2MYJF1UAy4+s038zwtnrgRiEZMRZ/S5Yw+ajJyy98Rw+wSboLOA25wraL7cTCBREAW+d2hG5xQxuaBxonuLfIEfC0YjGFdFbPaBaDBNvP20c69E+q2/+4GWScWjHYygddVWXGAema5ZfRy9R11e76f+Ccklm7VJjdvt5nKKERXByjoLijG65+H9YtHonxW+DFuZqzbM4lEGoEUpYZquT1jGQAcTimc4/8ghx4mL3CrdmWhVRZLSDIXLP/EQfdgUEPdjTvtEEK+CXyG2xvKoKzD6n2QCGfgo7bBsRym1DMJToTTF+Czg9lBwV8H/V0ogdEgifLmmN23alcCxzPLUVbz3HCK3Nz7DhsAHC4C6rihvOmdaF54jpCM892cebDGbXw1lTs32MR3J8rL7rDiEcZmCo5NzBrZvonjfvVBTnAUFjdDjoyTUXrKagwPF9etn58h6+c37WXbeJ9YbC/7fAE6p2mk="

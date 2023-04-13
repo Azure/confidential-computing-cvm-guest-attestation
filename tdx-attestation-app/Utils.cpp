@@ -54,10 +54,20 @@ std::string base64url_to_base64(const std::string &base64_data) {
     return stringData;
 }
 
+bool case_insensitive_compare(const std::string &str1, const std::string &str2) {
+    std::string lower_str1 = str1;
+    std::string lower_str2 = str2;
+
+    std::transform(lower_str1.begin(), lower_str1.end(), lower_str1.begin(), ::tolower);
+    std::transform(lower_str2.begin(), lower_str2.end(), lower_str2.begin(), ::tolower);
+    return lower_str2 == lower_str1;
+}
+
 std::string Attest(AttestationData &attestation_data) {
     std::string url = attestation_data.attestation_url;
     std::string encoded_quote = attestation_data.evidence;
     std::string encoded_claims = attestation_data.claims;
+    std::string attestation_type = attestation_data.attestation_type;
 
     // headers needed for requests
     std::vector<std::string> headers = {
@@ -67,10 +77,10 @@ std::string Attest(AttestationData &attestation_data) {
 
     // checks where we are sending the request
     std::stringstream stream;
-    if (url.find("//maa") != std::string::npos) {
+    if (case_insensitive_compare(attestation_type, "maa")) {
         stream << "{\"quote\":\"" << encoded_quote << "\",\"runtimeData\":{\"data\":\"" << encoded_claims << "\",\"dataType\":\"JSON\"}}";
     }
-    else {
+    else if (case_insensitive_compare(attestation_type, "amber")) {
         std::string api_key_header = "x-api-key:" + attestation_data.api_key;
         headers.push_back(api_key_header.c_str());
         stream << "{\"quote\":\"" << base64url_to_base64(encoded_quote) << "\"";
@@ -79,6 +89,9 @@ std::string Attest(AttestationData &attestation_data) {
             stream << ",\"user_data\":\"" << base64url_to_base64(encoded_claims) << "\"";
         }
         stream << "}";
+    }
+    else {
+        throw std::runtime_error("Attestation type was not provided");
     }
 
     std::string response;

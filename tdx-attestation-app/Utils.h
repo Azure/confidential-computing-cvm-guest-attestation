@@ -7,6 +7,7 @@
 
 typedef struct AttestationData {
     std::string attestation_url;
+    std::string attestation_type;
     std::string evidence;
     std::string claims;
     std::string api_key;
@@ -29,6 +30,17 @@ std::vector<unsigned char> base64url_to_binary(const std::string &base64_data);
  * returns: string of base64url encoded data
  */
 std::string binary_to_base64url(const std::vector<unsigned char> &binary_data);
+
+/**
+ * Compares two string case insensitive
+ *
+ * param[in] str1 first string
+ * param[in] str2 second string
+ *
+ * returns: true if equal, false otherwise
+ */
+bool case_insensitive_compare(const std::string &str1, const std::string &str2);
+
 
 /**
  * Given a binary byte vector, convert it to base64url encoded string

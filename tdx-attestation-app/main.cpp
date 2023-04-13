@@ -50,38 +50,22 @@ static int getopt(int argc, char *const argv[], const char *optstring) {
 void usage(char *programName) {
   printf("Usage: %s [arguments]\n", programName);
   printf("   Options:\n");
-  printf("\t-a Attestation URL endpoint (if not provided will attest with MAA)\n");
-  printf("\t-k Api Key for attestation endpoint\n");
-  printf("\t-o Save td quote to output file\n");
-  printf("\t-c Generate td quote with user claims\n");
+  printf("\t-c Config file\n");
   printf("\t-h Print this help menu\n\n");
   printf("   Examples:\n");
-  printf("\t%s -o quote.dat\n", programName);
-  printf("\t%s -c my_claims.json\n", programName);
-  printf("\t%s -a https://api-pre21-green.ambernp.adsdcsp.com/appraisal/v1/attest\n", programName);
-  printf("\t%s -a <attestation_endpoint> -k <api_key> -c <claims>\n", programName);
+  printf("\t%s -c config.json\n", programName);
+  printf("\t%s -h\n", programName);
 }
 
 int main(int argc, char *argv[]) {
-  std::string output_filename;
+  std::string config_filename;
   std::string claims_filename;
-  std::string attestation_url;
-  std::string api_key;
 
   int opt;
-  while ((opt = getopt(argc, argv, "a:t:o:c:h")) != -1) {
+  while ((opt = getopt(argc, argv, "c:h")) != -1) {
     switch (opt) {
-    case 'a':
-      attestation_url.assign(optarg);
-      break;
-    case 'k':
-      api_key.assign(optarg);
-      break;
-    case 'o':
-      output_filename.assign(optarg);
-      break;
     case 'c':
-      claims_filename.assign(optarg);
+      config_filename.assign(optarg);
       break;
     case 'h':
       usage(argv[0]);
@@ -96,6 +80,30 @@ int main(int argc, char *argv[]) {
   }
 
   try {
+    // user must provide a config file
+    if (config_filename.empty()) {
+      fprintf(stderr, "Config file is missing\n");
+      usage(argv[0]);
+      exit(1);
+    }
+
+    // set attestation request based on config file
+    std::ifstream config_file(config_filename);
+    json config = json::parse(config_file);
+    config_file.close();
+
+    std::string output_filename = config["output_filename"];
+    std::string attestation_url = config["attestation_url"];
+    std::string attestation_type = config["attestation_type"];
+    std::string api_key = config["api_key"];
+
+    // check for user claims
+    std::string client_payload;
+    json user_claims = config["claims"];
+    if (!user_claims.is_null()) {
+      client_payload = user_claims.dump();
+    }
+
     // Check the attestation url being used
     if (attestation_url.empty()) {
       fprintf(stderr, "Attestation url endpoint is missing\n");
@@ -105,7 +113,7 @@ int main(int argc, char *argv[]) {
     else {
       // if attesting with Amber, we need to make sure an API token was provided
       // or it was added as an environment variable
-      if (api_key.empty() && attestation_url.find("https://api-pre21-green.ambernp") != std::string::npos) {
+      if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
         const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
         if (api_key_value == nullptr) {
           fprintf(stderr, "Attestation endpoint API key value missing\n");
@@ -126,16 +134,6 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
     attest::AttestationResult result;
-
-    // get userclaims if provided
-    std::string client_payload;
-    if (!claims_filename.empty()) {
-      std::ifstream claims_file(claims_filename);
-      json claims_json = json::parse(claims_file);
-
-      cout << claims_json.dump() << endl;
-      client_payload = claims_json.dump();
-    }
 
     bool has_quote = true;
     std::string quote_data;
@@ -176,6 +174,7 @@ int main(int argc, char *argv[]) {
 
       AttestationData attestation_data = {
         attestation_url,
+        attestation_type,
         encoded_quote,
         encoded_claims,
         api_key
