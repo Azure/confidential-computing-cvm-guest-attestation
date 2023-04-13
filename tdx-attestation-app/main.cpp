@@ -92,13 +92,27 @@ int main(int argc, char *argv[]) {
     json config = json::parse(config_file);
     config_file.close();
 
-    std::string attestation_url = config["attestation_url"];
+    std::string attestation_url;
+    if (!config.contains("attestation_url")) {
+      fprintf(stderr, "attestation_url is missing\n\n");
+      usage(argv[0]);
+      exit(1);
+    }
+    attestation_url = config["attestation_url"];
+
     std::string api_key;
     if (config.contains("api_key")) {
       api_key = config["api_key"];
     }
 
-    std::string attestation_type = config["attestation_type"];
+    std::string attestation_type;
+    if (!config.contains("attestation_type")) {
+      fprintf(stderr, "attestation_type is missing\n\n");
+      usage(argv[0]);
+      exit(1);
+    }
+    attestation_type = config["attestation_type"];
+
     if (!case_insensitive_compare(attestation_type, "amber") && !case_insensitive_compare(attestation_type, "maa")) {
       fprintf(stderr, "Attestation type was incorrect\n\n");
       usage(argv[0]);
@@ -112,24 +126,16 @@ int main(int argc, char *argv[]) {
       client_payload = user_claims.dump();
     }
 
-    // Check the attestation url being used
-    if (attestation_url.empty()) {
-      fprintf(stderr, "Attestation url endpoint is missing\n\n");
-      usage(argv[0]);
-      exit(1);
-    }
-    else {
-      // if attesting with Amber, we need to make sure an API token was provided
-      // or it was added as an environment variable
-      if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
-        const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
-        if (api_key_value == nullptr) {
-          fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
-          usage(argv[0]);
-          exit(1);
-        }
-        api_key = std::string(api_key_value);
+    // if attesting with Amber, we need to make sure an API token was provided
+    // or it was added as an environment variable
+    if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
+      const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
+      if (api_key_value == nullptr) {
+        fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
+        usage(argv[0]);
+        exit(1);
       }
+      api_key = std::string(api_key_value);
     }
 
     std::string output_filename;
