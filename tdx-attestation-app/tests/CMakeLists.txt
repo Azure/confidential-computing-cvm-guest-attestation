@@ -18,14 +18,20 @@ FetchContent_MakeAvailable(googletest)
 
 include_directories(
     ../
+    ../src
 )
 
 # Add the main application source files to a library
-add_library(tdx_attestation_app_lib ../Utils.cpp)
+# add_library(tdx_attestation_app_lib
+#   # ../src/Utils.h
+# )
 
 # Create the test executable and link the necessary libraries
-add_executable(tdx_attestation_app_tests Utils_Test.cpp)
-target_link_libraries(tdx_attestation_app_tests gtest gtest_main tdx_attestation_app_lib)
+add_executable(tdx_attestation_app_tests
+  Utils_Test.cpp
+)
+
+target_link_libraries(tdx_attestation_app_tests gtest gtest_main)
 
 # Enable testing and add the test
 enable_testing()
