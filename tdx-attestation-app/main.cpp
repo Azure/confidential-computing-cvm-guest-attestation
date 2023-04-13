@@ -2,15 +2,13 @@
 #include <stdarg.h>
 #include <vector>
 #include <AttestationClient.h>
-#include <AttestationLogger.h>
 #include <iostream>
 #include <string>
-#include <algorithm>
-#include <thread>
-#include <boost/algorithm/string.hpp>
 #include <nlohmann/json.hpp>
-#include "Utils.h"
-#include "Logger.h"
+#include "src/Utils.h"
+#include "src/Logger.h"
+#include "src/AttestClient.h"
+#include "src/HttpClient.h"
 
 using json = nlohmann::json;
 using namespace std;
@@ -113,7 +111,8 @@ int main(int argc, char *argv[]) {
     }
     attestation_type = config["attestation_type"];
 
-    if (!case_insensitive_compare(attestation_type, "amber") && !case_insensitive_compare(attestation_type, "maa")) {
+    if (!Utils::case_insensitive_compare(attestation_type, "amber") &&
+        !Utils::case_insensitive_compare(attestation_type, "maa")) {
       fprintf(stderr, "Attestation type was incorrect\n\n");
       usage(argv[0]);
       exit(1);
@@ -128,7 +127,7 @@ int main(int argc, char *argv[]) {
 
     // if attesting with Amber, we need to make sure an API token was provided
     // or it was added as an environment variable
-    if (api_key.empty() && case_insensitive_compare(attestation_type, "amber")) {
+    if (api_key.empty() && Utils::case_insensitive_compare(attestation_type, "amber")) {
       const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
       if (api_key_value == nullptr) {
         fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
@@ -174,7 +173,7 @@ int main(int argc, char *argv[]) {
       }
 
       // decode the base64url encoded quote to raw bytes
-      std::vector<unsigned char> quote_bytes = base64url_to_binary(encoded_quote);
+      std::vector<unsigned char> quote_bytes = Utils::base64url_to_binary(encoded_quote);
 
       // check if user wants to save the td quote
       if (!output_filename.empty()) {
@@ -189,9 +188,10 @@ int main(int argc, char *argv[]) {
       }
 
       std::string encoded_claims =
-          binary_to_base64url(std::vector<unsigned char>(client_payload.begin(), client_payload.end()));
+          Utils::binary_to_base64url(std::vector<unsigned char>(client_payload.begin(), client_payload.end()));
 
-      AttestationData attestation_data = {
+      HttpClient http_client;
+      AttestClient::Config attestation_config = {
         attestation_url,
         attestation_type,
         encoded_quote,
@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         api_key
       };
 
-      std::string jwt_token = Attest(attestation_data);
+      std::string jwt_token = AttestClient::VerifyEvidence(attestation_config, http_client);
 
       if (jwt_token.empty()) {
         fprintf(stderr, "Empty token received\n");
@@ -208,8 +208,7 @@ int main(int argc, char *argv[]) {
 
       cout << "Hardware attestation passed successfully!!" << endl;
       cout << "TOKEN:\n" << endl;
-      std::cout << jwt_token << std::endl
-                << std::endl;
+      std::cout << jwt_token << std::endl << std::endl;
     }
 
     Uninitialize();

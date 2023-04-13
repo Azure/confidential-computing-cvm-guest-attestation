@@ -9,6 +9,7 @@ add_definitions(-DPLATFORM_UNIX)
 include_directories(
     /usr/include/azguestattestation1
     /usr/include/jsoncpp
+    src/
 )
 
 link_directories(
@@ -16,7 +17,9 @@ link_directories(
     /usr/lib/x86_64-linux-gnu
 )
 
-add_executable(${CMAKE_PROJECT_TARGET} main.cpp Logger.cpp Utils.cpp HttpClient.cpp)
+add_executable(${CMAKE_PROJECT_TARGET}
+    main.cpp
+    src/HttpClient.cpp)
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation)
 target_link_libraries(${CMAKE_PROJECT_TARGET} curl)

@@ -24,7 +24,7 @@ using namespace std;
 
 HttpClientResult HttpClient::InvokeHttpRequest(std::string& http_response,
                                                 const std::string& url,
-                                                const HttpClient::HttpVerb& http_verb,
+                                                const HttpClient_I::HttpVerb& http_verb,
                                                 const std::vector<std::string>& header_list,
                                                 const std::string& request_body) {
 

@@ -17,20 +17,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <vector>
+#include "HttpClient_I.h"
 
-typedef enum HttpClientResult {
-    SUCCESS = 0,
-    FAILED = 1,
-    MISSING_REQUEST_BODY = 2,
-} HttpClientResult;
 
-class HttpClient {
+class HttpClient : public HttpClient_I{
 public:
-    enum class HttpVerb {
-        GET,
-        POST
-    };
-
     /**
      *@brief This function will be used to send a http request
      * @param[in] url, the url endpoint to be called
@@ -45,7 +36,7 @@ public:
                               const std::string &url,
                               const HttpClient::HttpVerb &http_verb,
                               const std::vector<std::string>& headers,
-                              const std::string &request_body = std::string());
+                              const std::string &request_body = std::string()) override;
 
 private:
     /**

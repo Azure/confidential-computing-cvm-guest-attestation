@@ -18,7 +18,7 @@ namespace Utils {
      *
      * returns: vector of unsigned char (byte)
      */
-    std::vector<unsigned char> base64url_to_binary(const std::string &base64_data) {
+    inline std::vector<unsigned char> base64url_to_binary(const std::string &base64_data) {
         using namespace boost::archive::iterators;
         using It = transform_width<binary_from_base64<std::string::const_iterator>, 8, 6>;
         std::string stringData = base64_data;
@@ -38,7 +38,7 @@ namespace Utils {
      *
      * returns: string of base64url encoded data
      */
-    std::string binary_to_base64url(const std::vector<unsigned char> &binary_data) {
+    inline std::string binary_to_base64url(const std::vector<unsigned char> &binary_data) {
         using namespace boost::archive::iterators;
         using It = base64_from_binary<transform_width<std::vector<unsigned char>::const_iterator, 6, 8>>;
         auto tmp = std::string(It(std::begin(binary_data)), It(std::end(binary_data)));
@@ -51,7 +51,7 @@ namespace Utils {
         return tmp;
     }
 
-    std::string base64url_to_base64(const std::string &base64_data) {
+    inline std::string base64url_to_base64(const std::string &base64_data) {
         std::string stringData = base64_data;
 
         // While decoding base64 url, replace - with + and _ with + and
@@ -76,7 +76,7 @@ namespace Utils {
      *
      * returns: true if equal, false otherwise
      */
-    bool case_insensitive_compare(const std::string &str1, const std::string &str2) {
+    inline bool case_insensitive_compare(const std::string &str1, const std::string &str2) {
         std::string lower_str1 = str1;
         std::string lower_str2 = str2;
 
