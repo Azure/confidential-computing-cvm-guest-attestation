@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
     std::string quote_data;
 
     // get verifiable quote
-    result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload);
+    result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload, attestation_type);
     if (result.code_ != attest::AttestationResult::ErrorCode::SUCCESS) {
       has_quote = false;
     }
