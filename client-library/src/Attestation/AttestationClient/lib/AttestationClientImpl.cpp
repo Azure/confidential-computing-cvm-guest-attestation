@@ -183,22 +183,22 @@ AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string
 
     CLIENT_LOG_INFO("Getting Td Report from driver...");
 
-    std::unique_ptr<std::string> buffer = std::make_unique<std::string>(TD_REPORT_SIZE, 0);
+    char buffer[TD_REPORT_SIZE];
     int status = TDX_GET_REPORT_SUCCESS;
     if (!client_payload.empty()) {
         unsigned char hash[SHA256_DIGEST_LENGTH];
         SHA256((unsigned char *)client_payload.data(), client_payload.length(), hash);
-        status = GetTdReport((char *)buffer.get()->data(), hash, SHA256_DIGEST_LENGTH);
+        status = GetTdReport(buffer, hash, SHA256_DIGEST_LENGTH);
     }
     else {
-        status = GetTdReport((char *)buffer.get()->data(), NULL, 0);
+        status = GetTdReport(buffer, NULL, 0);
     }
 
     if (status == TDX_GET_REPORT_FAILED) {
         CLIENT_LOG_ERROR("Failed to get report from tdx driver");
         return AttestationResult::ErrorCode::ERROR_READING_TD_REPORT;
     }
-    std::string hardware_report(buffer.release()->data(), TD_REPORT_SIZE);
+    std::string hardware_report(buffer, TD_REPORT_SIZE);
 
     std::string encoded_report = attest::base64::base64_encode(hardware_report);
     std::string imds_request = "{\"report\":\"" + encoded_report + "\"}";

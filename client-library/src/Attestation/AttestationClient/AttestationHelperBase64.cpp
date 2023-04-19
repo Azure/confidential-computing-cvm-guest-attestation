@@ -73,16 +73,3 @@ std::string attest::base64::base64_decode(const std::string& data) {
         return c == '\0';
     });
 }
-
-/* See header */
-std::string attest::base64::base64_decode_no_trim(const std::string &data)
-{
-    using namespace boost::archive::iterators;
-    using It = transform_width<binary_from_base64<std::string::const_iterator>, 8, 6>;
-
-    // Remove any padding added during encoding
-    std::string temp(data.c_str(), data.length());
-    temp.erase(std::remove(temp.begin(), temp.end(), '='), temp.end());
-
-    return std::string(It(std::begin(temp)), It(std::end(temp)));
-}

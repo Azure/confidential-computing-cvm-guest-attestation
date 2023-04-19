@@ -107,14 +107,5 @@ namespace attest
          * returns: plaintext string
          */
         std::string base64_decode(const std::string& data);
-
-        /**
-         * Given a base64 string, convert it to plaintext string without removing null bytes
-         *
-         * param[in] data : base64 encoded string data
-         *
-         * returns: plaintext string
-         */
-        std::string base64_decode_no_trim(const std::string &data);
     }
 }

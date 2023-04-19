@@ -126,15 +126,10 @@ int main(int argc, char *argv[]) {
     }
 
     // if attesting with Amber, we need to make sure an API token was provided
-    // or it was added as an environment variable
     if (api_key.empty() && Utils::case_insensitive_compare(attestation_type, "amber")) {
-      const char *api_key_value = std::getenv(AMBER_API_KEY_NAME);
-      if (api_key_value == nullptr) {
-        fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
-        usage(argv[0]);
-        exit(1);
-      }
-      api_key = std::string(api_key_value);
+      fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
+      usage(argv[0]);
+      exit(1);
     }
 
     std::string output_filename;
@@ -203,6 +198,7 @@ int main(int argc, char *argv[]) {
 
       if (jwt_token.empty()) {
         fprintf(stderr, "Empty token received\n");
+        Uninitialize();
         exit(1);
       }
 
