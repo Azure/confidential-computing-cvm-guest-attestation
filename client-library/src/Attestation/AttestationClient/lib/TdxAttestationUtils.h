@@ -90,5 +90,7 @@ int GetTdReport(char* out_request_data, unsigned char *report_data, size_t repor
 
     memcpy_s(out_request_data, TDX_REPORT_LEN, report.tdreport, TDX_REPORT_LEN);
 
+    close(device_fd);
+
     return TDX_GET_REPORT_SUCCESS;
 }
