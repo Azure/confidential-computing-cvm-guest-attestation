@@ -228,10 +228,12 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
         attest_server_url.assign(Constants::DEFAULT_ATTESTATION_URL);
     }
 
-    if (nonce.empty())
+    std::string nonce_token;
+    nonce_token.assign(nonce);
+    if (nonce_token.empty())
     {
         // use some random nonce
-        nonce.assign("ADE0101");
+        nonce_token.assign(Constants::NONCE);
     }
 
     AttestationClient *attestation_client = nullptr;

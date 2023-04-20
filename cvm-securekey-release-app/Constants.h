@@ -22,4 +22,7 @@ public:
 
     // IMDS api version
     static inline const std::string IMDS_API_VERSION = "2018-02-01";
+
+    // Default Nonce
+    static inline const std::string NONCE = "ADE0101";
 };
