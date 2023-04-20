@@ -4,6 +4,7 @@
 #include <AttestationClient.h>
 #include <iostream>
 #include <string>
+#include <map>
 #include <nlohmann/json.hpp>
 #include "src/Utils.h"
 #include "src/Logger.h"
@@ -103,20 +104,24 @@ int main(int argc, char *argv[]) {
       api_key = config["api_key"];
     }
 
-    std::string attestation_type;
-    if (!config.contains("attestation_type")) {
-      fprintf(stderr, "attestation_type is missing\n\n");
+    std::string provider;
+    if (!config.contains("attestation_provider")) {
+      fprintf(stderr, "attestation_provider is missing\n\n");
       usage(argv[0]);
       exit(1);
     }
-    attestation_type = config["attestation_type"];
+    provider = config["attestation_provider"];
 
-    if (!Utils::case_insensitive_compare(attestation_type, "amber") &&
-        !Utils::case_insensitive_compare(attestation_type, "maa")) {
-      fprintf(stderr, "Attestation type was incorrect\n\n");
+    if (!Utils::case_insensitive_compare(provider, "amber") &&
+        !Utils::case_insensitive_compare(provider, "maa")) {
+      fprintf(stderr, "Attestation provider was incorrect\n\n");
       usage(argv[0]);
       exit(1);
     }
+
+    std::map<std::string, std::string> hash_type;
+    hash_type["maa"] = "sha256";
+    hash_type["amber"] = "sha512";
 
     // check for user claims
     std::string client_payload;
@@ -126,7 +131,7 @@ int main(int argc, char *argv[]) {
     }
 
     // if attesting with Amber, we need to make sure an API token was provided
-    if (api_key.empty() && Utils::case_insensitive_compare(attestation_type, "amber")) {
+    if (api_key.empty() && Utils::case_insensitive_compare(provider, "amber")) {
       fprintf(stderr, "Attestation endpoint \"api_key\" value missing\n\n");
       usage(argv[0]);
       exit(1);
@@ -152,7 +157,7 @@ int main(int argc, char *argv[]) {
     std::string quote_data;
 
     // get verifiable quote
-    result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload, attestation_type);
+    result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload, hash_type[provider]);
     if (result.code_ != attest::AttestationResult::ErrorCode::SUCCESS) {
       has_quote = false;
     }
@@ -187,12 +192,11 @@ int main(int argc, char *argv[]) {
 
       HttpClient http_client;
       AttestClient::Config attestation_config = {
-        attestation_url,
-        attestation_type,
-        encoded_quote,
-        encoded_claims,
-        api_key
-      };
+          attestation_url,
+          provider,
+          encoded_quote,
+          encoded_claims,
+          api_key};
 
       std::string jwt_token = AttestClient::VerifyEvidence(attestation_config, http_client);
 

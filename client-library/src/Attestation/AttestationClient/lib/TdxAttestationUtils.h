@@ -20,6 +20,7 @@
 #include <linux/types.h>
 #include <sys/ioctl.h>
 #include <stdio.h>
+#include <string.h>
 
 // Definitions copied from https://github.com/intel/SGXDataCenterAttestationPrimitives
 
@@ -73,7 +74,7 @@ int GetTdReport(char* out_request_data, unsigned char *report_data, size_t repor
     }
 
     if (report_data != NULL && report_data_size <= TDX_REPORTDATA_LEN) {
-        memcpy(report.reportdata, report_data, report_data_size);
+        memcpy_s(report.reportdata, TDX_REPORTDATA_LEN, report_data, report_data_size);
     }
 
     int device_fd = open(TDX_ATTEST_DEV_PATH, O_RDWR | O_SYNC);
@@ -87,7 +88,7 @@ int GetTdReport(char* out_request_data, unsigned char *report_data, size_t repor
         return TDX_GET_REPORT_FAILED;
     }
 
-    memcpy(out_request_data, report.tdreport, TDX_REPORT_LEN);
+    memcpy_s(out_request_data, TDX_REPORT_LEN, report.tdreport, TDX_REPORT_LEN);
 
     return TDX_GET_REPORT_SUCCESS;
 }
