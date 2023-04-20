@@ -12,6 +12,7 @@ $ sudo apt-get install build-essential
 
 Install the below packages
 ```sh
+$ sudo apt-get install libssl-dev
 $ sudo apt-get install libcurl4-openssl-dev
 $ sudo apt-get install libjsoncpp-dev
 $ sudo apt-get install libboost-all-dev

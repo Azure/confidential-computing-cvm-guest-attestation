@@ -159,7 +159,7 @@ static inline std::string GetImdsTokenUrl(std::string url)
 }
 
 /// \copydoc Util::GetIMDSToken()
-std::string Util::GetIMDSToken()
+std::string Util::GetIMDSToken(const std::string &KEKUrl)
 {
     TRACE_OUT("Entering Util::GetIMDSToken()");
 
@@ -169,7 +169,24 @@ std::string Util::GetIMDSToken()
         TRACE_ERROR_EXIT("curl_easy_init() failed")
     }
 
-    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL).c_str());
+    // AKV and mHSM has different audience need to be passed to IMDS.
+    std::string resourceUrl;
+    if (KEKUrl.find(Constants::AKV_URL_SUFFIX) != std::string::npos)
+    {
+        resourceUrl = Constants::AKV_RESOURCE_URL;
+        TRACE_OUT("AKV resource suffix found in KEKUrl");
+    }
+    else if (KEKUrl.find(Constants::MHSM_URL_SUFFIX) != std::string::npos)
+    {
+        resourceUrl = Constants::MHSM_RESOURCE_URL;
+        TRACE_OUT("MHSM resource suffix found in KEKUrl");
+    }
+    else
+    {
+        TRACE_ERROR_EXIT("Invalid resource suffix found in KEKUrl")
+    }
+
+    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(resourceUrl).c_str());
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
@@ -543,7 +560,7 @@ bool Util::doSKR(std::string KEKUrl, EVP_PKEY **pkey)
         std::string attest_token(Util::GetMAAToken(Constants::DEFAULT_ATTESTATION_URL));
         TRACE_OUT("MAA Token: %s", attest_token.c_str());
 
-        std::string akvMsiToken = std::move(Util::GetIMDSToken());
+        std::string akvMsiToken = std::move(Util::GetIMDSToken(KEKUrl));
         TRACE_OUT("AkvMsiToken: %s", akvMsiToken.c_str());
         json json_object = json::parse(akvMsiToken.c_str());
         std::string access_token = json_object["access_token"].get<std::string>();
@@ -667,6 +684,7 @@ bool Util::doSKR(std::string KEKUrl, EVP_PKEY **pkey)
     }
 
     TRACE_OUT("Exiting Util::doSKR()");
+    return true;
 }
 
 // A helper function to handle errors

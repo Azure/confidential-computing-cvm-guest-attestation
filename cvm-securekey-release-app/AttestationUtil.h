@@ -144,8 +144,9 @@ public:
     /// <summary>
     /// Retrieve MSI token from IMDS servce
     /// </summary>
+    /// <param name="KEKUrl">AKV or mHSM key encryption key url</param>
     /// <returns>MSI token for the resource</returns>
-    static std::string GetIMDSToken();
+    static std::string GetIMDSToken(const std::string &KEKUrl);
 
     /// <summary>
     /// Get attestation token from the attestation service.

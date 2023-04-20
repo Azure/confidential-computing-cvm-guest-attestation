@@ -14,8 +14,17 @@ public:
     // Default attestation url
     static inline const std::string DEFAULT_ATTESTATION_URL{"https://sharedweu.weu.attest.azure.net/"};
 
-    // Default AKV url
+    // AKV suffix for public cloud
+    static inline const std::string AKV_URL_SUFFIX{"vault.azure.net"};
+
+    // mHSM suffix for public cloud
+    static inline const std::string MHSM_URL_SUFFIX{"managedhsm.azure.net"};
+
+    // Default AKV resource url
     static inline const std::string AKV_RESOURCE_URL{"https://vault.azure.net"};
+
+    // Default mHSM resource url
+    static inline const std::string MHSM_RESOURCE_URL{"https://managedhsm.azure.net"};
 
     // IMDS token URL
     static inline const std::string IMDS_TOKEN_URL{"http://169.254.169.254/metadata/identity/oauth2/token"};
