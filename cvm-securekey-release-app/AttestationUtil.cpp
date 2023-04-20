@@ -250,7 +250,7 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
     // parameters for the Attest call
     attest::ClientParameters params = {};
     params.attestation_endpoint_url = (PBYTE)attest_server_url.c_str();
-    std::string client_payload_str = "{\"nonce\": \"" + nonce + "\"}"; // nonce is optional
+    std::string client_payload_str = "{\"nonce\": \"" + nonce_token + "\"}"; // nonce is optional
     params.client_payload = (PBYTE)client_payload_str.c_str();
     params.version = CLIENT_PARAMS_VERSION;
     PBYTE jwt = nullptr;
