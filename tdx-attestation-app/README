@@ -21,11 +21,20 @@ make
 sudo ./TdxAttest -c config.json
 ```
 
+> **Important**
+>
+> Running without `sudo` should work and if there is an error while opening the driver, add the driver
+> to the user group with the following command:
+>
+> ```
+> sudo chmod og=rw /dev/tdx_guest
+> ```
+
 ## Config Definition
 ```
 {
   "attestation_url": "<attestation endpoint to validate the hardware evidence>",
-  "attestation_type": "<type of attestation (allowed values: amber or maa)>",
+  "attestation_provider": "<attestation provider (allowed values: amber or maa)>",
   "api_key": "<the api key if needed>",
   "output_filename": "<to the hardware evidence (Td Quote) into a file>",
   "claims": <a well formed json object for generating the hardware evidence>
