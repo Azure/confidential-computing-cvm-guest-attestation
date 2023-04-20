@@ -21,6 +21,5 @@ public:
     static inline const std::string IMDS_TOKEN_URL{"http://169.254.169.254/metadata/identity/oauth2/token"};
 
     // IMDS api version
-    static inline const std::string IMDS_API_VERSION="2018-02-01";
-
+    static inline const std::string IMDS_API_VERSION = "2018-02-01";
 };

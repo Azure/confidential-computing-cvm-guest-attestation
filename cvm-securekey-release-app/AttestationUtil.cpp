@@ -145,7 +145,6 @@ size_t Util::CurlWriteCallback(char *data, size_t size, size_t nmemb, std::strin
     return result;
 }
 
-
 /// Retrieve IMDS token retrieval URL for a resource url.
 /// eg, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net"};
 static inline std::string GetImdsTokenUrl(std::string url)
@@ -217,7 +216,7 @@ std::string Util::GetIMDSToken()
 
 /// \copydoc Util::GetMAAToken()
 // TODO: attestation server URL can be constructed from VM region if necessary.
-std::string Util::GetMAAToken(const std::string &attestation_url)
+std::string Util::GetMAAToken(const std::string &attestation_url, const std::string &nonce)
 {
     TRACE_OUT("Entering Util::GetMAAToken()");
 
@@ -227,6 +226,12 @@ std::string Util::GetMAAToken(const std::string &attestation_url)
     {
         // use the default attestation url
         attest_server_url.assign(Constants::DEFAULT_ATTESTATION_URL);
+    }
+
+    if (nonce.empty())
+    {
+        // use some random nonce
+        nonce.assign("ADE0101");
     }
 
     AttestationClient *attestation_client = nullptr;
@@ -243,7 +248,7 @@ std::string Util::GetMAAToken(const std::string &attestation_url)
     // parameters for the Attest call
     attest::ClientParameters params = {};
     params.attestation_endpoint_url = (PBYTE)attest_server_url.c_str();
-    std::string client_payload_str = "{\"nonce\": \"ADE0101\"}"; // nonce is optional
+    std::string client_payload_str = "{\"nonce\": \"" + nonce + "\"}"; // nonce is optional
     params.client_payload = (PBYTE)client_payload_str.c_str();
     params.version = CLIENT_PARAMS_VERSION;
     PBYTE jwt = nullptr;
@@ -534,13 +539,13 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     return responseStr;
 }
 
-bool Util::doSKR(std::string KEKUrl, EVP_PKEY **pkey)
+bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey)
 {
     TRACE_OUT("Entering Util::doSKR()");
 
     try
     {
-        std::string attest_token(Util::GetMAAToken(Constants::DEFAULT_ATTESTATION_URL));
+        std::string attest_token(Util::GetMAAToken(attestation_url, nonce));
         TRACE_OUT("MAA Token: %s", attest_token.c_str());
 
         std::string akvMsiToken = std::move(Util::GetIMDSToken());
@@ -776,13 +781,15 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
     return ret;
 }
 
-std::string Util::WrapKey(const std::string &sym_key,
+std::string Util::WrapKey(const std::string &attestation_url,
+                          const std::string &nonce,
+                          const std::string &sym_key,
                           const std::string &key_enc_key_url)
 {
     TRACE_OUT("Entering Util::WrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(key_enc_key_url, &pkey))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);
@@ -814,13 +821,15 @@ std::string Util::WrapKey(const std::string &sym_key,
     return cipherText;
 }
 
-std::string Util::UnwrapKey(const std::string &wrapped_key_base64,
+std::string Util::UnwrapKey(const std::string &attestation_url,
+                            const std::string &nonce,
+                            const std::string &wrapped_key_base64,
                             const std::string &key_enc_key_url)
 {
     TRACE_OUT("Entering Util::UnwrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(key_enc_key_url, &pkey))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);

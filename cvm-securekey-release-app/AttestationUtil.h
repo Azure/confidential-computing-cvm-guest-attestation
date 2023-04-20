@@ -151,8 +151,9 @@ public:
     /// Get attestation token from the attestation service.
     /// </summary>
     /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <returns>MAA token</returns>
-    static std::string GetMAAToken(const std::string &attestation_url);
+    static std::string GetMAAToken(const std::string &attestation_url, const std::string &nonce);
 
     /// <summary>
     /// Split string by delimeter.
@@ -164,26 +165,36 @@ public:
     /// <summary>
     /// Do secure key release (SKR) to get the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="KEKUrl">AKV URL of the key</param>
     /// <param name="pkey">OpenSSL key representation</param>
     /// <returns>True if successful</returns>
-    static bool doSKR(std::string KEKUrl, EVP_PKEY **pkey);
+    static bool doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey);
 
     /// <summary>
     /// Wrap the symmetric key with the public key of the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="plainText">Plain text symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
     /// <returns>Wrapped key</returns>
-    static std::string WrapKey(const std::string &plainText,
+    static std::string WrapKey(const std::string &attestation_url,
+                               const std::string &nonce,
+                               const std::string &plainText,
                                const std::string &key_enc_key);
 
     /// <summary>
     /// Unwrap the symmetric key using the private key of the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="cipherText">Wrapped symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
     /// <returns>Plain text symmetric key</returns>
-    static std::string UnwrapKey(const std::string &cipherText,
+    static std::string UnwrapKey(const std::string &attestation_url,
+                                 const std::string &nonce,
+                                 const std::string &cipherText,
                                  const std::string &key_enc_key);
 };
