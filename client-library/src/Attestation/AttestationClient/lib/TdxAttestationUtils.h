@@ -70,27 +70,35 @@ typedef struct TdxReportRequest_t {
 int GetTdReport(char* out_request_data, unsigned char *report_data, size_t report_data_size) {
     TdxReportRequest_t report;
     if (out_request_data == NULL) {
+        CLIENT_LOG_ERROR("Error output buffer is NULL");
         return TDX_GET_REPORT_FAILED;
     }
 
-    if (report_data != NULL && report_data_size <= TDX_REPORTDATA_LEN) {
-        memcpy_s(report.reportdata, TDX_REPORTDATA_LEN, report_data, report_data_size);
+    if (report_data != NULL && (report_data_size <= TDX_REPORTDATA_LEN && report_data_size > 0)) {
+        CLIENT_LOG_INFO("Generating report with report data");
+        memcpy(report.reportdata, report_data, report_data_size);
     }
 
     int device_fd = open(TDX_ATTEST_DEV_PATH, O_RDWR | O_SYNC);
     if (device_fd == -1) {
+        CLIENT_LOG_ERROR("Failed to open /dev/tdx_guest driver");
         return TDX_GET_REPORT_FAILED;
     }
 
     int return_code = ioctl(device_fd, TDX_CMD_GET_REPORT, &report);
     if (return_code != 0) {
         close(device_fd);
+
+        CLIENT_LOG_ERROR("Failed to generate a td report");
+
         return TDX_GET_REPORT_FAILED;
     }
 
-    memcpy_s(out_request_data, TDX_REPORT_LEN, report.tdreport, TDX_REPORT_LEN);
+    memcpy(out_request_data, report.tdreport, TDX_REPORT_LEN);
 
     close(device_fd);
+
+    CLIENT_LOG_INFO("Done with report generation");
 
     return TDX_GET_REPORT_SUCCESS;
 }
