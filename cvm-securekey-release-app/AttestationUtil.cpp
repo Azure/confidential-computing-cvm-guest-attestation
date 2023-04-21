@@ -146,19 +146,25 @@ size_t Util::CurlWriteCallback(char *data, size_t size, size_t nmemb, std::strin
 }
 
 /// Retrieve IMDS token retrieval URL for a resource url.
+/// If multiple identities are associated, client_id can be used to select one identity
 /// eg, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net"};
-static inline std::string GetImdsTokenUrl(std::string url)
+static inline std::string GetImdsTokenUrl(std::string url, std::string client_id = "")
 {
     std::ostringstream oss;
     oss << Constants::IMDS_TOKEN_URL;
     oss << "?api-version=" << Constants::IMDS_API_VERSION;
     oss << "&resource=" << Util::url_encode(url);
 
+    if (!client_id.empty())
+    {
+        oss << "&client_id=" << client_id;
+    }
+
     return oss.str();
 }
 
 /// \copydoc Util::GetIMDSToken()
-std::string Util::GetIMDSToken()
+std::string Util::GetIMDSToken(std::string client_id)
 {
     TRACE_OUT("Entering Util::GetIMDSToken()");
 
@@ -168,7 +174,7 @@ std::string Util::GetIMDSToken()
         TRACE_ERROR_EXIT("curl_easy_init() failed")
     }
 
-    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL).c_str());
+    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL, client_id).c_str());
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
@@ -541,7 +547,7 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     return responseStr;
 }
 
-bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey)
+bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey, const std::string &client_id)
 {
     TRACE_OUT("Entering Util::doSKR()");
 
@@ -550,7 +556,7 @@ bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, s
         std::string attest_token(Util::GetMAAToken(attestation_url, nonce));
         TRACE_OUT("MAA Token: %s", attest_token.c_str());
 
-        std::string akvMsiToken = std::move(Util::GetIMDSToken());
+        std::string akvMsiToken = std::move(Util::GetIMDSToken(client_id));
         TRACE_OUT("AkvMsiToken: %s", akvMsiToken.c_str());
         json json_object = json::parse(akvMsiToken.c_str());
         std::string access_token = json_object["access_token"].get<std::string>();
@@ -786,12 +792,13 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
 std::string Util::WrapKey(const std::string &attestation_url,
                           const std::string &nonce,
                           const std::string &sym_key,
-                          const std::string &key_enc_key_url)
+                          const std::string &key_enc_key_url,
+                          const std::string &client_id)
 {
     TRACE_OUT("Entering Util::WrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, client_id))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);
@@ -826,12 +833,13 @@ std::string Util::WrapKey(const std::string &attestation_url,
 std::string Util::UnwrapKey(const std::string &attestation_url,
                             const std::string &nonce,
                             const std::string &wrapped_key_base64,
-                            const std::string &key_enc_key_url)
+                            const std::string &key_enc_key_url,
+                            const std::string &client_id)
 {
     TRACE_OUT("Entering Util::UnwrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, client_id))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);

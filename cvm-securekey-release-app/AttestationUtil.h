@@ -144,8 +144,9 @@ public:
     /// <summary>
     /// Retrieve MSI token from IMDS servce
     /// </summary>
+    /// <param name="client_id">optional client_id of the managed identity if there are multiple associated with the node</param>
     /// <returns>MSI token for the resource</returns>
-    static std::string GetIMDSToken();
+    static std::string GetIMDSToken(std::string client_id = "");
 
     /// <summary>
     /// Get attestation token from the attestation service.
@@ -169,8 +170,12 @@ public:
     /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="KEKUrl">AKV URL of the key</param>
     /// <param name="pkey">OpenSSL key representation</param>
+    /// <param name="client_id">Optional client_id to be used for the IMDS request if multiple identities are associated with the node</param>
     /// <returns>True if successful</returns>
-    static bool doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey);
+    static bool doSKR(const std::string &attestation_url,
+                      const std::string &nonce, std::string KEKUrl,
+                      EVP_PKEY **pkey,
+                      const std::string &client_id);
 
     /// <summary>
     /// Wrap the symmetric key with the public key of the key encryption key (KEK).
@@ -179,11 +184,13 @@ public:
     /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="plainText">Plain text symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
+    /// <param name="client_id">Optional client_id to be used for the IMDS request if multiple identities are associated with the node</param>
     /// <returns>Wrapped key</returns>
     static std::string WrapKey(const std::string &attestation_url,
                                const std::string &nonce,
                                const std::string &plainText,
-                               const std::string &key_enc_key);
+                               const std::string &key_enc_key,
+                               const std::string &client_id);
 
     /// <summary>
     /// Unwrap the symmetric key using the private key of the key encryption key (KEK).
@@ -192,9 +199,11 @@ public:
     /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="cipherText">Wrapped symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
+    /// <param name="client_id">Optional client_id to be used for the IMDS request if multiple identities are associated with the node</param>
     /// <returns>Plain text symmetric key</returns>
     static std::string UnwrapKey(const std::string &attestation_url,
                                  const std::string &nonce,
                                  const std::string &cipherText,
-                                 const std::string &key_enc_key);
+                                 const std::string &key_enc_key,
+                                 const std::string &client_id);
 };

@@ -22,7 +22,7 @@
 
 void usage(char *programName)
 {
-    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
+    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -c <optional-imds-client-id> -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
 }
 
 enum class Operation
@@ -41,10 +41,11 @@ int main(int argc, char *argv[])
     std::string nonce;
     std::string sym_key;
     std::string key_enc_key_url;
+    std::string client_id;
     Operation op = Operation::None;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:s:uw")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uw")) != -1)
     {
         switch (opt)
         {
@@ -59,6 +60,10 @@ int main(int argc, char *argv[])
         case 'k':
             key_enc_key_url.assign(optarg);
             TRACE_OUT("key_enc_key_url: %s", key_enc_key_url.c_str());
+            break;
+        case 'c':
+            client_id.assign(optarg);
+            TRACE_OUT("client_id: %s", client_id.c_str());
             break;
         case 'u':
             op = Operation::UnwrapKey;
@@ -87,11 +92,11 @@ int main(int argc, char *argv[])
         switch (op)
         {
         case Operation::WrapKey:
-            result = Util::WrapKey(attestation_url, nonce, sym_key, key_enc_key_url);
+            result = Util::WrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
             std::cout << result << std::endl;
             break;
         case Operation::UnwrapKey:
-            result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url);
+            result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
             std::cout << result << std::endl;
             break;
         default:

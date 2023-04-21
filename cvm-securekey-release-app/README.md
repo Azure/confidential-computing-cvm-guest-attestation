@@ -84,8 +84,16 @@ sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://my
 
 ```
 
-If a nonce needs to be passed into the MAA token as client_payload, use `-n` argument as below
+Optional Arguments
+
+- `-n`: If a nonce needs to be passed as client_payload json, use `-n` argument as below. This demo app only supports `nonce` key, however clients can send in any arbitary json as the `client_payload` in the MAA request.
 
 ```sh
-sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -n <some-identifier-per-maa-request> -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -s <copy_base64_from_previous_run> -u
+sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -n "<some-identifier-per-maa-request>" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -s <copy_base64_from_previous_run> -u
+```
+
+- `-c`: If multiple managed identities are associated with the Confidential VM, `client_id` can be used to get the IMDS token for a selected identity
+
+```sh
+sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "<some-azure-managed-identity-client_id>" -s "<copy_base64_from_previous_run>" -u
 ```
