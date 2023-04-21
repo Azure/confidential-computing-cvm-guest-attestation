@@ -139,7 +139,8 @@ public:
 
     static std::string GetKeyVaultResponse(const std::string &requestUri,
                                            const std::string &access_token,
-                                           const std::string &attestation_token);
+                                           const std::string &attestation_token,
+                                           const std::string &nonce);
 
     /// <summary>
     /// Retrieve MSI token from IMDS servce

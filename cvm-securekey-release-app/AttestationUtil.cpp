@@ -380,7 +380,7 @@ static int decrypt_aes_key_unwrap(PBYTE key, PBYTE ciphertext, int ciphertext_le
 
     EVP_CIPHER_CTX_free(ctx);
 
-    TRACE_OUT("Exitig decrypt_aes_key_unwrap()");
+    TRACE_OUT("Exiting decrypt_aes_key_unwrap()");
     return plaintext_len;
 }
 
@@ -406,7 +406,8 @@ std::string Util::GetKeyVaultSKRurl(const std::string &KEKUrl)
 
 std::string Util::GetKeyVaultResponse(const std::string &requestUri,
                                       const std::string &access_token,
-                                      const std::string &attestation_token)
+                                      const std::string &attestation_token,
+                                      const std::string &nonce)
 {
     TRACE_OUT("Entering Util::GetKeyVaultResponse()");
 
@@ -448,8 +449,17 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     }
 
     std::ostringstream requestBody;
+
+    std::string nonce_token;
+    nonce_token.assign(nonce);
+    if (nonce_token.empty())
+    {
+        // use some random nonce
+        nonce_token.assign(Constants::NONCE);
+    }
+
     requestBody << "{";
-    requestBody << "\"nonce\": \"ADENonce1001\",";
+    requestBody << "\"nonce\": \"" + nonce_token + "\",";
     requestBody << "\"target\": \"" << attestation_token << "\",";
     requestBody << "\"enc\": \"CKM_RSA_AES_KEY_WRAP\"";
     requestBody << "}";
@@ -561,7 +571,7 @@ bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, s
         json json_object = json::parse(akvMsiToken.c_str());
         std::string access_token = json_object["access_token"].get<std::string>();
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
-        std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token);
+        std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
 
         // Parse the response:
         json skrJson = json::parse(responseStr.c_str());
