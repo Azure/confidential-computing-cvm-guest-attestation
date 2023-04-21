@@ -22,7 +22,7 @@
 
 void usage(char *programName)
 {
-    printf("Usage: %s -a <attestation-endpoint> -k KEK -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
+    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -c <optional-imds-client-id> -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
 }
 
 enum class Operation
@@ -38,12 +38,14 @@ int main(int argc, char *argv[])
     TRACE_OUT("Main started");
 
     std::string attestation_url;
+    std::string nonce;
     std::string sym_key;
     std::string key_enc_key_url;
+    std::string client_id;
     Operation op = Operation::None;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:k:s:uw")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uw")) != -1)
     {
         switch (opt)
         {
@@ -51,9 +53,17 @@ int main(int argc, char *argv[])
             attestation_url.assign(optarg);
             TRACE_OUT("attestation_url: %s", attestation_url.c_str());
             break;
+        case 'n':
+            nonce.assign(optarg);
+            TRACE_OUT("nonce: %s", nonce.c_str());
+            break;
         case 'k':
             key_enc_key_url.assign(optarg);
             TRACE_OUT("key_enc_key_url: %s", key_enc_key_url.c_str());
+            break;
+        case 'c':
+            client_id.assign(optarg);
+            TRACE_OUT("client_id: %s", client_id.c_str());
             break;
         case 'u':
             op = Operation::UnwrapKey;
@@ -82,11 +92,11 @@ int main(int argc, char *argv[])
         switch (op)
         {
         case Operation::WrapKey:
-            result = Util::WrapKey(sym_key, key_enc_key_url);
+            result = Util::WrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
             std::cout << result << std::endl;
             break;
         case Operation::UnwrapKey:
-            result = Util::UnwrapKey(sym_key, key_enc_key_url);
+            result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
             std::cout << result << std::endl;
             break;
         default:
