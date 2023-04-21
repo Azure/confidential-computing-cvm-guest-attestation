@@ -28,16 +28,6 @@ HttpClientResult HttpClient::InvokeHttpRequest(std::string& http_response,
                                                 const std::vector<std::string>& header_list,
                                                 const std::string& request_body) {
 
-    curl_global_cleanup();
-
-    CURL* curl_handle;
-    curl_handle = curl_easy_init();
-    if (curl_handle == nullptr) {
-        fprintf(stderr, "Failed to initialize curl_handle for http request.");
-        curl_global_cleanup();
-        return HttpClientResult::FAILED;
-    }
-
     // Set the the headers for the request
     struct curl_slist* headers = NULL;
     for (const auto &header : header_list) {
@@ -64,9 +54,6 @@ HttpClientResult HttpClient::InvokeHttpRequest(std::string& http_response,
     if (http_verb == HttpClient::HttpVerb::POST) {
         if (request_body.empty()) {
             fprintf(stderr, "Request body missing for POST request");
-            curl_easy_cleanup(curl_handle);
-            curl_slist_free_all(headers);
-            curl_global_cleanup();
             return HttpClientResult::MISSING_REQUEST_BODY;
         }
 
@@ -123,15 +110,11 @@ HttpClientResult HttpClient::InvokeHttpRequest(std::string& http_response,
     if (res != CURLE_OK) {
         string error = std::string("Failed sending curl_handle request with error:") + std::string(curl_easy_strerror(res));
         fprintf(stderr, "%s", error.c_str());
-        curl_easy_cleanup(curl_handle);
         curl_slist_free_all(headers);
-        curl_global_cleanup();
         return HttpClientResult::FAILED;
     }
 
-    curl_easy_cleanup(curl_handle);
     curl_slist_free_all(headers);
-    curl_global_cleanup();
 
     return HttpClientResult::SUCCESS;
 }
