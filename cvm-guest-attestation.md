@@ -26,7 +26,7 @@ MAA, you need to implicitly trust that MAA is correctly validating the SNP repor
 
 Please spend a few minutes watching this [video](https://youtu.be/M7kWKN7fXbs) for a brief introduction on how guest attestation works, and what the attestation claims emitted by MAA mean.
 
-Guest attestation can be accomplished via two mechanisms: a [Microsoft-built client library](https://github.com/Azure/confidential-computing-cvm-guest-attestation) (DLL or shared object) and Microsoft VM extension. The client library transparently obtains the report
+Guest attestation can be accomplished via two mechanisms: a [Microsoft-built client library](https://github.com/Azure/confidential-computing-cvm-guest-attestation) (DLL or shared object) or Microsoft VM extension. The client library transparently obtains the report
 and conducts remote attestation flows. Remote attestation via client library can be done programmatically using API, or a wrapper executable. The client library is open source. The VM extension is called “Guest Attestation Extension” that transparently obtains the report and conducts remote attestation flows, optionally providing the status of attestation in Microsoft Defender for Cloud. Both client library and guest attestation mechanisms gather evidence for
 attestation associated with the Trusted Execution Environment (TEE) that is rooted to the CPU manufacturer (AMD).
 
