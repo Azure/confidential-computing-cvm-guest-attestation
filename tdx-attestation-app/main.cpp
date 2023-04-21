@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <chrono>
 #include <nlohmann/json.hpp>
 #include "src/Utils.h"
 #include "src/Logger.h"
@@ -13,6 +14,7 @@
 
 using json = nlohmann::json;
 using namespace std;
+using namespace std::chrono;
 
 #ifndef PLATFORM_UNIX
 static char *optarg = nullptr;
@@ -104,6 +106,11 @@ int main(int argc, char *argv[]) {
       api_key = config["api_key"];
     }
 
+    bool metrics_enabled = false;
+    if (config.contains("enable_metrics")) {
+      metrics_enabled = config["enable_metrics"];
+    }
+
     std::string provider;
     if (!config.contains("attestation_provider")) {
       fprintf(stderr, "attestation_provider is missing\n\n");
@@ -156,8 +163,13 @@ int main(int argc, char *argv[]) {
     bool has_quote = true;
     std::string quote_data;
 
-    // get verifiable quote
+    auto start = high_resolution_clock::now();
+
     result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload, hash_type[provider]);
+
+    auto stop = high_resolution_clock::now();
+    duration<double, std::milli> elapsed = stop - start;
+
     if (result.code_ != attest::AttestationResult::ErrorCode::SUCCESS) {
       has_quote = false;
     }
@@ -198,7 +210,12 @@ int main(int argc, char *argv[]) {
           encoded_claims,
           api_key};
 
+      auto start = high_resolution_clock::now();
+
       std::string jwt_token = AttestClient::VerifyEvidence(attestation_config, http_client);
+
+      auto stop = high_resolution_clock::now();
+      duration<double, std::milli> token_elapsed = stop - start;
 
       if (jwt_token.empty()) {
         fprintf(stderr, "Empty token received\n");
@@ -209,6 +226,25 @@ int main(int argc, char *argv[]) {
       cout << "Hardware attestation passed successfully!!" << endl;
       cout << "TOKEN:\n" << endl;
       std::cout << jwt_token << std::endl << std::endl;
+
+      if (metrics_enabled) {
+        stringstream stream;
+        stream << "Run Summary:\n"
+               << "\tEvidence Request(ms): " << std::to_string(elapsed.count()) << "\n"
+               << "\tAttestation Request(ms): " << std::to_string(token_elapsed.count()) << "\n";
+
+        cout << stream.str() << endl;
+
+        json result;
+        result["Evidence Request(ms)"] = std::to_string(elapsed.count());
+        result["Attestation Request(ms)"] = std::to_string(token_elapsed.count());
+
+        std::ofstream out("metrics.json");
+        if (out.is_open()) {
+          out << result.dump(4);
+          out.close();
+        }
+      }
     }
 
     Uninitialize();
