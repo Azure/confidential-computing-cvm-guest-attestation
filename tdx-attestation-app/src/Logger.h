@@ -18,14 +18,6 @@
 class Logger : public attest::AttestationLogger
 {
 public:
-    Logger() {
-        std::time_t time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::tm *local_time = std::localtime(&time);
-        std::stringstream stream;
-        stream << "TdxAttest-" << std::put_time(local_time,"%Y%m%d-%H%M%S") << ".log";
-        log_filename = stream.str();
-    }
-
     void Log(const char *log_tag,
              LogLevel level,
              const char *function,
@@ -45,18 +37,5 @@ public:
 
         // Print Logs, comment and recompilte to suppress logs
         printf("Level: %s Tag: %s %s:%d:%s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
-
-        std::stringstream stream;
-        stream << "Level: " << attest::AttestationLogger::LogLevelStrings[level] << " Tag: " << log_tag << " "
-               << function << ":" << line << ":" << &str[0] << std::endl;
-
-        std::ofstream log_file(log_filename, std::ios_base::app);
-        if (log_file) {
-            log_file << stream.str();
-            log_file.close();
-        }
     }
-
-private:
-    std::string log_filename;
 };
