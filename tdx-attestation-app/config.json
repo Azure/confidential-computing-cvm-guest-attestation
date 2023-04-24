@@ -2,7 +2,7 @@
   "attestation_url": "https://api-pre21-green.ambernp.adsdcsp.com/appraisal/v1/attest",
   "attestation_provider": "amber",
   "api_key": "",
-  "enable_metrics": true,
+  "enable_metrics": false,
   "claims": {
     "user-claims": {
       "client-payload": {

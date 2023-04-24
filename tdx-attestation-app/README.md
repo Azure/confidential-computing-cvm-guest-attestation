@@ -34,7 +34,7 @@ sudo ./TdxAttest -c config.json
 ```
 
 ## enable_metrics
-If metrics are enabled, new `metrics.json` file will be created, as well as a summary:
+If metrics are enabled, new `metrics.json` file will be created, as well as a summary will be printed in the console:
 ```
 ...
 Run Summary:
