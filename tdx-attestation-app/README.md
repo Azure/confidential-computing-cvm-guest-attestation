@@ -2,7 +2,7 @@
 
 ## Build Instructions for Linux
 
-Create a Linux Tursted Domain virtual machine in Azure and clone the application.
+Create a Linux Trusted Domain virtual machine in Azure and clone the application.
 
 Use the below command to install all the dependencies necessary to run this sample app.
 ```sh
