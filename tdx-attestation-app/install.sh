@@ -22,6 +22,3 @@ sudo rm libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
 
 # Install GuestAttestation Debian Package
 sudo dpkg -i package/azguestattestation1_1.0.3_amd64.deb
-
-# Give user permission to get report from tdx driver
-sudo chmod og=rw /dev/tdx_guest
