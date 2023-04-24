@@ -2,4 +2,4 @@
 
 TdxAttest
 *.dat
-*.log
+metrics.json
