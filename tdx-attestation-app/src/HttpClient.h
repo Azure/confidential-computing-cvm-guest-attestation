@@ -22,6 +22,21 @@
 
 class HttpClient : public HttpClient_I{
 public:
+    HttpClient() {
+        curl_global_cleanup();
+        curl_handle = curl_easy_init();
+        if (curl_handle == nullptr) {
+            fprintf(stderr, "Failed to initialize curl_handle for http request.");
+            curl_global_cleanup();
+            exit(1);
+        }
+    }
+
+    ~HttpClient() {
+        curl_easy_cleanup(curl_handle);
+        curl_global_cleanup();
+    }
+
     /**
      *@brief This function will be used to send a http request
      * @param[in] url, the url endpoint to be called
@@ -39,8 +54,11 @@ public:
                               const std::string &request_body = std::string()) override;
 
 private:
+    CURL *curl_handle;
+
     /**
      * @brief CURL Callback to write response to a user specified pointer
      */
     static size_t WriteResponseCallback(void* contents, size_t size, size_t nmemb, void* response);
+
 };
