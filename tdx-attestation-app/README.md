@@ -21,15 +21,6 @@ make
 sudo ./TdxAttest -c config.json
 ```
 
-> **Important**
->
-> Running without `sudo` should work and if there is an error while opening the driver, add the driver
-> to the user group with the following command:
->
-> ```
-> sudo chmod og=rw /dev/tdx_guest
-> ```
-
 ## Config Definition
 ```
 {
