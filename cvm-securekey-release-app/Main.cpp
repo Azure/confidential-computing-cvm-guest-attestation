@@ -22,7 +22,7 @@
 
 void usage(char *programName)
 {
-    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -c <optional-imds-client-id> -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
+    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -c (imds|sp) -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
 }
 
 enum class Operation
@@ -41,8 +41,8 @@ int main(int argc, char *argv[])
     std::string nonce;
     std::string sym_key;
     std::string key_enc_key_url;
-    std::string client_id;
     Operation op = Operation::None;
+    Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
     while ((opt = getopt(argc, argv, "a:n:k:c:s:uw")) != -1)
@@ -62,8 +62,15 @@ int main(int argc, char *argv[])
             TRACE_OUT("key_enc_key_url: %s", key_enc_key_url.c_str());
             break;
         case 'c':
-            client_id.assign(optarg);
-            TRACE_OUT("client_id: %s", client_id.c_str());
+            if (strcmp(optarg, "imds") == 0)
+            {
+                akv_credential_source = Util::AkvCredentialSource::Imds;
+            }
+            else if (strcmp(optarg, "sp") == 0)
+            {
+                akv_credential_source = Util::AkvCredentialSource::EnvServicePrincipal;
+            }
+            TRACE_OUT("akv_credential_source: %d", static_cast<int>(akv_credential_source));
             break;
         case 'u':
             op = Operation::UnwrapKey;
@@ -92,11 +99,11 @@ int main(int argc, char *argv[])
         switch (op)
         {
         case Operation::WrapKey:
-            result = Util::WrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
+            result = Util::WrapKey(attestation_url, nonce, sym_key, key_enc_key_url, akv_credential_source);
             std::cout << result << std::endl;
             break;
         case Operation::UnwrapKey:
-            result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url, client_id);
+            result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url, akv_credential_source);
             std::cout << result << std::endl;
             break;
         default:

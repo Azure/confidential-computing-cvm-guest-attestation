@@ -92,8 +92,14 @@ Optional Arguments
 sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -n "<some-identifier-per-maa-request>" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -s <copy_base64_from_previous_run> -u
 ```
 
-- `-c`: If multiple managed identities are associated with the Confidential VM, `client_id` can be used to get the IMDS token for a selected identity
+- `-c (imds|sp)`: Override the credentials source provider for accessing AKV
 
-```sh
-sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "<some-azure-managed-identity-client_id>" -s "<copy_base64_from_previous_run>" -u
-```
+  - `imds`: If multiple managed identities are associated with the Confidential VM, `IMDS_CLIENT_ID` environment variable can be used to get the IMDS token for a selected identity
+
+  - `sp`: If a custom service principal credentials needs to be used, `AKV_SKR_CLIENT_ID`, `AKV_SKR_CLIENT_SECRET` and `AKV_SKR_TENANT_ID` environment variables can be provided
+
+  Example:
+
+  ```sh
+  sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "sp" -s "<copy_base64_from_previous_run>" -u
+  ```
