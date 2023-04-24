@@ -48,7 +48,9 @@ namespace attest {
             ERROR_EVP_PKEY_ENCRYPT_FAILED = -25,
             ERROR_DATA_DECRYPTION_TPM_ERROR = -26,
             ERROR_PARSING_DNS_INFO = -27,
-            ERROR_PARSING_ATTESTATION_RESPONSE = -28
+            ERROR_PARSING_ATTESTATION_RESPONSE = -28,
+            ERROR_READING_TD_REPORT = -29,
+            ERROR_EMPTY_TD_QUOTE = -30
         };
 
         AttestationResult() = default;

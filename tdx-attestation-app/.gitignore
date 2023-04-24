@@ -1,0 +1,5 @@
+# Ignore build and data file
+
+TdxAttest
+*.dat
+metrics.json
