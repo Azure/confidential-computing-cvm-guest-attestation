@@ -795,6 +795,13 @@ TEST_F(ClientLibTests, TestParseMaaResponse_positive) {
     EXPECT_EQ(enc_token, "value1");
 }
 
+TEST_F(ClientLibTests, TestRequestPlatformEvidence) {
+    const std::string runtime_data = "{\"nonce\":\"\"}";
+    std::string evidence;
+    attest::AttestationResult result = client->GetHardwarePlatformEvidence(evidence, runtime_data);
+    EXPECT_EQ(result.code_, attest::AttestationResult::ErrorCode::SUCCESS);
+}
+
 int main(int argc, char** argv)
 {
     testing::InitGoogleTest(&argc, argv);

@@ -12,6 +12,8 @@
 #include <math.h>
 #include <numeric>
 #include <cstring>
+#include <sstream>
+#include <iostream>
 #ifdef PLATFORM_UNIX
 #include <unistd.h>
 #else
@@ -26,6 +28,7 @@
 #include <openssl/x509v3.h> 
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include "Exceptions.h"
 #include "AttestationHelper.h"
 
@@ -36,6 +39,8 @@
 #include "TpmUnseal.h"
 #include "ImdsOperations.h"
 #include "HclReportParser.h"
+
+#include "TdxAttestationUtils.h"
 
 #define MAX_ATTESTATION_RETRIES 3
 
@@ -169,6 +174,77 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
     std::memcpy(jwt_token, token_decrypted.data(), token_decrypted.size());
     jwt_token[token_decrypted.size()] = '\0';
     *jwt_token_out = jwt_token;
+    return result;
+}
+
+AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(std::string &evidence,
+                                                                     const std::string &client_payload,
+                                                                     const std::string &hash_type) noexcept {
+    using namespace std::chrono;
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+
+    CLIENT_LOG_INFO("Getting Td Report from driver...");
+
+    auto start = high_resolution_clock::now();
+    char buffer[TD_REPORT_SIZE];
+    int status = TDX_GET_REPORT_SUCCESS;
+    if (!client_payload.empty()) {
+        if (type.compare("sha256") == 0) {
+            unsigned char hash[SHA256_DIGEST_LENGTH];
+            SHA256((unsigned char *)client_payload.data(), client_payload.length(), hash);
+            status = GetTdReport(buffer, hash, SHA256_DIGEST_LENGTH);
+        }
+        else if (type.compare("sha512") == 0) {
+            unsigned char hash[SHA512_DIGEST_LENGTH];
+            SHA512((unsigned char *)client_payload.data(), client_payload.length(), hash);
+            status = GetTdReport(buffer, hash, SHA512_DIGEST_LENGTH);
+        }
+        else {
+            CLIENT_LOG_ERROR("Invalid hash type, supported types: (sha256 | sha512)");
+            return AttestationResult::ErrorCode::ERROR_INVALID_INPUT_PARAMETER;
+        }
+    }
+    else {
+        status = GetTdReport(buffer, NULL, 0);
+    }
+
+    if (status != TDX_GET_REPORT_SUCCESS) {
+        CLIENT_LOG_ERROR("Failed to generate a td report");
+        return AttestationResult::ErrorCode::ERROR_READING_TD_REPORT;
+    }
+
+    auto stop = high_resolution_clock::now();
+    duration<double, std::milli> elapsed = stop - start;
+    std::string report_time = "Td report request time: " + std::to_string(elapsed.count()) + " ms";
+    CLIENT_LOG_INFO(report_time.c_str());
+
+    std::vector<unsigned char> hardware_report(
+        reinterpret_cast<unsigned char *>(buffer),
+        reinterpret_cast<unsigned char *>(buffer + sizeof(buffer)));
+
+    std::string encoded_report = attest::base64::binary_to_base64url(hardware_report);
+    std::string imds_request = "{\"report\":\"" + encoded_report + "\"}";
+
+    CLIENT_LOG_INFO("Starting request to get td quote");
+
+    auto quote_start = high_resolution_clock::now();
+    ImdsOperations imds_ops;
+    std::string imds_response;
+    result = imds_ops.GetPlatformEvidence(imds_request, imds_response);
+    if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
+        CLIENT_LOG_ERROR("Failed to retrieve the TD Quote from IMDS");
+        return result;
+    }
+    CLIENT_LOG_INFO("Received td quote successfully");
+
+    auto quote_stop = high_resolution_clock::now();
+    duration<double, std::milli> quote_elapsed = quote_stop - quote_start;
+    std::string request_time = "Td quote request time: " + std::to_string(quote_elapsed.count()) + " ms";
+
+    CLIENT_LOG_INFO(request_time.c_str());
+
+    evidence = imds_response;
+
     return result;
 }
 

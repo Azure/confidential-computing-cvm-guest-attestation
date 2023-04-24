@@ -100,11 +100,11 @@ namespace attest
         std::string base64_encode(const std::string& data);
 
         /**
-         * Given a string, convert it to base64 encoded string
+         * Given a base64 string, convert it to plaintext string
          *
-         * param[in] data : string data
+         * param[in] data : base64 encoded string data
          *
-         * returns: base64 encoded string
+         * returns: plaintext string
          */
         std::string base64_decode(const std::string& data);
     }
