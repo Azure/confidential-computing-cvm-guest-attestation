@@ -259,23 +259,29 @@ std::string Util::GetAADToken()
 
         if (result == CURLE_OK)
         {
-            // Parse the access token from the response
             std::string token;
-            size_t pos = response.find("\"access_token\":\"");
-            if (pos != std::string::npos)
+            json jsonResponse = json::parse(response);
+            if (jsonResponse.contains("access_token"))
             {
-                pos += 16;
-                size_t endPos = response.find('"', pos);
-                if (endPos != std::string::npos)
-                {
-                    token = response.substr(pos, endPos - pos);
-                }
+                token = jsonResponse["access_token"].get<std::string>();
+            }
+            else
+            {
+                TRACE_ERROR_EXIT("access_token not found in AAD auth response")
             }
 
             TRACE_OUT("Response: %s\n", token.c_str());
             TRACE_OUT("Exiting Util::GetAADToken()");
             return token;
         }
+        else
+        {
+            TRACE_ERROR_EXIT("curl_easy_perform() failed for URL")
+        }
+    }
+    else
+    {
+        TRACE_ERROR_EXIT("curl_easy_init() failed")
     }
 
     std::cerr << "Failed to obtain AKV AAD token" << std::endl;
@@ -634,15 +640,13 @@ bool Util::doSKR(const std::string &attestation_url,
 
         // Get Akv access token either using IMDS or Service Principal
         std::string access_token;
-        switch (akv_credential_source)
+        if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
         {
-        case Util::AkvCredentialSource::EnvServicePrincipal:
             access_token = std::move(Util::GetAADToken());
-            break;
-        case Util::AkvCredentialSource::Imds:
-        default:
+        }
+        else
+        {
             access_token = std::move(Util::GetIMDSToken());
-            break;
         }
 
         TRACE_OUT("AkvMsiAccessToken: %s", access_token.c_str());
