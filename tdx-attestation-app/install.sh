@@ -12,13 +12,13 @@ sudo apt-get install libboost-all-dev -y
 sudo apt install nlohmann-json3-dev
 
 # Fetch libssl1.1 libary
-wget http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
+wget http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb
 
 # Install libssl
-sudo dpkg -i libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
+sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb
 
 # Remove download
-sudo rm libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
+sudo rm libssl1.1_1.1.1f-1ubuntu2_amd64.deb
 
 # Install GuestAttestation Debian Package
 sudo dpkg -i package/azguestattestation1_1.0.3_amd64.deb
