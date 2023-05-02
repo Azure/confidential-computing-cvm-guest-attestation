@@ -7,6 +7,7 @@
 
 // TODO: Use OPENSSL_cleanse(buffer, sizeof(buffer)) to clear sensitive data from memory.
 
+#include <cstdlib>
 #include <ctime>
 #include <thread>
 #include <vector>
@@ -146,16 +147,16 @@ size_t Util::CurlWriteCallback(char *data, size_t size, size_t nmemb, std::strin
 }
 
 /// Retrieve IMDS token retrieval URL for a resource url.
-/// If multiple identities are associated, client_id can be used to select one identity
 /// eg, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net"};
-static inline std::string GetImdsTokenUrl(std::string url, std::string client_id = "")
+static inline std::string GetImdsTokenUrl(std::string url)
 {
     std::ostringstream oss;
     oss << Constants::IMDS_TOKEN_URL;
     oss << "?api-version=" << Constants::IMDS_API_VERSION;
     oss << "&resource=" << Util::url_encode(url);
 
-    if (!client_id.empty())
+    auto client_id = std::getenv("IMDS_CLIENT_ID");
+    if (client_id != nullptr && strlen(client_id) > 0)
     {
         oss << "&client_id=" << client_id;
     }
@@ -164,7 +165,7 @@ static inline std::string GetImdsTokenUrl(std::string url, std::string client_id
 }
 
 /// \copydoc Util::GetIMDSToken()
-std::string Util::GetIMDSToken(std::string client_id)
+std::string Util::GetIMDSToken()
 {
     TRACE_OUT("Entering Util::GetIMDSToken()");
 
@@ -174,7 +175,7 @@ std::string Util::GetIMDSToken(std::string client_id)
         TRACE_ERROR_EXIT("curl_easy_init() failed")
     }
 
-    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL, client_id).c_str());
+    CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(Constants::AKV_RESOURCE_URL).c_str());
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
@@ -215,9 +216,76 @@ std::string Util::GetIMDSToken(std::string client_id)
 
     TRACE_OUT("Response: %s\n", responseStr.c_str());
 
+    json json_object = json::parse(responseStr.c_str());
+    std::string access_token = json_object["access_token"].get<std::string>();
+
+    TRACE_OUT("Access Token: %s\n", access_token.c_str());
+
     TRACE_OUT("Exiting Util::GetIMDSToken()");
 
-    return responseStr;
+    return access_token;
+}
+
+/// \copydoc Util::GetAADToken()
+std::string Util::GetAADToken()
+{
+    TRACE_OUT("Entering Util::GetAADToken()");
+
+    auto clientId = std::getenv("AKV_SKR_CLIENT_ID");
+    auto clientSecret = std::getenv("AKV_SKR_CLIENT_SECRET");
+    auto tenantId = std::getenv("AKV_SKR_TENANT_ID");
+
+    std::string tokenUrl = "https://login.microsoftonline.com/" + std::string(tenantId) + "/oauth2/v2.0/token";
+    std::string postData = "client_id=" + std::string(clientId) + "&client_secret=" + std::string(clientSecret) + "&grant_type=client_credentials&scope=https://vault.azure.net/.default";
+
+    CURL *curl = curl_easy_init();
+    if (curl)
+    {
+        curl_easy_setopt(curl, CURLOPT_URL, tokenUrl.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, postData.length());
+
+        curl_slist *headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+        std::string response;
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+        CURLcode result = curl_easy_perform(curl);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+
+        if (result == CURLE_OK)
+        {
+            std::string token;
+            json jsonResponse = json::parse(response);
+            if (jsonResponse.contains("access_token"))
+            {
+                token = jsonResponse["access_token"].get<std::string>();
+            }
+            else
+            {
+                TRACE_ERROR_EXIT("access_token not found in AAD auth response")
+            }
+
+            TRACE_OUT("Response: %s\n", token.c_str());
+            TRACE_OUT("Exiting Util::GetAADToken()");
+            return token;
+        }
+        else
+        {
+            TRACE_ERROR_EXIT("curl_easy_perform() failed for URL")
+        }
+    }
+    else
+    {
+        TRACE_ERROR_EXIT("curl_easy_init() failed")
+    }
+
+    std::cerr << "Failed to obtain AKV AAD token" << std::endl;
+    exit(-1);
 }
 
 /// \copydoc Util::GetMAAToken()
@@ -557,7 +625,11 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     return responseStr;
 }
 
-bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, std::string KEKUrl, EVP_PKEY **pkey, const std::string &client_id)
+bool Util::doSKR(const std::string &attestation_url,
+                 const std::string &nonce,
+                 std::string KEKUrl,
+                 EVP_PKEY **pkey,
+                 const Util::AkvCredentialSource &akv_credential_source)
 {
     TRACE_OUT("Entering Util::doSKR()");
 
@@ -566,10 +638,19 @@ bool Util::doSKR(const std::string &attestation_url, const std::string &nonce, s
         std::string attest_token(Util::GetMAAToken(attestation_url, nonce));
         TRACE_OUT("MAA Token: %s", attest_token.c_str());
 
-        std::string akvMsiToken = std::move(Util::GetIMDSToken(client_id));
-        TRACE_OUT("AkvMsiToken: %s", akvMsiToken.c_str());
-        json json_object = json::parse(akvMsiToken.c_str());
-        std::string access_token = json_object["access_token"].get<std::string>();
+        // Get Akv access token either using IMDS or Service Principal
+        std::string access_token;
+        if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
+        {
+            access_token = std::move(Util::GetAADToken());
+        }
+        else
+        {
+            access_token = std::move(Util::GetIMDSToken());
+        }
+
+        TRACE_OUT("AkvMsiAccessToken: %s", access_token.c_str());
+
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
 
@@ -803,12 +884,12 @@ std::string Util::WrapKey(const std::string &attestation_url,
                           const std::string &nonce,
                           const std::string &sym_key,
                           const std::string &key_enc_key_url,
-                          const std::string &client_id)
+                          const Util::AkvCredentialSource &akv_credential_source)
 {
     TRACE_OUT("Entering Util::WrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, client_id))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);
@@ -844,12 +925,12 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
                             const std::string &nonce,
                             const std::string &wrapped_key_base64,
                             const std::string &key_enc_key_url,
-                            const std::string &client_id)
+                            const Util::AkvCredentialSource &akv_credential_source)
 {
     TRACE_OUT("Entering Util::UnwrapKey()");
 
     EVP_PKEY *pkey = nullptr;
-    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, client_id))
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
     {
         std::cerr << "Failed to release the private key" << std::endl;
         exit(-1);
