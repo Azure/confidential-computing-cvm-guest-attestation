@@ -46,7 +46,7 @@ static int getopt(int argc, char *const argv[], const char *optstring) {
   }
   return opt;
 }
-#endif //! PLATFORM_UNIX
+#endif
 
 void usage(char *programName) {
   printf("Usage: %s [arguments]\n", programName);
