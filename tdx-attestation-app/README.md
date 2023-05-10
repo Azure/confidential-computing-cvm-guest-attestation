@@ -9,7 +9,7 @@ $ sudo ./install.sh
 ```
 
 ## Instructions for SUSE
-Create an SUSE Trusted Domain virtual machine in Azure and clone the application.
+Create a SUSE Trusted Domain virtual machine in Azure and clone the application.
 
 > If git is not installed, run `sudo zypper install git`
 
