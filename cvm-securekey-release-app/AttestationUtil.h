@@ -74,6 +74,12 @@ inline static void OSSL_BN_TRACE_OUT(const BIGNUM *bn)
 class Util
 {
 public:
+    enum class AkvCredentialSource
+    {
+        Imds,
+        EnvServicePrincipal
+    };
+
     /// <summary>
     /// Convert a base64 encoded string to a vector of bytes.
     /// </summary>
@@ -139,7 +145,8 @@ public:
 
     static std::string GetKeyVaultResponse(const std::string &requestUri,
                                            const std::string &access_token,
-                                           const std::string &attestation_token);
+                                           const std::string &attestation_token,
+                                           const std::string &nonce);
 
     /// <summary>
     /// Retrieve MSI token from IMDS servce
@@ -148,12 +155,19 @@ public:
     /// <returns>MSI token for the resource</returns>
     static std::string GetIMDSToken(const std::string &KEKUrl);
 
+    // <summary>
+    /// Retrieve MSI token from Service Principal Credentials available in the Environment Variables
+    /// </summary>
+    /// <returns>MSI token for the resource</returns>
+    static std::string GetAADToken();
+
     /// <summary>
     /// Get attestation token from the attestation service.
     /// </summary>
     /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <returns>MAA token</returns>
-    static std::string GetMAAToken(const std::string &attestation_url);
+    static std::string GetMAAToken(const std::string &attestation_url, const std::string &nonce);
 
     /// <summary>
     /// Split string by delimeter.
@@ -165,26 +179,44 @@ public:
     /// <summary>
     /// Do secure key release (SKR) to get the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="KEKUrl">AKV URL of the key</param>
     /// <param name="pkey">OpenSSL key representation</param>
+    /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
     /// <returns>True if successful</returns>
-    static bool doSKR(std::string KEKUrl, EVP_PKEY **pkey);
+    static bool doSKR(const std::string &attestation_url,
+                      const std::string &nonce, std::string KEKUrl,
+                      EVP_PKEY **pkey,
+                      const Util::AkvCredentialSource &akv_credential_source);
 
     /// <summary>
     /// Wrap the symmetric key with the public key of the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="plainText">Plain text symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
+    /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
     /// <returns>Wrapped key</returns>
-    static std::string WrapKey(const std::string &plainText,
-                               const std::string &key_enc_key);
+    static std::string WrapKey(const std::string &attestation_url,
+                               const std::string &nonce,
+                               const std::string &plainText,
+                               const std::string &key_enc_key,
+                               const Util::AkvCredentialSource &akv_credential_source);
 
     /// <summary>
     /// Unwrap the symmetric key using the private key of the key encryption key (KEK).
     /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
     /// <param name="cipherText">Wrapped symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
+    /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
     /// <returns>Plain text symmetric key</returns>
-    static std::string UnwrapKey(const std::string &cipherText,
-                                 const std::string &key_enc_key);
+    static std::string UnwrapKey(const std::string &attestation_url,
+                                 const std::string &nonce,
+                                 const std::string &cipherText,
+                                 const std::string &key_enc_key,
+                                 const Util::AkvCredentialSource &akv_credential_source);
 };
