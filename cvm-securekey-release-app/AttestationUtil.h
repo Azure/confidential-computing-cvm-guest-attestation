@@ -141,8 +141,21 @@ public:
     /// </summary>
     static size_t CurlWriteCallback(char *data, size_t size, size_t nmemb, std::string *buffer);
 
+    /// <summary>
+    /// Get a REST URL for secure key release
+    /// </summary>
+    /// <param name="KEKUrl">Key encryption key URL</param>
+    /// <returns>REST URL string</returns>
     static std::string GetKeyVaultSKRurl(const std::string &KEKUrl);
 
+    /// <summary>
+    /// Get secure key release response from KMS (Key Vault or mHSM)
+    /// </summary>
+    /// <param name="requestUri">SKR request URL</param>
+    /// <param name="access_token">Authorization token</param>
+    /// <param name="attestation_token">Attestation token</param>
+    /// <param name="nonce">Nonce value to send</param>
+    /// <returns>SKR reponse from KMS</returns>
     static std::string GetKeyVaultResponse(const std::string &requestUri,
                                            const std::string &access_token,
                                            const std::string &attestation_token,
@@ -151,7 +164,7 @@ public:
     /// <summary>
     /// Retrieve MSI token from IMDS servce
     /// </summary>
-    /// <param name="KEKUrl">AKV or mHSM key encryption key url</param>
+    /// <param name="KEKUrl">Key encryption key URL</param>
     /// <returns>MSI token for the resource</returns>
     static std::string GetIMDSToken(const std::string &KEKUrl);
 
@@ -181,12 +194,13 @@ public:
     /// </summary>
     /// <param name="attestation_url">Attestation service URL.</param>
     /// <param name="nonce">unique nonce per attestation request.</param>
-    /// <param name="KEKUrl">AKV URL of the key</param>
+    /// <param name="KEKUrl">Key encryption key URL</param>
     /// <param name="pkey">OpenSSL key representation</param>
     /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
     /// <returns>True if successful</returns>
     static bool doSKR(const std::string &attestation_url,
-                      const std::string &nonce, std::string KEKUrl,
+                      const std::string &nonce,
+                      std::string KEKUrl,
                       EVP_PKEY **pkey,
                       const Util::AkvCredentialSource &akv_credential_source);
 
