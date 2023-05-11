@@ -19,7 +19,7 @@ Guest attestation is the process of cryptographically appraising a VM’s report
 
 ## Build Instructions for Linux
 
-Create a Linux Confidential or Trusted Launch virtual machine in Azure and clone the application.
+Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
 
 Use the below command to install the `build-essential` package. This package will install everything required for compiling our sample application written in C++.
 ```sh
@@ -31,6 +31,7 @@ Install the below packages
 $ sudo apt-get install libcurl4-openssl-dev
 $ sudo apt-get install libjsoncpp-dev
 $ sudo apt-get install libboost-all-dev
+$ sudo apt-get install cmake
 $ sudo apt install nlohmann-json3-dev
 ```
 
@@ -44,7 +45,7 @@ $ sudo dpkg -i azguestattestation1_1.0.2_amd64.deb
 Once the above packages have been installed, use the below steps to build and run the app
 
 ```sh
-$ cd attestation-app-linux/
+$ cd cvm-attestation-sample-app/
 $ cmake .
 $ make
 $ sudo ./AttestationClient -o token
