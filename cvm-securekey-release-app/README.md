@@ -9,16 +9,13 @@ Create a Linux Confidential or Trusted Launch virtual machine in Azure and clone
 Use the below command to install the `build-essential` package. This package will install everything required for compiling our sample application written in C++.
 
 ```sh
-$ sudo apt-get install build-essential
+$ sudo apt-get install -y build-essential
 ```
 
 Install the below packages
 
 ```sh
-$ sudo apt-get install libcurl4-openssl-dev
-$ sudo apt-get install libjsoncpp-dev
-$ sudo apt-get install libboost-all-dev
-$ sudo apt install nlohmann-json3-dev
+$ sudo apt-get install -y libssl-dev libcurl4-openssl-dev libjsoncpp-dev libboost-all-dev nlohmann-json3-dev cmake
 ```
 
 Download the attestation package from the following location - https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/
@@ -26,6 +23,7 @@ Download the attestation package from the following location - https://packages.
 Use the below command to install the attestation package
 
 ```sh
+$ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.5_amd64.deb
 $ sudo dpkg -i azguestattestation1_1.0.5_amd64.deb
 ```
 
@@ -34,7 +32,7 @@ Once the above packages have been installed, use below steps to build and run th
 ```sh
 $ cd cvm-securekey-release-app/
 $ mkdir build && cd build
-$ cmake .. -DCMAKE_BUILD_TYPE=Release  # Debug for more tracing output.
+$ cmake .. -DCMAKE_BUILD_TYPE=Release  # Debug for more tracing output and define TRACE constant in CMakeLists.txt
 $ make
 ```
 
