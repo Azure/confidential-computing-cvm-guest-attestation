@@ -8,7 +8,6 @@ add_definitions(-DPLATFORM_UNIX)
 
 include_directories(
     /usr/include/azguestattestation1
-    /usr/include/jsoncpp
     src/
 )
 
@@ -23,4 +22,3 @@ add_executable(${CMAKE_PROJECT_TARGET}
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation)
 target_link_libraries(${CMAKE_PROJECT_TARGET} curl)
-target_link_libraries(${CMAKE_PROJECT_TARGET} jsoncpp)

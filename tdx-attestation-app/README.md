@@ -1,14 +1,24 @@
 # Hardware Attestation
 
-## Build Instructions for Linux
-
-Create a Linux Trusted Domain virtual machine in Azure and clone the application.
+## Instructions for Ubuntu
+Create an Ubuntu Trusted Domain virtual machine in Azure and clone the application.
 
 Use the below command to install all the dependencies necessary to run this sample app.
 ```sh
 $ sudo ./install.sh
 ```
 
+## Instructions for SUSE
+Create a SUSE Trusted Domain virtual machine in Azure and clone the application.
+
+> If git is not installed, run `sudo zypper install git`
+
+Use the below command to install all the dependencies necessary to run this sample app.
+```sh
+$ sudo ./suse_install.sh
+```
+
+## Build
 Once the above install script is done, use the below steps to build and run the app
 
 ```sh
