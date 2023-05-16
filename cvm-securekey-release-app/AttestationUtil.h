@@ -21,6 +21,7 @@ typedef unsigned long DWORD;
 #define GetLastError() errno
 #endif
 
+#include <openssl/opensslv.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/pkcs7.h>

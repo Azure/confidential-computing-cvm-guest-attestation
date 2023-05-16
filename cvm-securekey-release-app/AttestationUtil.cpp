@@ -407,6 +407,21 @@ std::vector<std::string> Util::SplitString(const std::string &str, char delim)
     return result;
 }
 
+/// Get the modulus size in bytes of RSA key.
+int RSA_get_size(EVP_PKEY *pkey)
+{
+    int rsaModulusSize = 0;
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+    // It is OSSL >= 3.0
+    rsaModulusSize = EVP_PKEY_get_size(pkey);
+#else
+    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
+    rsaModulusSize = RSA_size(rsa);
+#endif
+
+    return rsaModulusSize;
+}
+
 /// handle openssl errors
 static void handle_openssl_errors(void)
 {
@@ -913,7 +928,7 @@ std::string Util::WrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    int rsaSize = EVP_PKEY_get_size(pkey);
+    int rsaSize = RSA_get_size(pkey);
     TRACE_OUT("Wrapping: %s", sym_key.c_str());
 
     size_t encrypted_length = 0;
@@ -953,7 +968,7 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    int rsaSize = EVP_PKEY_get_size(pkey);
+    int rsaSize = RSA_get_size(pkey);
     TRACE_OUT("Unwrapping: %s\n", wrapped_key_base64.c_str());
     std::vector<BYTE> wrapped_key = Util::base64_to_binary(wrapped_key_base64);
 
