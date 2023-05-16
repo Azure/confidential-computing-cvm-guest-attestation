@@ -663,7 +663,7 @@ bool Util::doSKR(const std::string &attestation_url,
         }
         else
         {
-            access_token = std::move(Util::GetIMDSToken());
+            access_token = std::move(Util::GetIMDSToken(KEKUrl));
         }
 
         TRACE_OUT("AkvMsiAccessToken: %s", access_token.c_str());
@@ -913,8 +913,7 @@ std::string Util::WrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
-    int rsaSize = RSA_size(rsa);
+    int rsaSize = EVP_PKEY_get_size(pkey);
     TRACE_OUT("Wrapping: %s", sym_key.c_str());
 
     size_t encrypted_length = 0;
@@ -954,8 +953,7 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
-    int rsaSize = RSA_size(rsa);
+    int rsaSize = EVP_PKEY_get_size(pkey);
     TRACE_OUT("Unwrapping: %s\n", wrapped_key_base64.c_str());
     std::vector<BYTE> wrapped_key = Util::base64_to_binary(wrapped_key_base64);
 
