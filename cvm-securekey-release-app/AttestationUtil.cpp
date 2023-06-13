@@ -663,7 +663,7 @@ bool Util::doSKR(const std::string &attestation_url,
         }
         else
         {
-            access_token = std::move(Util::GetIMDSToken());
+            access_token = std::move(Util::GetIMDSToken(KEKUrl));
         }
 
         TRACE_OUT("AkvMsiAccessToken: %s", access_token.c_str());
