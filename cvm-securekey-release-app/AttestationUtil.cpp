@@ -981,3 +981,35 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
 
     return Util::base64_decode(plainText);
 }
+
+bool Util::ReleaseKey(const std::string &attestation_url,
+                      const std::string &nonce,
+                      const std::string &key_enc_key_url,
+                      const Util::AkvCredentialSource &akv_credential_source)
+{
+    TRACE_OUT("Entering Util::ReleaseKey()");
+
+    EVP_PKEY *pkey = nullptr;
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
+    {
+        std::cerr << "Failed to release the private key" << std::endl;
+        return false;
+    }
+
+    TRACE_OUT("Key release completed successfully.");
+
+    // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey
+    switch (EVP_PKEY_base_id(pkey))
+    {
+    case EVP_PKEY_RSA:
+    case EVP_PKEY_RSA2:
+        std::cout << "The released key is of type RSA. It can be used for wrapKey/unwrapKey operations." << std::endl;
+        return true;
+    case EVP_PKEY_EC:
+        std::cout << "The released key is of type EC. It can be used for sign/verify operations." << std::endl;
+        return true;
+    default:
+        std::cout << "The released key is of type " << EVP_PKEY_base_id(pkey) << ". Not sure what operations are supported." << std::endl;
+        return false;
+    }
+}
