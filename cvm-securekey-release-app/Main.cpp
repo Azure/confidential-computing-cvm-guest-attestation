@@ -96,13 +96,15 @@ int main(int argc, char *argv[])
             break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
-            return -2;
+            return EXIT_FAILURE;
         default:
             usage(argv[0]);
-            return -3;
+            return EXIT_FAILURE;
         }
     }
 
+    bool success = false;
+    int retVal = 0;
     try
     {
         std::string result;
@@ -117,19 +119,19 @@ int main(int argc, char *argv[])
             std::cout << result << std::endl;
             break;
         case Operation::ReleaseKey:
-            bool success = Util::ReleaseKey(attestation_url, nonce, key_enc_key_url, akv_credential_source);
-            return success ? EXIT_SUCCESS : EXIT_FAILURE;
+            success = Util::ReleaseKey(attestation_url, nonce, key_enc_key_url, akv_credential_source);
+            retVal = success ? EXIT_SUCCESS : EXIT_FAILURE;
             break;
         default:
             usage(argv[0]);
-            return -4;
+            retVal = EXIT_FAILURE;
         }
     }
     catch (std::exception &e)
     {
         std::cerr << "Exception occured. Details: " << e.what() << std::endl;
-        return -5;
+        retVal = EXIT_FAILURE;
     }
 
-    return 0;
+    return retVal;
 }
