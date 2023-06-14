@@ -233,4 +233,17 @@ public:
                                  const std::string &cipherText,
                                  const std::string &key_enc_key,
                                  const Util::AkvCredentialSource &akv_credential_source);
+
+    /// <summary>
+    /// Release the RSA or EC private key from KMS.
+    /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
+    /// <param name="key_enc_key">KEK</param>
+    /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
+    /// <returns>True if key release succeeds, False otherwise</returns>
+    static bool ReleaseKey(const std::string &attestation_url,
+                                  const std::string &nonce,
+                                  const std::string &key_enc_key,
+                                  const Util::AkvCredentialSource &akv_credential_source);
 };
