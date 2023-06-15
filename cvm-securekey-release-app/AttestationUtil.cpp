@@ -155,11 +155,22 @@ static inline std::string GetImdsTokenUrl(std::string url)
     oss << "?api-version=" << Constants::IMDS_API_VERSION;
     oss << "&resource=" << Util::url_encode(url);
 
+    // Client id is optional if there is only 1 client id registered for the VM.
     auto client_id = std::getenv("IMDS_CLIENT_ID");
     if (client_id != nullptr && strlen(client_id) > 0)
     {
         oss << "&client_id=" << client_id;
     }
+    else
+    {
+        // If client id is not provided, msi_res_id (ARM resource id) could be provided.
+        auto msi_res_id = std::getenv("IMDS_MSI_RES_ID");
+        if (msi_res_id != nullptr && strlen(msi_res_id) > 0)
+        {
+            oss << "&msi_res_id=" << msi_res_id;
+        }
+    }
+
 
     return oss.str();
 }
