@@ -155,12 +155,23 @@ static inline std::string GetImdsTokenUrl(std::string url)
     oss << "?api-version=" << Constants::IMDS_API_VERSION;
     oss << "&resource=" << Util::url_encode(url);
 
+    // Client id is optional if there is only 1 client id registered for the VM.
     auto client_id = std::getenv("IMDS_CLIENT_ID");
     if (client_id != nullptr && strlen(client_id) > 0)
     {
         oss << "&client_id=" << client_id;
     }
+    else
+    {
+        // If client id is not provided, msi_res_id (ARM resource id) could be provided.
+        auto msi_res_id = std::getenv("IMDS_MSI_RES_ID");
+        if (msi_res_id != nullptr && strlen(msi_res_id) > 0)
+        {
+            oss << "&msi_res_id=" << Util::url_encode(msi_res_id);
+        }
+    }
 
+    TRACE_OUT("IMDS token URL: %s", oss.str().c_str());
     return oss.str();
 }
 
@@ -414,7 +425,7 @@ int RSA_get_size(EVP_PKEY *pkey)
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
     // It is OSSL >= 3.0
     // TODO: investigate why EVP_PKEY_get_size causes SIGSEGV in OSSL 3.0
-    //rsaModulusSize = EVP_PKEY_get_size(pkey);
+    // rsaModulusSize = EVP_PKEY_get_size(pkey);
 
     // fallback to deprecated API until above issue is resolved.
     RSA *rsa = EVP_PKEY_get1_RSA(pkey);
