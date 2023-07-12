@@ -1,0 +1,304 @@
+{
+	"anyOf": [
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedeus.eus.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedeus2.eus2.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedscus.scus.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedncus.ncus.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedcus.cus.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedcae.cae.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedcac.cac.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedwus.wus.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedneu.neu.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedweu.weu.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedsasia.sasia.attest.azure.net/"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://shareduks.uks.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedukw.ukw.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedeau.eau.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedsau.sau.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedjpe.jpe.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedjpw.jpw.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedeasia.easia.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedsan.san.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedswn.swn.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedsbr.sbr.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://shareduaen.uaen.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+					"equals": "sevsnpvm"
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://shareditn.itn.attest.azure.net"
+		}
+	],
+	"version": "1.0.0"
+}
