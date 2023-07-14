@@ -58,8 +58,10 @@ $secureboot        = $true
 $vtpm              = $true
 
 # Linux SSH credentials.
+$dummyPass = [System.Guid]::NewGuid().ToString() | ConvertTo-SecureString -AsPlainText -Force  # Linux does not use passwd
+$cred = New-Object System.Management.Automation.PSCredential ($user, $dummyPass)
 # Replace below with your ssh pub key. This is in the format of ssh-rsa AAAAB3NzaC1y..... For more info: https://learn.microsoft.com/en-us/azure/virtual-machines/linux/ssh-from-windows
-$sshPubKeyRSA      = "ssh-rsa __SSH_RSA_PUB_KEY_HERE__"
+$sshPubKeyRSA = "ssh-rsa __SSH_RSA_PUB_KEY_HERE__"
 
 #### End of step 1
 
@@ -103,12 +105,8 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 # Network resources
 $frontendSubnet = New-AzVirtualNetworkSubnetConfig -Name $subnetname -AddressPrefix $subnetAddress
 $vnet = New-AzVirtualNetwork -Name $vnetname -ResourceGroupName $resourceGroup -Location $location -AddressPrefix $vnetAddress -Subnet $frontendSubnet -Force
-### TODO: Remove the NSG rule
-$nsgRuleSSH1 = New-AzNetworkSecurityRuleConfig -Name SSHCorp  -Protocol Tcp  -Direction Inbound -Priority 1001 -SourceAddressPrefix CorpNetPublic -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 22 -Access Allow
-$nsgRuleSSH2 = New-AzNetworkSecurityRuleConfig -Name SSHSaw  -Protocol Tcp  -Direction Inbound -Priority 1002 -SourceAddressPrefix CorpNetSaw -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 22 -Access Allow
-$nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $NSGName  -SecurityRules $nsgRuleSSH1,$nsgRuleSSH2 -Force
 $publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Force
-$nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -NetworkSecurityGroupId $nsg.Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
+$nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
 
 # VM creation
 $vmConfig = New-AzVMConfig -VMName $cvmName -VMSize $VMSize

@@ -25,7 +25,7 @@ if ((Get-Module Az.Compute).Version.Major -lt 6)
 $subscriptionId    = "__SUB_ID_HERE__"                                      # User must have at least contributor access.
 $user              = $env:USERNAME
 $suffix            = [System.Guid]::NewGuid().ToString().Substring(0,8)     # Suffix to append to resources.
-$resourceGroup     = "$user-lnx-dde-$suffix"                                # The RG will be created
+$resourceGroup     = "$user-win-dde-$suffix"                                # The RG will be created
 $location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe". See: 
 $kvName            = "$user-akv-$suffix"                                    # AKV will be created.
 $rsaKeyName        = "$user-dde-key1"                                       # RSA key will be created
@@ -75,7 +75,6 @@ New-AzResourceGroup -Name $resourceGroup -Location $location
 
 New-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup -Location $location -Sku Premium -EnablePurgeProtection
 $keyvault = Get-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup
-$skrContent = Get-Content -Path $skrPolicyFile
 Add-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName -Destination HSM -KeyType RSA -Size 3072 -KeyOps wrapKey,unwrapKey -Exportable -ReleasePolicyPath $skrPolicyFile
 $rsaKey = Get-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName
 
@@ -102,12 +101,8 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 # Network resources
 $frontendSubnet = New-AzVirtualNetworkSubnetConfig -Name $subnetname -AddressPrefix $subnetAddress
 $vnet = New-AzVirtualNetwork -Name $vnetname -ResourceGroupName $resourceGroup -Location $location -AddressPrefix $vnetAddress -Subnet $frontendSubnet -Force
-### TODO: Remove the NSG rule
-$nsgRuleRDP1 = New-AzNetworkSecurityRuleConfig -Name RDPCorp  -Protocol Tcp  -Direction Inbound -Priority 1001 -SourceAddressPrefix CorpNetPublic -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Allow
-$nsgRuleRDP2 = New-AzNetworkSecurityRuleConfig -Name RDPSaw  -Protocol Tcp  -Direction Inbound -Priority 1002 -SourceAddressPrefix CorpNetSaw -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Allow
-$nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $NSGName  -SecurityRules $nsgRuleRDP1,$nsgRuleRDP2 -Force
-$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Force
-$nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -NetworkSecurityGroupId $nsg.Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
+$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Zone  -Force
+$nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
 
 # VM creation
 $vmConfig = New-AzVMConfig -VMName $cvmName -VMSize $VMSize
