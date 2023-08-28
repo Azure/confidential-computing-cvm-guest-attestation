@@ -22,7 +22,12 @@
 
 void usage(char *programName)
 {
-    printf("Usage: %s -a <attestation-endpoint> -n <optional-nonce> -k KEK -c (imds|sp) -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
+    printf("Usage: \n");
+    printf("\tRelease RSA or EC key:\n");
+    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KeyURL -c (imds|sp) -r \n", programName);
+    printf("\n");
+    printf("\tRelease RSA key and wrap/unwrap symmetric key:\n");
+    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s symkey|base64(wrappedSymKey) -w|-u (Wrap|Unwrap) \n", programName);
 }
 
 enum class Operation
@@ -30,6 +35,7 @@ enum class Operation
     None,
     WrapKey,
     UnwrapKey,
+    ReleaseKey,
     Undefined
 };
 
@@ -45,7 +51,7 @@ int main(int argc, char *argv[])
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uw")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uwr")) != -1)
     {
         switch (opt)
         {
@@ -84,15 +90,21 @@ int main(int argc, char *argv[])
             sym_key.assign(optarg);
             TRACE_OUT("sym_key: %s", sym_key.c_str());
             break;
+        case 'r':
+            op = Operation::ReleaseKey;
+            TRACE_OUT("op: %d", static_cast<int>(op));
+            break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
-            return -2;
+            return EXIT_FAILURE;
         default:
             usage(argv[0]);
-            return -3;
+            return EXIT_FAILURE;
         }
     }
 
+    bool success = false;
+    int retVal = 0;
     try
     {
         std::string result;
@@ -106,16 +118,20 @@ int main(int argc, char *argv[])
             result = Util::UnwrapKey(attestation_url, nonce, sym_key, key_enc_key_url, akv_credential_source);
             std::cout << result << std::endl;
             break;
+        case Operation::ReleaseKey:
+            success = Util::ReleaseKey(attestation_url, nonce, key_enc_key_url, akv_credential_source);
+            retVal = success ? EXIT_SUCCESS : EXIT_FAILURE;
+            break;
         default:
             usage(argv[0]);
-            return -4;
+            retVal = EXIT_FAILURE;
         }
     }
     catch (std::exception &e)
     {
         std::cerr << "Exception occured. Details: " << e.what() << std::endl;
-        return -5;
+        retVal = EXIT_FAILURE;
     }
 
-    return 0;
+    return retVal;
 }

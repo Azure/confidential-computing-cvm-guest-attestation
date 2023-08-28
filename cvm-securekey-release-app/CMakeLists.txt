@@ -29,4 +29,4 @@ add_executable(${CMAKE_PROJECT_TARGET}
     Main.cpp
 )
 
-target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation curl jsoncpp)
+target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation curl jsoncpp crypto)
