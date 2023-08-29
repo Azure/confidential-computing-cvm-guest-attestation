@@ -101,7 +101,7 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 # Network resources
 $frontendSubnet = New-AzVirtualNetworkSubnetConfig -Name $subnetname -AddressPrefix $subnetAddress
 $vnet = New-AzVirtualNetwork -Name $vnetname -ResourceGroupName $resourceGroup -Location $location -AddressPrefix $vnetAddress -Subnet $frontendSubnet -Force
-$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Zone  -Force
+$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Force
 $nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
 
 # VM creation
