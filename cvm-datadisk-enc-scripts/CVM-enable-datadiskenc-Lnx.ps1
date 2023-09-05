@@ -75,6 +75,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
+# Settings for Azure Key Vault (AKV)
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -86,6 +87,15 @@ $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
+
+# Settings for Azure managed HSM (mHSM). For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
+# $pubSettings = @{};
+# $pubSettings.Add("KeyEncryptionKeyURL", $MHSM_KEK_URL)
+# $pubSettings.Add("KekVaultResourceId", $MHSM_RID)
+# $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
+# $pubSettings.Add("VolumeType", "Data")
+# $pubSettings.Add("KeyStoreType", "ManagedHSM")
+# $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 Set-AzVMExtension `
 -ResourceGroupName $resourceGroup `
@@ -99,6 +109,6 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify: switch to the portal and verify that the extension provision is succeded.
-Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName
+Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
 
 #### End of step 5.

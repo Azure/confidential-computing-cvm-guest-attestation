@@ -101,7 +101,7 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 # Network resources
 $frontendSubnet = New-AzVirtualNetworkSubnetConfig -Name $subnetname -AddressPrefix $subnetAddress
 $vnet = New-AzVirtualNetwork -Name $vnetname -ResourceGroupName $resourceGroup -Location $location -AddressPrefix $vnetAddress -Subnet $frontendSubnet -Force
-$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Zone  -Force
+$publicIP = New-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $resourceGroup -AllocationMethod Static -DomainNameLabel $cvmName -Location $location -Sku Standard -Tier Regional -Force
 $nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -Location $location -SubnetId $vnet.Subnets[0].Id -EnableAcceleratedNetworking -Force -PublicIpAddressId $publicIP.Id
 
 # VM creation
@@ -178,6 +178,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
+# Settings for Azure Key Vault (AKV)
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -189,6 +190,15 @@ $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
+
+# Settings for Azure managed HSM (mHSM). For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
+# $pubSettings = @{};
+# $pubSettings.Add("KeyEncryptionKeyURL", $MHSM_KEK_URL)
+# $pubSettings.Add("KekVaultResourceId", $MHSM_RID)
+# $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
+# $pubSettings.Add("VolumeType", "Data")
+# $pubSettings.Add("KeyStoreType", "ManagedHSM")
+# $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 Set-AzVMExtension `
 -ResourceGroupName $resourceGroup `

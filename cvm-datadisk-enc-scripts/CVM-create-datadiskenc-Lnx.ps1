@@ -26,7 +26,7 @@ $subscriptionId    = "__SUB_ID_HERE__"                                      # Us
 $user              = $env:USERNAME
 $suffix            = [System.Guid]::NewGuid().ToString().Substring(0,8)     # Suffix to append to resources.
 $resourceGroup     = "$user-lnx-dde-$suffix"                                # The RG will be created
-$location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe". See: 
+$location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe", "Italy North" etc. For complete list, see https://learn.microsoft.com/en-us/azure/confidential-computing/confidential-vm-overview#regions
 $kvName            = "$user-akv-$suffix"                                    # AKV will be created.
 $rsaKeyName        = "$user-dde-key1"                                       # RSA key will be created
 $skrPolicyFile     = "C:\Temp\cvm\public_SKR_policy-datadisk.json"          # The SKR policy is slightly modified version for DDE. Copy it to your local and update path.
@@ -195,6 +195,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
+# Settings for Azure Key Vault (AKV)
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -207,6 +208,15 @@ $pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 $pubSettings.Add("EncryptFormatAll", "true") # This formats the data drives for faster encryption. Be warned!!
+
+# Settings for Azure managed HSM (mHSM). For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
+# $pubSettings = @{};
+# $pubSettings.Add("KeyEncryptionKeyURL", $MHSM_KEK_URL)
+# $pubSettings.Add("KekVaultResourceId", $MHSM_RID)
+# $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
+# $pubSettings.Add("VolumeType", "Data")
+# $pubSettings.Add("KeyStoreType", "ManagedHSM")
+# $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 Set-AzVMExtension `
 -ResourceGroupName $resourceGroup `
