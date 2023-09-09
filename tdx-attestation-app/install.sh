@@ -21,4 +21,4 @@ sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb
 sudo rm libssl1.1_1.1.1f-1ubuntu2_amd64.deb
 
 # Install GuestAttestation Debian Package
-sudo dpkg -i package/azguestattestation1_1.0.3_amd64.deb
+sudo dpkg -i package/azguestattestation1_1.0.5_amd64.deb
