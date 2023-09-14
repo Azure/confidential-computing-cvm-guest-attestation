@@ -10,4 +10,4 @@ The code in this directory is to demonstrate how to turn on temp and data disk e
 - If you already provisioned the necessary resources, go with CVM-enable-datadiskenc-*.ps1
 - Otherwise, to create the resources, go with CVM-create-datadiskenc-*.ps1
 
-3. Update the place holders in the script file and follow the comments to execute in Powershell ISE.
+3. Update the place holders in the script file and follow the comments to execute in Powershell ISE or Azure Cloud Shell in portal.
