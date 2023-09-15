@@ -232,7 +232,9 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify that the extension provision has succeded.
-Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+$status
+$status.SubStatuses
 
 # Verify lsblk output. Similar to:
 #sdb                                                        8:16   0   75G  0 disk

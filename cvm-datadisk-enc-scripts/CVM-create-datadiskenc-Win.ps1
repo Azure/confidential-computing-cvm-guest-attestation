@@ -215,7 +215,9 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify that the extension provision has succeded.
-Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+$status
+$status.SubStatuses
 
 # Verify in diskmgmt.msc that existing temp and data volumes got encrypted.
 # Create additional volumes and and observe they get encrypted.

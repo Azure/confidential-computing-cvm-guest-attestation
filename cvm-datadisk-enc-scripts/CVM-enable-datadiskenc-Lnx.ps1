@@ -57,7 +57,6 @@ Update-AzVM -VM $vm -ResourceGroupName $resourceGroup -IdentityType UserAssigned
 #### Step 4 - Create a Key Encryption Key in Azure Key Vault and assign permissions.
 
 Add-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName -Destination HSM -KeyType RSA -Size 3072 -KeyOps wrapKey,unwrapKey -Exportable -ReleasePolicyPath $skrPolicyFile
-$rsaKey = Get-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName
 # Assign Get,Release permissions on the CMK to the User assigned MI.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $userAssignedMI.PrincipalId -PermissionsToKeys get,release
 
@@ -66,7 +65,6 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 #### Step 5 - Install ADE with public settings defined below.
 
 $keyvault = Get-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup
-Add-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName -Destination HSM -KeyType RSA -Size 3072 -KeyOps wrapKey,unwrapKey -Exportable -ReleasePolicyPath $skrPolicyFile
 $rsaKey = Get-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName
 
 # ADE settings:
@@ -117,6 +115,8 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify: switch to the portal and verify that the extension provision is succeded.
-Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+$status
+$status.SubStatuses
 
 #### End of step 5.
