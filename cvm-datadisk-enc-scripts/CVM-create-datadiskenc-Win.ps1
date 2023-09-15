@@ -22,27 +22,28 @@ if ((Get-Module Az.Compute).Version.Major -lt 6)
 
 #### Step 1 - Set the global parameters which will be used throughout the script.
 
-$subscriptionId    = "__SUB_ID_HERE__"                                      # User must have at least contributor access.
-$inCloudShell      = if ($env:AZD_IN_CLOUDSHELL) { $true } else { $false }  # Determine if running in CloudShell.
-$user              = $inCloudShell ? $env:LOGNAME : $env:USERNAME           # in CloudShell, it is LOGNAME.
-$suffix            = [System.Guid]::NewGuid().ToString().Substring(0,8)     # Suffix to append to resources.
-$resourceGroup     = "$user-win-dde-$suffix"                                # The RG will be created
-$location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe", "Italy North" etc. For complete list, see https://learn.microsoft.com/en-us/azure/confidential-computing/confidential-vm-overview#regions 
-$kvName            = "$user-akv-$suffix"                                    # AKV will be created.
-$rsaKeyName        = "$user-dde-key1"                                       # RSA key will be created
+$subscriptionId    = "__SUB_ID_HERE__"                                          # User must have at least contributor access.
+$inCloudShell      = if ($env:AZD_IN_CLOUDSHELL) { $true } else { $false }      # Determine if running in CloudShell.
+$user              = if ($inCloudShell) { $env:LOGNAME } else { $env:USERNAME } # in CloudShell, it is LOGNAME.
+$suffix            = [System.Guid]::NewGuid().ToString().Substring(0,8)         # Suffix to append to resources.
+$resourceGroup     = "$user-win-dde-$suffix"                                    # The RG will be created
+$location          = "West US"                                                  # "West US", "East US", "North Europe", "West Europe", "Italy North" etc. For complete list, see https://learn.microsoft.com/en-us/azure/confidential-computing/confidential-vm-overview#regions 
+$kvName            = "$user-akv-$suffix"                                        # AKV will be created.
+$rsaKeyName        = "$user-dde-key1"                                           # RSA key will be created
 # The SKR policy is slightly modified version for DDE. Copy it to your cloud shell or local drive and update path.
-$skrPolicyFile     = $inCloudShell ? "public_SKR_policy-datadisk.json" : "C:\Temp\cvm\public_SKR_policy-datadisk.json"
-$uaManagedIdentity = "$user-ade-uai"                                        # User assigned identity will be created.
+$skrPolicyFile     = if ($inCloudShell) { "public_SKR_policy-datadisk.json" } else { "C:\Temp\cvm\public_SKR_policy-datadisk.json" }
+$uaManagedIdentity = "$user-ade-uai"                                            # User assigned identity will be created.
 
 # CVM settings
-$cvmName           = "$user-cvm-w22-5".Substring(0, 14)                     # CVM name must be <= 15 chars.
+$infix             = [System.Guid]::NewGuid().ToString().Substring(0,4)
+$cvmName           = "cvm-$infix-w22"                                           # CVM name must be <= 15 chars.
 $vnetname          = "myVnet"
 $vnetAddress       = "10.0.0.0/16"
 $subnetname        = "slb" + $resourceGroup
 $subnetAddress     = "10.0.2.0/24"
 $NICName           = $cvmName+ "-nic"
 $PublicIPName      = $cvmName+ "-ip2"
-$VMSize            = "Standard_DC2as_v5"
+$VMSize            = "Standard_DC2ads_v5"
 $PublisherName     = "MicrosoftWindowsServer"
 $Offer             = "WindowsServer"
 $SKU               = "2022-datacenter-smalldisk-g2"                         # You can choose Win Srv {2019, 2022} or Win Client 11.

@@ -29,7 +29,7 @@ $location          = "__REGION_HERE__"                                      # Az
 $kvName            = "__AKV_NAME_HERE__"                                    # Azure KeyVault name. It must exists
 $rsaKeyName        = "__RSA_KEY_NAME_HERE__"                                # RSA key will be created and associated with an SKR policy for DDE.
 # The SKR policy is slightly modified version for DDE. Copy it to your cloud shell or local drive and update path.
-$skrPolicyFile     = $inCloudShell ? "public_SKR_policy-datadisk.json" : "C:\Temp\cvm\public_SKR_policy-datadisk.json"
+$skrPolicyFile     = if ($inCloudShell) { "public_SKR_policy-datadisk.json" } else { "C:\Temp\cvm\public_SKR_policy-datadisk.json" }
 $uaManagedIdentity = "__MANAGED_ID_NAME_HERE__"                             # The user assigned managed identity must be created and granted Get,Release permissions in AKV. Paste here the ARM resource id, or client_id=<GUID>, or object_id=<GUID< format.
 
 #### End of step 1
