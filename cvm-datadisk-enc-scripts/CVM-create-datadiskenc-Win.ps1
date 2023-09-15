@@ -1,6 +1,6 @@
 ﻿#
 # This script can be used to create an Azure Windows confidential VM and turn data disk encryption (DDE) feature on.
-# Usage: Open this script file in "Windows PowerShell ISE". Review and update each "Step". Afterwards, highlight the section and hit F8 to run.
+# Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
 #
 # Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on
 #               2-) One or more data disks are attached and partitioned. The volumes are formatted as NTFS.
@@ -23,28 +23,26 @@ if ((Get-Module Az.Compute).Version.Major -lt 6)
 #### Step 1 - Set the global parameters which will be used throughout the script.
 
 $subscriptionId    = "__SUB_ID_HERE__"                                      # User must have at least contributor access.
-$user              = $env:USERNAME
+$inCloudShell      = if ($env:AZD_IN_CLOUDSHELL) { $true } else { $false }  # Determine if running in CloudShell.
+$user              = $inCloudShell ? $env:LOGNAME : $env:USERNAME           # in CloudShell, it is LOGNAME.
 $suffix            = [System.Guid]::NewGuid().ToString().Substring(0,8)     # Suffix to append to resources.
 $resourceGroup     = "$user-win-dde-$suffix"                                # The RG will be created
-$location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe". See: 
+$location          = "West US"                                              # "West US", "East US", "North Europe", "West Europe", "Italy North" etc. For complete list, see https://learn.microsoft.com/en-us/azure/confidential-computing/confidential-vm-overview#regions 
 $kvName            = "$user-akv-$suffix"                                    # AKV will be created.
 $rsaKeyName        = "$user-dde-key1"                                       # RSA key will be created
-$skrPolicyFile     = "C:\Temp\cvm\public_SKR_policy-datadisk.json"          # The SKR policy is slightly modified version for DDE. Copy it to your local and update path.
+# The SKR policy is slightly modified version for DDE. Copy it to your cloud shell or local drive and update path.
+$skrPolicyFile     = $inCloudShell ? "public_SKR_policy-datadisk.json" : "C:\Temp\cvm\public_SKR_policy-datadisk.json"
 $uaManagedIdentity = "$user-ade-uai"                                        # User assigned identity will be created.
 
 # CVM settings
-$cvmName           = "$user-cvm-w22"                                        # CVM will be created.
-$domainNameLabel   = "d1" + $resourceGroup
+$cvmName           = "$user-cvm-w22-5".Substring(0, 14)                     # CVM name must be <= 15 chars.
 $vnetname          = "myVnet"
 $vnetAddress       = "10.0.0.0/16"
 $subnetname        = "slb" + $resourceGroup
 $subnetAddress     = "10.0.2.0/24"
-$OSDiskName        = $cvmName + "-osdisk"
 $NICName           = $cvmName+ "-nic"
-$NSGName           = $cvmName + "-NSG"
 $PublicIPName      = $cvmName+ "-ip2"
-$OSDiskSizeinGB    = 32
-$VMSize            = "Standard_DC2ads_v5"
+$VMSize            = "Standard_DC2as_v5"
 $PublisherName     = "MicrosoftWindowsServer"
 $Offer             = "WindowsServer"
 $SKU               = "2022-datacenter-smalldisk-g2"                         # You can choose Win Srv {2019, 2022} or Win Client 11.
@@ -65,6 +63,7 @@ $cred = New-Object System.Management.Automation.PSCredential ($user, $StrongPass
 #### Step 2 - Login to Azure and create a resource group
 
 Login-AzAccount -Subscription $subscriptionId
+Select-AzSubscription -SubscriptionId $subscriptionId
 New-AzResourceGroup -Name $resourceGroup -Location $location
 
 #### End of step 2
@@ -74,6 +73,10 @@ New-AzResourceGroup -Name $resourceGroup -Location $location
 #### Step 3 - Create a premium Azure Key Vault (or managed HSM, see online docs)
 
 New-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup -Location $location -Sku Premium -EnablePurgeProtection
+if ($inCloudShell) {
+    Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -PermissionsToKeys all -UserPrincipalName $env:ACC_OID
+}
+
 $keyvault = Get-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup
 Add-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName -Destination HSM -KeyType RSA -Size 3072 -KeyOps wrapKey,unwrapKey -Exportable -ReleasePolicyPath $skrPolicyFile
 $rsaKey = Get-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName
@@ -88,7 +91,7 @@ New-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resource
 $userAssignedMI = Get-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Sleep 30
+Start-Sleep 30
 # Assign Get,Release permissions on the CMK to the User assigned MI.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $userAssignedMI.PrincipalId -PermissionsToKeys get,release
 
@@ -123,7 +126,7 @@ $desConfig | New-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resource
 $des = Get-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Sleep 30
+Start-Sleep 30
 # Assign wrapKey,UnwrapKey for Confidential OS disk encryption.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $des.Identity.PrincipalId -PermissionsToKeys get,wrapKey,unwrapKey
 
@@ -175,7 +178,7 @@ $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryption"
 $ExtHandlerVer               = "2.4"
 $EncryptionOperation         = "EnableEncryption"
-$PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
+$PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"   # After public preview, this will be renamed to NoConfidentialEncryptionTempDisk and defaults to false; so temp disk enc is on by default.
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
 # Settings for Azure Key Vault (AKV)
@@ -185,7 +188,7 @@ $pubSettings.Add("KeyVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionKeyURL", $KEK_URL)
 $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
-$pubSettings.Add("EncryptionManagedIdentity", $KV_UAI_RID)
+$pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)       # this could also be client_id=<GUID1> or object_id=<GUID2>
 $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
@@ -212,7 +215,9 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify that the extension provision has succeded.
-Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+$status
+$status.SubStatuses
 
 # Verify in diskmgmt.msc that existing temp and data volumes got encrypted.
 # Create additional volumes and and observe they get encrypted.
