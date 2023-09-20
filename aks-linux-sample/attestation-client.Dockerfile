@@ -11,8 +11,8 @@ RUN apt update && apt upgrade -y && \
     wget \
     git
 
-RUN wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.2_amd64.deb
-RUN dpkg -i azguestattestation1_1.0.2_amd64.deb
+RUN wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.5_amd64.deb
+RUN dpkg -i azguestattestation1_1.0.5_amd64.deb
 
 COPY . .
 
