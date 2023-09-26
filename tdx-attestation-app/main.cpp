@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
     auto start = high_resolution_clock::now();
 
     unsigned char *evidence = nullptr;
-    result = attestation_client->GetHardwarePlatformEvidence(&evidence, client_payload, hash_type[provider]);
+    result = attestation_client->GetHardwarePlatformEvidence(&evidence);
     quote_data = reinterpret_cast<char *>(evidence);
 
     auto stop = high_resolution_clock::now();

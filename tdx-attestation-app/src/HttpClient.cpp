@@ -4,7 +4,6 @@
 // </copyright>
 //-------------------------------------------------------------------------------------------------
 
-#include <curl/curl.h>
 #include <math.h>
 #include <fstream>
 #include <iostream>
