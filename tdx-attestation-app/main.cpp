@@ -165,7 +165,9 @@ int main(int argc, char *argv[]) {
 
     auto start = high_resolution_clock::now();
 
-    result = attestation_client->GetHardwarePlatformEvidence(quote_data, client_payload, hash_type[provider]);
+    unsigned char *evidence = nullptr;
+    result = attestation_client->GetHardwarePlatformEvidence(&evidence);
+    quote_data = reinterpret_cast<char *>(evidence);
 
     auto stop = high_resolution_clock::now();
     duration<double, std::milli> elapsed = stop - start;
@@ -199,8 +201,7 @@ int main(int argc, char *argv[]) {
           cout << stream.str() << endl;;
       }
 
-      std::string encoded_claims =
-          Utils::binary_to_base64url(std::vector<unsigned char>(client_payload.begin(), client_payload.end()));
+      std::string encoded_claims = json_response["runtimeData"]["data"];
 
       HttpClient http_client;
       AttestClient::Config attestation_config = {
