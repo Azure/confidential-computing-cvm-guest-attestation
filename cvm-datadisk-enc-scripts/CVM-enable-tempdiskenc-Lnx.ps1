@@ -36,8 +36,6 @@ Select-AzSubscription -SubscriptionId $subscriptionId
 
 #### Step 3 - Install ADE with public settings defined below.
 
-$keyvault = Get-AzKeyVault -VaultName $kvName -ResourceGroupName "fican-rg" #$resourceGroup  # FIX
-
 # ADE settings for enabling temp disk only.
 $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryptionForLinux"
