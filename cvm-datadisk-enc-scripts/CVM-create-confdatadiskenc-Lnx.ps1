@@ -1,12 +1,15 @@
-﻿#
-# This script can be used to create an Azure Linux confidential VM and turn data disk encryption (DDE) feature on.
-# Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
-#
-# Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on
-#               2-) One or more data disks are attached and partitioned. The volumes are formatted as ext4 or xfs.
-#               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
-#               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
-#
+﻿<#
+.SYNOPSIS
+ This script can be used to create an Azure Linux confidential VM and turn data disk encryption on.
+ Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
+
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on
+               2-) One or more data disks are attached and partitioned. The volumes are formatted as ext4 or xfs.
+               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
+               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
+
+Status: This script is for private preview. Do not use in Production.
+#>
 
 
 #### Step 0: Make sure your Azure powershell modules are up-to-date.
@@ -37,7 +40,7 @@ $uaManagedIdentity = "$user-ade-uai"                                            
 
 # CVM settings
 $infix             = [System.Guid]::NewGuid().ToString().Substring(0,4)
-$cvmName           = "cvm-$infix-w22"                                           # CVM name must be <= 15 chars.
+$cvmName           = "cvm-$infix-u22"                                           # CVM name must be <= 15 chars.
 $Offer             = "0001-com-ubuntu-confidential-vm-jammy"
 $SKU               = "22_04-lts-cvm"
 #$cvmName          = "$user-cvm-u20".Substring(0, 14)                           # CVM name must be <= 15 chars.
@@ -96,7 +99,7 @@ New-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resource
 $userAssignedMI = Get-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Start-Sleep 30
+Start-Sleep 60
 # Assign Get,Release permissions on the CMK to the User assigned MI.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $userAssignedMI.PrincipalId -PermissionsToKeys get,release
 
@@ -132,7 +135,7 @@ $desConfig | New-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resource
 $des = Get-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Start-Sleep 30
+Start-Sleep 60
 # Assign wrapKey,UnwrapKey for CPS to work with CMK. (Get and Release are sufficient for DDE)
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $des.Identity.PrincipalId -PermissionsToKeys get,wrapKey,unwrapKey
 
@@ -233,7 +236,9 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify that the extension provision has succeded.
-$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+Write-Host "Waiting 2 minutes for extension status update"
+Start-Sleep 120
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
 $status
 $status.SubStatuses
 
@@ -259,6 +264,8 @@ $status.SubStatuses
 # Remove VM extensionto to repeat install.
 # Remove-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
 
-Remove-AzResourceGroup $resourceGroup
+# Remove-AzResourceGroup $resourceGroup
 
 #### End of step 7.
+
+Write-Host "Script ended"

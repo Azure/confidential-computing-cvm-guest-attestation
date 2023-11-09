@@ -1,12 +1,15 @@
-﻿#
-# This script can be used to turn on data disk encryption (DDE) feature in an existing Azure Windows confidential VM.
-# Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
-#
-# Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
-#               2-) One or more data disks are attached and partitioned. The data volumes are formatted as NTFS.
-#               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
-#               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
-#
+﻿<#
+.SYNOPSIS
+ This script can be used to turn on confidential data disk encryption for an existing Azure Windows confidential VM.
+ Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
+
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
+               2-) One or more data disks are attached and partitioned. The data volumes are formatted as NTFS.
+               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
+               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
+
+ Status: This script is for private preview. Do not use in Production.
+#>
 
 
 #### Step 0: Make sure your Az powershell modules are up-to-date.
@@ -69,7 +72,7 @@ Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup 
 
 #### Step 5 - Install ADE with public settings defined below.
 
-$keyvault = Get-AzKeyVault -VaultName $kvName -ResourceGroupName $resourceGroup
+$keyvault = Get-AzKeyVault -VaultName $kvName  -ResourceGroupName $resourceGroup
 $rsaKey = Get-AzKeyVaultKey -VaultName $kvName -Name $rsaKeyName
 
 # ADE settings:
@@ -77,14 +80,21 @@ $KV_URL                      = $keyvault.VaultUri
 $KV_RID                      = $keyvault.ResourceId
 $KEK_URL                     = $rsaKey.Id
 $EncryptionManagedIdentity   = "EncryptionManagedIdentity";
-$KV_UAI_RID                  = $userAssignedMI.Id
+#$KV_UAI_ID                  = $userAssignedMI.Id
+$clientId                    = $userAssignedMI.ClientId
+$KV_UAI_ID                   = "client_id=$clientId"
 
 $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryption"
 $ExtHandlerVer               = "2.4"
 $EncryptionOperation         = "EnableEncryption"
-$PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
+
+# Settings for enabling temp disk only.
+$pubSettings = @{};
+$pubSettings.Add("VolumeType", "Data")
+$pubSettings.Add("EncryptionOperation", $EncryptionOperation)
+
 
 # Settings for Azure Key Vault (AKV)
 $pubSettings = @{};
@@ -93,9 +103,8 @@ $pubSettings.Add("KeyVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionKeyURL", $KEK_URL)
 $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
-$pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
+$pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_ID)
 $pubSettings.Add("VolumeType", "Data")
-$pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
@@ -120,9 +129,12 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify: switch to the portal and verify that the extension provision is succeded.
-$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+Write-Host "Waiting 2 minutes for extension status update"
+Start-Sleep 120
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
 $status
 $status.SubStatuses
 
 #### End of step 5.
 
+Write-Host "Script ended"

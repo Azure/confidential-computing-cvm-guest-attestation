@@ -3,8 +3,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -16,8 +24,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -29,8 +45,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -42,8 +66,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -55,8 +87,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -68,8 +108,37 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedcuse.cuse.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -81,8 +150,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -94,8 +171,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -107,8 +192,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -120,8 +213,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -133,8 +234,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -146,8 +255,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -159,8 +276,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -172,8 +297,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -185,8 +318,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -198,8 +339,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -211,8 +360,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -224,8 +381,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -237,8 +402,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -250,8 +423,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -263,8 +444,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -276,8 +465,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -289,8 +486,16 @@
 		{
 			"allOf": [
 				{
-					"claim": "x-ms-isolation-tee.x-ms-attestation-type",
-					"equals": "sevsnpvm"
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
 				},
 				{
 					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
@@ -298,6 +503,48 @@
 				}
 			],
 			"authority": "https://shareditn.itn.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedcin.cin.attest.azure.net"
+		},
+		{
+			"allOf": [
+				{
+					"anyOf": [
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "sevsnpvm"
+						},
+						{
+							"claim": "x-ms-isolation-tee.x-ms-attestation-type",
+							"equals": "tdxvm"
+						}
+					]
+				},
+				{
+					"claim": "x-ms-isolation-tee.x-ms-compliance-status",
+					"equals": "azure-compliant-cvm"
+				}
+			],
+			"authority": "https://sharedeus2e.eus2e.attest.azure.net"
 		}
 	],
 	"version": "1.0.0"

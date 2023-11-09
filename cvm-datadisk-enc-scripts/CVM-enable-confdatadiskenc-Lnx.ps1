@@ -1,18 +1,21 @@
-﻿#
-# This script can be used to turn on data disk encryption (DDE) feature in an existing Azure Linux confidential VM.
-# Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
-#
-# Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
-#               2-) One or more data disks are attached and partitioned. The data volumes are formatted as ext4 or xfs.
-#               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
-#               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
-#
+﻿<#
+.SYNOPSIS
+ This script can be used to turn on data disk encryption one for an existing Azure Linux confidential VM.
+ Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
+
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
+               2-) One or more data disks are attached and partitioned. The data volumes are formatted as ext4 or xfs.
+               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
+               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
+
+ Status: This script is for private preview. Do not use in Production.
+#>
 
 #### Step 0: Make sure your Az powershell modules are up-to-date.
 
 if ((Get-Module Az.Compute).Version.Major -lt 6)
 {
-    Update-Module -Name Az* -Force   # Requires elevated (admin) Powershell window
+    Update-Module -Name Az* -Force                                          # Requires elevated (admin) Powershell window
 }
 
 #### End of step 0
@@ -78,10 +81,9 @@ $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryptionForLinux"
 $ExtHandlerVer               = "1.4"
 $EncryptionOperation         = "EnableEncryption"
-$PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
-# Settings for Azure Key Vault (AKV)
+# Settings for enabling temp and data disk encryption with KEK in Azure Key Vault (AKV)
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -90,15 +92,14 @@ $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
 $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
 $pubSettings.Add("VolumeType", "Data")
-$pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 # Settings for Azure managed HSM (mHSM). For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
 # $pubSettings = @{};
 # $pubSettings.Add("KeyEncryptionKeyURL", $MHSM_KEK_URL)
-# $pubSettings.Add("KekVaultResourceId", $MHSM_RID)
-# $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
+# $pubSettings.Add("KekVaultResourceId",  $MHSM_RID)
+# $pubSettings.Add($EncryptionManagedIdentity, $MHSM_UAI_RID)
 # $pubSettings.Add("VolumeType", "Data")
 # $pubSettings.Add("KeyStoreType", "ManagedHSM")
 # $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
@@ -115,8 +116,12 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify: switch to the portal and verify that the extension provision is succeded.
+Write-Host "Waiting 2 minutes for extension status update"
+Start-Sleep 120
 $status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
 $status
 $status.SubStatuses
 
 #### End of step 5.
+
+Write-Host "Script ended"

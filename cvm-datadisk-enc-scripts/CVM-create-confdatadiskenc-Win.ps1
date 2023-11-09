@@ -1,12 +1,15 @@
-﻿#
-# This script can be used to create an Azure Windows confidential VM and turn data disk encryption (DDE) feature on.
-# Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
-#
-# Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on
-#               2-) One or more data disks are attached and partitioned. The volumes are formatted as NTFS.
-#               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
-#               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
-#
+﻿<#
+.SYNOPSIS
+ This script can be used to create an Azure Windows confidential VM and turn data disk encryption on.
+ Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
+
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on
+               2-) One or more data disks are attached and partitioned. The volumes are formatted as NTFS.
+               3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
+               4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
+
+ Status: This script is for private preview. Do not use in Production.
+#>
 
 
 #### Step 0: Make sure your Azure powershell modules are up-to-date.
@@ -36,14 +39,15 @@ $uaManagedIdentity = "$user-ade-uai"                                            
 
 # CVM settings
 $infix             = [System.Guid]::NewGuid().ToString().Substring(0,4)
-$cvmName           = "cvm-$infix-w22"                                           # CVM name must be <= 15 chars.
+$cvmName           = "cvm-$infix-w19"                                           # CVM name must be <= 15 chars.
 $vnetname          = "myVnet"
 $vnetAddress       = "10.0.0.0/16"
 $subnetname        = "slb" + $resourceGroup
 $subnetAddress     = "10.0.2.0/24"
 $NICName           = $cvmName+ "-nic"
 $PublicIPName      = $cvmName+ "-ip2"
-$VMSize            = "Standard_DC2ads_v5"
+#$VMSize            = "Standard_DC2ads_v5" # for SEV-SNP
+$VMSize            = "Standard_DC2eds_v5" # for TDX
 $PublisherName     = "MicrosoftWindowsServer"
 $Offer             = "WindowsServer"
 $SKU               = "2022-datacenter-smalldisk-g2"                         # You can choose Win Srv {2019, 2022} or Win Client 11.
@@ -92,7 +96,7 @@ New-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resource
 $userAssignedMI = Get-AzUserAssignedIdentity -Name $uaManagedIdentity -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Start-Sleep 30
+Start-Sleep 60
 # Assign Get,Release permissions on the CMK to the User assigned MI.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $userAssignedMI.PrincipalId -PermissionsToKeys get,release
 
@@ -127,7 +131,7 @@ $desConfig | New-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resource
 $des = Get-AzDiskEncryptionSet -Name $desName -ResourceGroupName $resourceGroup
 
 # Wait for a few seconds for the MI to be available. If NotFound is returned, re-run the command.
-Start-Sleep 30
+Start-Sleep 60
 # Assign wrapKey,UnwrapKey for Confidential OS disk encryption.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $des.Identity.PrincipalId -PermissionsToKeys get,wrapKey,unwrapKey
 
@@ -142,7 +146,7 @@ New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig
 # Add an empty datadisk of size 128GB
 $vm = Get-AzVM -Name $cvmName -ResourceGroupName $resourceGroup
 $dataDiskName = $cvmName+"-datadisk1"
-$vm = Add-AzVMDataDisk -VM $vm -Name $dataDiskName -CreateOption Empty -Lun 2 -DiskSizeInGB 128 -Caching ReadOnly -DeleteOption Delete
+$vm = Add-AzVMDataDisk -VM $vm -Name $dataDiskName -CreateOption Empty -Lun 2 -DiskSizeInGB 128 -Caching ReadOnly -DeleteOption Delete -
 Update-AzVM -VM $vm -ResourceGroupName $resourceGroup
 
 # Assign the Managed Identity to the CVM
@@ -191,7 +195,7 @@ $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
 $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)       # this could also be client_id=<GUID1> or object_id=<GUID2>
 $pubSettings.Add("VolumeType", "Data")
-$pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
+#$pubSettings.Add($PrivatePreviewFlag_TempDisk, "true")
 $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
@@ -216,9 +220,12 @@ Set-AzVMExtension `
 -Location $location
 
 # Verify that the extension provision has succeded.
-$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
+Write-Host "Waiting 2 minutes for extension status update"
+Start-Sleep 120
+$status = Get-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName -Status
 $status
 $status.SubStatuses
+
 
 # Verify in diskmgmt.msc that existing temp and data volumes got encrypted.
 # Create additional volumes and and observe they get encrypted.
@@ -234,6 +241,8 @@ $status.SubStatuses
 # Remove-AzVMExtension -ResourceGroupName $resourceGroup -VMName $cvmName -Name $ExtName
 
 
-Remove-AzResourceGroup $resourceGroup
+#Remove-AzResourceGroup $resourceGroup
 
 #### End of step 7.
+
+Write-Host "Script ended"
