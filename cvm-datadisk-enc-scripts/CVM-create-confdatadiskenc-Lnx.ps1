@@ -201,7 +201,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_TempDisk = "PrivatePreview.ConfidentialEncryptionTempDisk" # After public preview, this will be renamed to NoConfidentialEncryptionTempDisk and defaults to false; so temp disk enc is on by default.
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
-# Settings for Azure Key Vault (AKV)
+# Settings for enabling temp disk encryption only providing Azure Key Vault resource.
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -215,25 +215,27 @@ $pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 $pubSettings.Add("EncryptFormatAll", "true") # This formats the data drives for faster encryption. Be warned!!
 
-# Settings for Azure managed HSM (mHSM). For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
-# $pubSettings = @{};
-# $pubSettings.Add("KeyEncryptionKeyURL", $MHSM_KEK_URL)
-# $pubSettings.Add("KekVaultResourceId", $MHSM_RID)
-# $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
-# $pubSettings.Add("VolumeType", "Data")
-# $pubSettings.Add("KeyStoreType", "ManagedHSM")
-# $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
+# Settings for enabling temp disk encryption only providing Azure managed HSM (mHSM) resource. For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
+#$pubsettings                                  = @{};
+#$pubSettings.Add("KekVaultResourceId",        "__AZURE_MHSM_RESOURCE_ID_HERE__")
+#$pubSettings.Add("KeyEncryptionKeyURL",       "__AZURE_KEK_URL_HERE__")
+#$pubsettings.Add("EncryptionManagedIdentity", "__AZURE_USER_ASSIGNED_MANAGED_IDENTITY_RESOURCE_ID_HERE")  # Asign "Managed HSM Crypto User" role on key in local RBAC for SKR. (Either)
+#$pubsettings.Add("EncryptionManagedIdentity", "client_id=__CLIENT_ID_OF_MSI_HERE")                        # Asign "Managed HSM Crypto User" role on key in local RBAC for SKR. (Or)
+#$pubSettings.Add("VolumeType",                "Data")
+#$pubsettings.Add("KeyStoreType",              "ManagedHSM")
+#$pubsettings.Add("EncryptionOperation",       $EncryptionOperation)
+#$pubSettings.Add("KeyEncryptionAlgorithm",    "RSA-OAEP")
 
 Set-AzVMExtension `
--ResourceGroupName $resourceGroup `
--VMName $cvmName `
--Publisher $Publisher `
--ExtensionType $ExtName `
--TypeHandlerVersion $ExtHandlerVer `
--Name $ExtName `
--EnableAutomaticUpgrade $false `
--Settings $pubSettings `
--Location $location
+    -ResourceGroupName $resourceGroup `
+    -VMName $cvmName `
+    -Publisher $Publisher `
+    -ExtensionType $ExtName `
+    -TypeHandlerVersion $ExtHandlerVer `
+    -Name $ExtName `
+    -EnableAutomaticUpgrade $false `
+    -Settings $pubSettings `
+    -Location $location
 
 # Verify that the extension provision has succeded.
 Write-Host "Waiting 2 minutes for extension status update"

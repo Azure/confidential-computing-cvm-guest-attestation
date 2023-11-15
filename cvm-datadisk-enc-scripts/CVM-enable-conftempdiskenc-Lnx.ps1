@@ -53,12 +53,23 @@ $ExtName                     = "AzureDiskEncryptionForLinux"
 $ExtHandlerVer               = "1.4"
 $EncryptionOperation         = "EnableEncryption"
 
-# Settings for enabling temp disk only.
+# Settings for enabling temp disk encryption only providing Azure Key Vault resource.
 $pubSettings                 = @{};
 $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 $pubSettings.Add("KeyVaultURL", $keyvault.VaultUri)
 $pubSettings.Add("KeyVaultResourceId", $keyvault.ResourceId)
+
+# Settings for enabling temp disk encryption only providing Azure managed HSM (mHSM) resource. For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
+#$pubsettings                                  = @{};
+#$pubSettings.Add("KekVaultResourceId",        "__AZURE_MHSM_RESOURCE_ID_HERE__")
+#$pubSettings.Add("KeyEncryptionKeyURL",       "__AZURE_KEK_URL_HERE__")
+#$pubsettings.Add("EncryptionManagedIdentity", "__AZURE_USER_ASSIGNED_MANAGED_IDENTITY_RESOURCE_ID_HERE")  # Asign "Managed HSM Crypto User" role on key in local RBAC for SKR. (Either)
+#$pubsettings.Add("EncryptionManagedIdentity", "client_id=__CLIENT_ID_OF_MSI_HERE")                        # Asign "Managed HSM Crypto User" role on key in local RBAC for SKR. (Or)
+#$pubSettings.Add("VolumeType",                "Data")
+#$pubsettings.Add("KeyStoreType",              "ManagedHSM")
+#$pubsettings.Add("EncryptionOperation",       $EncryptionOperation)
+#$pubSettings.Add("KeyEncryptionAlgorithm",    "RSA-OAEP")
 
 Set-AzVMExtension `
     -ResourceGroupName $resourceGroup `
