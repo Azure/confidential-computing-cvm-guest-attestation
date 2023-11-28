@@ -29,6 +29,8 @@
 using namespace attest;
 using json = nlohmann::json;
 
+bool Util::isTraceOn = false;
+
 /// \copydoc Util::base64_to_binary()
 std::vector<BYTE> Util::base64_to_binary(const std::string &base64_data)
 {
@@ -347,7 +349,7 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
     }
 
     AttestationClient *attestation_client = nullptr;
-    AttestationLogger *log_handle = new Logger();
+    AttestationLogger *log_handle = new Logger(Util::set_trace());
 
     // Initialize attestation client
     if (!Initialize(log_handle, &attestation_client))

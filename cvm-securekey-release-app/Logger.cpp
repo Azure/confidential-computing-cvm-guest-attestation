@@ -19,19 +19,18 @@ void Logger::Log(const char *log_tag,
                  ...)
 {
 
-    // uncomment the below statement and rebuild if details debug logs are needed
-    /*
-    va_list args;
-    va_start(args, fmt);
-    size_t len = std::vsnprintf(NULL, 0, fmt, args);
-    va_end(args);
+    if (isTraceOn){
+        va_list args;
+        va_start(args, fmt);
+        size_t len = std::vsnprintf(NULL, 0, fmt, args);
+        va_end(args);
 
-    std::vector<char> str(len + 1);
+        std::vector<char> str(len + 1);
 
-    va_start(args, fmt);
-    std::vsnprintf(&str[0], len + 1, fmt, args);
-    va_end(args);
+        va_start(args, fmt);
+        std::vsnprintf(&str[0], len + 1, fmt, args);
+        va_end(args);
 
-    printf("Level: %s Tag: %s %s:%d:%s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
-    */
+        printf("Level: %s Tag: %s %s:%d:%s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
+    }
 }

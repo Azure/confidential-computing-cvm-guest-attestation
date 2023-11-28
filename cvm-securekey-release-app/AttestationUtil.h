@@ -54,27 +54,44 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
         exit(gle);                                                                                       \
     } while (0);
 
-inline static void TRACE_OUT(std::string fmt, ...)
-{
-#ifdef TRACE
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(stderr, fmt.c_str(), args);
-    fprintf(stderr, "\n");
-    va_end(args);
-#endif
-}
+#define TRACE_OUT Util::trace_out
+#define OSSL_BN_TRACE_OUT Util::ossl_bn_trace_out
 
-inline static void OSSL_BN_TRACE_OUT(const BIGNUM *bn)
-{
-#ifdef TRACE
-    BN_print_fp(stderr, bn);
-#endif
-}
-
-class Util
-{
+class Util{
+private:
+    static bool isTraceOn;
 public:
+
+    static void set_trace(bool traceOn)
+    {
+        isTraceOn = traceOn;
+    }
+
+    static bool get_trace()
+    {
+        return isTraceOn;
+    }
+    
+    inline static void trace_out(std::string fmt, ...)
+    {
+        if (isTraceOn)
+        {
+            va_list args;
+            va_start(args, fmt);
+            vfprintf(stderr, fmt.c_str(), args);
+            fprintf(stderr, "\n");
+            va_end(args);
+        }
+    }
+
+    inline static void ossl_bn_trace_out(const BIGNUM *bn)
+    {
+        if(isTraceOn)
+        {
+            BN_print_fp(stderr, bn);
+        }
+    }
+
     enum class AkvCredentialSource
     {
         Imds,

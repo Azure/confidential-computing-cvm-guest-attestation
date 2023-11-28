@@ -39,10 +39,40 @@ enum class Operation
     Undefined
 };
 
+// Check if tracing is to be enabled for SKR in the env.
+void set_tracing(void)
+{
+    size_t envTraceFlagLen;
+    errno_t err = getenv_s(&envTraceFlagLen, nullptr, 0, "SKR_TRACE_ON");
+    if (envTraceFlagLen > 0)
+    {
+        char* skr_trace_flag = nullptr;
+        skr_trace_flag = (char*)malloc(envTraceFlagLen);
+        if (skr_trace_flag == nullptr)
+        {
+            std::cerr << "Failed to allocate memory for env variable SKR_TRACE_ON" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        err = getenv_s(&envTraceFlagLen, skr_trace_flag, envTraceFlagLen, "SKR_TRACE_ON");
+        if (err != 0)
+        {
+            std::cerr << "Failed to get env variable SKR_TRACE_ON" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        if (strcmp(skr_trace_flag, "1") == 0)
+        {
+            std::cout << "Tracing is enabled" << std::endl;
+            Util::set_trace(true);
+        }
+        free(skr_trace_flag);
+    }
+}
+
 int main(int argc, char *argv[])
 {
+    set_tracing();
+    
     TRACE_OUT("Main started");
-
     std::string attestation_url;
     std::string nonce;
     std::string sym_key;
