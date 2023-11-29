@@ -349,7 +349,7 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
     }
 
     AttestationClient *attestation_client = nullptr;
-    AttestationLogger *log_handle = new Logger(Util::set_trace());
+    AttestationLogger *log_handle = new Logger(Util::get_trace());
 
     // Initialize attestation client
     if (!Initialize(log_handle, &attestation_client))
@@ -735,7 +735,7 @@ bool Util::doSKR(const std::string &attestation_url,
         TRACE_OUT("Encrypted bytes: %s", Util::binary_to_base64url(cipherText).c_str());
 
         AttestationClient *attestation_client = nullptr;
-        AttestationLogger *log_handle = new Logger();
+        AttestationLogger *log_handle = new Logger(Util::get_trace());
 
         // Initialize attestation client
         if (!Initialize(log_handle, &attestation_client))
