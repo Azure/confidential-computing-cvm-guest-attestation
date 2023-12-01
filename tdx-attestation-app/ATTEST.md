@@ -1,5 +1,3 @@
-# Important Notice as of 10/17
-Support for in-guest attestation is only available using the Azure in-guest app. You can leverage this to attest with Intel Trust Authority. Intel in-guest application is under development and will be released in the coming weeks.
 
 ## **Performing Remote Attestation**
 
