@@ -74,8 +74,8 @@ sudo ./TdxAttest -c config.json
 ### Sample of Config Definition
 ``` json
 {
-  "attestation_url": "https://api.projectIntel Trust Authority.intel.com/appraisal/v1/attest",
-  "attestation_provider": "Intel Trust Authority",
+  "attestation_url": "https://api.projectamber.intel.com/appraisal/v1/attest",
+  "attestation_provider": "amber",
   "api_key": "<add API KEY here>",
   "enable_metrics": true
 }
