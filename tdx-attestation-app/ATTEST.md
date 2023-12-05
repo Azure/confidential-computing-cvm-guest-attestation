@@ -42,13 +42,13 @@ sudo ./install.sh
 cmake .
 make
 ```
-7. To attest with MAA run the application with the following command:
+7. To attest with Microsoft Azure Attestation (MAA) run the application with the following command:
 ```sh
 sudo ./TdxAttest -c maa_config.json
 ```
-9. To attest with Intel Trust Authority, sign up to retrieve an API Key for [Intel Trust Authority] (https://www.intel.com/content/www/us/en/security/trust-authority.html). For more information on Intel Trust Authority see their [documentation](https://docs.trustauthority.intel.com/main/articles/introduction.html).
+9. To attest with Intel Trust Authority, you must sign up and retrieve an API Key. See the [documentation](https://docs.trustauthority.intel.com/main/articles/introduction.html) on this.
 
-10. Once you have the API Key, modify the `config.json`
+10. Once you have the Intel Trust Authority API Key, modify the `config.json`
 
 11. Run the application using the following command:
 ```sh
@@ -140,4 +140,4 @@ make cli
 sudo ./trustauthority-cli token --config config.json --user-data <base64 encoded userdata>  --no-eventlog
 ```
 
-**Note:** the user-data is base64 standard encoded. It could be any format (binary, JSON object) that client or relying party can understand. The hash(SHA512) of the user-data will be included in the <b>attester_runtime_data.user-data</b> claim in the attesation token released by Intel Trust Authority. Some online tool like https://base64.guru/converter/encode/text can be used to encode the data to base64 standard format.
+**Note:** the user-data is base64 standard encoded. It could be any format (binary, JSON object) that client or relying party can understand. The hash(SHA512) of the user-data will be included in the <b>attester_runtime_data.user-data</b> claim in the attesation token released by Intel Trust Authority. We used this [tool](https://base64.guru/converter/encode/text) to encode the data to base64 standard format.
