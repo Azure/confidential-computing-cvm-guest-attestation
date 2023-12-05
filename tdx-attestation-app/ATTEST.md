@@ -46,7 +46,7 @@ make
 ```sh
 sudo ./TdxAttest -c maa_config.json
 ```
-9. To attest with Intel Trust Authority sign up to retrieve an API Key for [Intel Trust Authority](https://github.com/Azure/azure-compute-tdx-preview/blob/main/ITA.md)
+9. To attest with Intel Trust Authority, sign up to retrieve an API Key for [Intel Trust Authority] (https://www.intel.com/content/www/us/en/security/trust-authority.html). For more information on Intel Trust Authority see their [documentation](https://docs.trustauthority.intel.com/main/articles/introduction.html).
 
 10. Once you have the API Key, modify the `config.json`
 
@@ -125,7 +125,7 @@ cd trustauthority-client/tdx-cli
 make cli
 ```
 ### Run the Intel Trust Authority-cli
-1. Sign up to retrieve an API Key for [Intel Trust Authority](https://github.com/Azure/azure-compute-tdx-preview/blob/main/ITA.md)
+1. Sign up to retrieve an API Key for [Intel Trust Authority](https://www.intel.com/content/www/us/en/security/trust-authority.html). For more information on Intel Trust Authority see their [documentation](https://docs.trustauthority.intel.com/main/articles/introduction.html).
 
 2. Once you have the API Key, create a config.json like below:
 ```json
