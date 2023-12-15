@@ -60,7 +60,7 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
 class Util{
 private:
     static bool isTraceOn;
-    static int traceLevel; //1: enable Util::applyMask, 2: do nothing.
+    static int traceLevel; //1: enable Util::reduct_log, 2: do nothing.
     static size_t lengthMask;
 public:
 
@@ -96,7 +96,7 @@ public:
         }
     }
 
-    inline static std::string applyMask(const std::string& str)
+    inline static std::string reduct_log(const std::string& str)
     {
         std::string retStr(str);
         if(traceLevel==1){

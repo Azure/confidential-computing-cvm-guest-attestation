@@ -253,12 +253,12 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
 
     curl_easy_cleanup(curl);
 
-    TRACE_OUT("Response: %s\n", Util::applyMask(responseStr).c_str());
+    TRACE_OUT("Response: %s\n", Util::reduct_log(responseStr).c_str());
 
     json json_object = json::parse(responseStr.c_str());
     std::string access_token = json_object["access_token"].get<std::string>();
 
-    TRACE_OUT("Access Token: %s\n", Util::applyMask(access_token).c_str());
+    TRACE_OUT("Access Token: %s\n", Util::reduct_log(access_token).c_str());
 
     TRACE_OUT("Exiting Util::GetIMDSToken()");
 
@@ -565,7 +565,7 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     std::ostringstream bearerToken;
     bearerToken << "Authorization: Bearer " << access_token;
     headers = curl_slist_append(headers, bearerToken.str().c_str());
-    TRACE_OUT("Bearer token: %s", Util::applyMask(bearerToken.str()).c_str());
+    TRACE_OUT("Bearer token: %s", Util::reduct_log(bearerToken.str()).c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: application/json");
     headers = curl_slist_append(headers, "User-Agent: AzureDiskEncryption");
@@ -678,7 +678,7 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    TRACE_OUT("SKR response: %s",  Util::applyMask(responseStr).c_str());
+    TRACE_OUT("SKR response: %s",  Util::reduct_log(responseStr).c_str());
 
     TRACE_OUT("Exiting Util::GetKeyVaultResponse()");
     return responseStr;
@@ -695,7 +695,7 @@ bool Util::doSKR(const std::string &attestation_url,
     try
     {
         std::string attest_token(Util::GetMAAToken(attestation_url, nonce));
-        TRACE_OUT("MAA Token: %s", Util::applyMask(attest_token).c_str());
+        TRACE_OUT("MAA Token: %s", Util::reduct_log(attest_token).c_str());
 
         // Get Akv access token either using IMDS or Service Principal
         std::string access_token;
@@ -708,7 +708,7 @@ bool Util::doSKR(const std::string &attestation_url,
             access_token = std::move(Util::GetIMDSToken(KEKUrl));
         }
 
-        TRACE_OUT("AkvMsiAccessToken: %s", Util::applyMask(access_token).c_str());
+        TRACE_OUT("AkvMsiAccessToken: %s", Util::reduct_log(access_token).c_str());
 
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
@@ -716,7 +716,7 @@ bool Util::doSKR(const std::string &attestation_url,
         // Parse the response:
         json skrJson = json::parse(responseStr.c_str());
         std::string skrToken = skrJson["value"];
-        TRACE_OUT("SKR token: %s", Util::applyMask(skrToken).c_str());
+        TRACE_OUT("SKR token: %s", Util::reduct_log(skrToken).c_str());
         std::vector<std::string> tokenParts = Util::SplitString(skrToken, '.');
         if (tokenParts.size() != 3)
         {
@@ -725,15 +725,15 @@ bool Util::doSKR(const std::string &attestation_url,
 
         std::vector<BYTE> tokenPayload(Util::base64url_to_binary(tokenParts[1]));
         std::string tokenPayloadStr(tokenPayload.begin(), tokenPayload.end());
-        TRACE_OUT("SKR token payload: %s", Util::applyMask(tokenPayloadStr).c_str());
+        TRACE_OUT("SKR token payload: %s", Util::reduct_log(tokenPayloadStr).c_str());
         json skrPayloadJson = json::parse(tokenPayloadStr.c_str());
         std::vector<BYTE> key_hsm = Util::base64url_to_binary(skrPayloadJson["response"]["key"]["key"]["key_hsm"]);
-        TRACE_OUT("SKR key_hsm: %s", Util::applyMask(Util::binary_to_base64url(key_hsm)).c_str());
+        TRACE_OUT("SKR key_hsm: %s", Util::reduct_log(Util::binary_to_base64url(key_hsm)).c_str());
         json cipherTextJson = json::parse(key_hsm);
         std::vector<BYTE> cipherText = Util::base64url_to_binary(cipherTextJson["ciphertext"]);
         TRACE_OUT("Encrypted bytes length: %ld", cipherText.size());
         std::string cipherTextStr(cipherText.begin(), cipherText.end());
-        TRACE_OUT("Encrypted bytes: %s", Util::applyMask(Util::binary_to_base64url(cipherText)).c_str());
+        TRACE_OUT("Encrypted bytes: %s", Util::reduct_log(Util::binary_to_base64url(cipherText)).c_str());
 
         AttestationClient *attestation_client = nullptr;
         AttestationLogger *log_handle = new Logger(Util::get_trace());
@@ -770,7 +770,7 @@ bool Util::doSKR(const std::string &attestation_url,
         else
         {
             std::vector<BYTE> decryptedAESBytesVec(decryptedAESBytes, decryptedAESBytes + decryptedBytesSize);
-            TRACE_OUT("Decrypted Transfer key: %s\n", Util::applyMask(Util::binary_to_base64url(decryptedAESBytesVec)).c_str());
+            TRACE_OUT("Decrypted Transfer key: %s\n", Util::reduct_log(Util::binary_to_base64url(decryptedAESBytesVec)).c_str());
         }
 
         // The remaining bytes are the encrypted CMK bytes with the decrypted AES key.
@@ -790,8 +790,8 @@ bool Util::doSKR(const std::string &attestation_url,
         {
             TRACE_OUT("CMK private key has length=%d", private_key_len);
             std::vector<BYTE> privateKeyVec(private_key, private_key + private_key_len);
-            TRACE_OUT("Decrypted CMK in base64url: %s", Util::applyMask(Util::binary_to_base64url(privateKeyVec)).c_str());
-            TRACE_OUT("Decrypted CMK in hex: %s", Util::applyMask(Util::binary_to_hex(privateKeyVec)).c_str());
+            TRACE_OUT("Decrypted CMK in base64url: %s", Util::reduct_log(Util::binary_to_base64url(privateKeyVec)).c_str());
+            TRACE_OUT("Decrypted CMK in hex: %s", Util::reduct_log(Util::binary_to_hex(privateKeyVec)).c_str());
 
             // PKCS#8
             BIO *bio_key = BIO_new_mem_buf(privateKeyVec.data(), (int)privateKeyVec.size());
@@ -973,7 +973,7 @@ std::string Util::WrapKey(const std::string &attestation_url,
     }
 
     int rsaSize = RSA_get_size(pkey);
-    TRACE_OUT("Wrapping: %s", Util::applyMask(sym_key).c_str());
+    TRACE_OUT("Wrapping: %s", Util::reduct_log(sym_key).c_str());
 
     size_t encrypted_length = 0;
     PBYTE encryptedKey;
@@ -987,7 +987,7 @@ std::string Util::WrapKey(const std::string &attestation_url,
     TRACE_OUT("Wrapping the symmetric key succeeded: encrypted_length=%ld\n", encrypted_length);
     std::vector<BYTE> encryptedKeyVector(encryptedKey, encryptedKey + encrypted_length);
     std::string cipherText = Util::binary_to_base64(encryptedKeyVector);
-    TRACE_OUT("Wrapped symmetric key in base64: %s\n", Util::applyMask(cipherText).c_str());
+    TRACE_OUT("Wrapped symmetric key in base64: %s\n", Util::reduct_log(cipherText).c_str());
 
     // Cleanup
     OPENSSL_free(encryptedKey);
@@ -1038,7 +1038,7 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
     TRACE_OUT("Unwrapping the symmetric key succeeded: decrypted_length=%lud", decrypted_length);
     std::vector<BYTE> decryptedKeyVector(decryptedKey, decryptedKey + decrypted_length);
     std::string plainText = Util::binary_to_base64(decryptedKeyVector);
-    TRACE_OUT("Unwrapped symmetric key in base64: %s", Util::applyMask(plainText).c_str());
+    TRACE_OUT("Unwrapped symmetric key in base64: %s", Util::reduct_log(plainText).c_str());
 
     TRACE_OUT("Exiting Util::UnwrapKey()");
 
