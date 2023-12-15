@@ -54,27 +54,70 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
         exit(gle);                                                                                       \
     } while (0);
 
-inline static void TRACE_OUT(std::string fmt, ...)
-{
-#ifdef TRACE
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(stderr, fmt.c_str(), args);
-    fprintf(stderr, "\n");
-    va_end(args);
-#endif
-}
+#define TRACE_OUT Util::trace_out
+#define OSSL_BN_TRACE_OUT Util::ossl_bn_trace_out
 
-inline static void OSSL_BN_TRACE_OUT(const BIGNUM *bn)
-{
-#ifdef TRACE
-    BN_print_fp(stderr, bn);
-#endif
-}
-
-class Util
-{
+class Util{
+private:
+    static bool isTraceOn;
+    static int traceLevel; //1: enable Util::reduct_log, 2: do nothing.
+    static size_t lengthMask;
 public:
+
+    static void set_trace(bool traceOn)
+    {
+        isTraceOn = traceOn;
+    }
+
+    static bool get_trace()
+    {
+        return isTraceOn;
+    }
+
+    static void set_trace_level(int trLevel)
+    {
+        traceLevel = trLevel;
+    }
+
+    static int get_trace_level()
+    {
+        return traceLevel;
+    }
+
+    inline static void trace_out(std::string fmt, ...)
+    {
+        if (isTraceOn)
+        {
+            va_list args;
+            va_start(args, fmt);
+            vfprintf(stderr, fmt.c_str(), args);
+            fprintf(stderr, "\n");
+            va_end(args);
+        }
+    }
+
+    inline static std::string reduct_log(const std::string& str)
+    {
+        std::string retStr(str);
+        if(traceLevel==1){
+            //mask 85% of string
+            size_t lengthMask = retStr.size()*0.15;
+            if(retStr.size()>lengthMask){
+                retStr.resize(lengthMask);
+                retStr.append("...");
+            }
+        }
+        return retStr.c_str();
+    }
+
+    inline static void ossl_bn_trace_out(const BIGNUM *bn)
+    {
+        if(isTraceOn)
+        {
+            BN_print_fp(stderr, bn);
+        }
+    }
+
     enum class AkvCredentialSource
     {
         Imds,
