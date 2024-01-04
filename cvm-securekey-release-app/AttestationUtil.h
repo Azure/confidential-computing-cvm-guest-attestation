@@ -96,11 +96,11 @@ public:
         }
     }
 
-    inline static std::string reduct_log(const std::string& str, const double percentage=15)
+    inline static std::string reduct_log(const std::string& str)
     {
         std::string retStr(str);
         if(traceLevel==1){
-            //mask 85% of string
+            double percentage = reduct_log_percentage(str);
             size_t lengthMask = retStr.size()*(percentage/100);
             if(retStr.size()>lengthMask){
                 retStr.resize(lengthMask);
