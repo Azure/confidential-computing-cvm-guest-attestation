@@ -252,9 +252,7 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
     }
 
     curl_easy_cleanup(curl);
-
     TRACE_OUT("Response: %s\n", Util::reduct_log(responseStr).c_str());
-
     json json_object = json::parse(responseStr.c_str());
     std::string access_token = json_object["access_token"].get<std::string>();
 
@@ -677,9 +675,7 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     // Cleanup curl
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-
     TRACE_OUT("SKR response: %s",  Util::reduct_log(responseStr).c_str());
-
     TRACE_OUT("Exiting Util::GetKeyVaultResponse()");
     return responseStr;
 }

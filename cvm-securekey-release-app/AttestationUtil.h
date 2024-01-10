@@ -100,14 +100,22 @@ public:
     {
         std::string retStr(str);
         if(traceLevel==1){
-            //mask 85% of string
-            size_t lengthMask = retStr.size()*0.15;
+            double percentage = reduct_log_percentage(str);
+            size_t lengthMask = retStr.size()*(percentage/100);
             if(retStr.size()>lengthMask){
                 retStr.resize(lengthMask);
                 retStr.append("...");
             }
         }
         return retStr.c_str();
+    }
+
+    inline static double reduct_log_percentage(const std::string& str)
+    {
+        size_t found = str.find("error");
+        if (found != std::string::npos)
+            return 100;
+        return 15;
     }
 
     inline static void ossl_bn_trace_out(const BIGNUM *bn)
