@@ -95,7 +95,12 @@ cryptographically verified that it is running on a genuine AMD processor and tha
 enabled for confidentiality on this processor.
 
 ```
-Guest report validated successfully! 
+Reported TCB Boot Loader from certificate matches the attestation report.
+Reported TCB TEE from certificate matches the attestation report.
+Reported TCB SNP from certificate matches the attestation report.
+Reported TCB Microcode from certificate matches the attestation report.
+Chip ID from certificate matches the attestation report.
+VCEK signed the Attestation Report!
 ```
     
 It is important to note that the SNP report only certifies/measures the HCL (Microsoft firmware) and UEFI binary. You will not be able to generate arbitrary SNP reports by directly calling hardware APIs.
