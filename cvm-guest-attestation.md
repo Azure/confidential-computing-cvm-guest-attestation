@@ -85,7 +85,7 @@ other trusted CVM or non-CVM machine.
 
 4. Install the AMD SNP Guest utility following the instructions here: [GitHub – virtee/snpguest: A CLI tool for interacting with SEV-SNP guest environment](https://github.com/virtee/snpguest), and contact AMD for support.
 5. Use AMD SNP-Guest to parse the report (to obtain the information that SNP is enabled). Note:
-    sevguest binary is in the <repo root>/target/release folder.
+    sevguest binary is in the `<repo root>/target/release` folder.
 
 ```
 % sudo ./snpguest verify attestation <directory of vcek.pem & guest_report.bin> <directory of vcek.pem & guest_report.bin>/guest_report.bin
