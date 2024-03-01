@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <stdarg.h>
 
 #ifdef _MSC_VER
@@ -112,8 +113,10 @@ public:
 
     inline static double reduct_log_percentage(const std::string& str)
     {
-        size_t found = str.find("error");
-        if (found != std::string::npos)
+        std::string err = "error";
+        auto it = std::search(str.begin(), str.end(), err.begin(), err.end(), 
+        [](char a, char b){return std::tolower(a)==std::tolower(b);});
+        if (it != str.end())
             return 100;
         return 15;
     }
