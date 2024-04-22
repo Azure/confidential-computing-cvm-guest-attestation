@@ -58,13 +58,14 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
 #define TRACE_OUT Util::trace_out
 #define OSSL_BN_TRACE_OUT Util::ossl_bn_trace_out
 
-class Util{
+class Util
+{
 private:
     static bool isTraceOn;
-    static int traceLevel; //1: enable Util::reduct_log, 2: do nothing.
+    static int traceLevel; // 1: enable Util::reduct_log, 2: do nothing.
     static size_t lengthMask;
-public:
 
+public:
     static void set_trace(bool traceOn)
     {
         isTraceOn = traceOn;
@@ -97,13 +98,15 @@ public:
         }
     }
 
-    inline static std::string reduct_log(const std::string& str)
+    inline static std::string reduct_log(const std::string &str)
     {
         std::string retStr(str);
-        if(traceLevel==1){
+        if (traceLevel == 1)
+        {
             double percentage = reduct_log_percentage(str);
-            size_t lengthMask = retStr.size()*(percentage/100);
-            if(retStr.size()>lengthMask){
+            size_t lengthMask = retStr.size() * (percentage / 100);
+            if (retStr.size() > lengthMask)
+            {
                 retStr.resize(lengthMask);
                 retStr.append("...");
             }
@@ -111,11 +114,12 @@ public:
         return retStr.c_str();
     }
 
-    inline static double reduct_log_percentage(const std::string& str)
+    inline static double reduct_log_percentage(const std::string &str)
     {
         std::string err = "error";
-        auto it = std::search(str.begin(), str.end(), err.begin(), err.end(), 
-        [](char a, char b){return std::tolower(a)==std::tolower(b);});
+        auto it = std::search(str.begin(), str.end(), err.begin(), err.end(),
+                              [](char a, char b)
+                              { return std::tolower(a) == std::tolower(b); });
         if (it != str.end())
             return 100;
         return 15;
@@ -123,7 +127,7 @@ public:
 
     inline static void ossl_bn_trace_out(const BIGNUM *bn)
     {
-        if(isTraceOn)
+        if (isTraceOn)
         {
             BN_print_fp(stderr, bn);
         }
@@ -226,8 +230,9 @@ public:
     // <summary>
     /// Retrieve MSI token from Service Principal Credentials available in the Environment Variables
     /// </summary>
+    /// <param name="KEKUrl">Key encryption key URL</param>
     /// <returns>MSI token for the resource</returns>
-    static std::string GetAADToken();
+    static std::string GetAADToken(const std::string &KEKUrl);
 
     /// <summary>
     /// Get attestation token from the attestation service.
@@ -298,7 +303,7 @@ public:
     /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
     /// <returns>True if key release succeeds, False otherwise</returns>
     static bool ReleaseKey(const std::string &attestation_url,
-                                  const std::string &nonce,
-                                  const std::string &key_enc_key,
-                                  const Util::AkvCredentialSource &akv_credential_source);
+                           const std::string &nonce,
+                           const std::string &key_enc_key,
+                           const Util::AkvCredentialSource &akv_credential_source);
 };

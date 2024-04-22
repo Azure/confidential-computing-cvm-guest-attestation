@@ -186,6 +186,34 @@ static inline std::string GetImdsTokenUrl(std::string url)
     return oss.str();
 }
 
+// Define a utility method to determine the resource URL based on KEKUrl
+std::string getResourceUrl(const std::string &KEKUrl)
+{
+    // Constants for suffixes and corresponding resource URLs
+    const std::string AKV_URL_SUFFIX = Constants::AKV_URL_SUFFIX;
+    const std::string MHSM_URL_SUFFIX = Constants::MHSM_URL_SUFFIX;
+    const std::string AKV_RESOURCE_URL = Constants::AKV_RESOURCE_URL;
+    const std::string MHSM_RESOURCE_URL = Constants::MHSM_RESOURCE_URL;
+
+    // Check if AKV suffix is present in KEKUrl
+    if (KEKUrl.find(AKV_URL_SUFFIX) != std::string::npos)
+    {
+        TRACE_OUT("AKV resource suffix found in KEKUrl");
+        return AKV_RESOURCE_URL; // Return AKV resource URL
+    }
+    // If AKV suffix is not found, check if MHSM suffix is present
+    else if (KEKUrl.find(MHSM_URL_SUFFIX) != std::string::npos)
+    {
+        TRACE_OUT("MHSM resource suffix found in KEKUrl");
+        return MHSM_RESOURCE_URL; // Return MHSM resource URL
+    }
+    // If neither AKV nor MHSM suffix is found, throw an error
+    else
+    {
+        TRACE_ERROR_EXIT("Invalid resource suffix found in KEKUrl: " + KEKUrl)
+    }
+}
+
 /// \copydoc Util::GetIMDSToken()
 std::string Util::GetIMDSToken(const std::string &KEKUrl)
 {
@@ -198,22 +226,7 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
     }
 
     // AKV and mHSM has different audience need to be passed to IMDS.
-    std::string resourceUrl;
-    if (KEKUrl.find(Constants::AKV_URL_SUFFIX) != std::string::npos)
-    {
-        resourceUrl = Constants::AKV_RESOURCE_URL;
-        TRACE_OUT("AKV resource suffix found in KEKUrl");
-    }
-    else if (KEKUrl.find(Constants::MHSM_URL_SUFFIX) != std::string::npos)
-    {
-        resourceUrl = Constants::MHSM_RESOURCE_URL;
-        TRACE_OUT("MHSM resource suffix found in KEKUrl");
-    }
-    else
-    {
-        TRACE_ERROR_EXIT("Invalid resource suffix found in KEKUrl")
-    }
-
+    std::string resourceUrl = getResourceUrl(KEKUrl);
     CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, GetImdsTokenUrl(resourceUrl).c_str());
     if (curlRet != CURLE_OK)
     {
@@ -264,7 +277,7 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
 }
 
 /// \copydoc Util::GetAADToken()
-std::string Util::GetAADToken()
+std::string Util::GetAADToken(const std::string &KEKUrl)
 {
     TRACE_OUT("Entering Util::GetAADToken()");
 
@@ -272,8 +285,9 @@ std::string Util::GetAADToken()
     auto clientSecret = std::getenv("AKV_SKR_CLIENT_SECRET");
     auto tenantId = std::getenv("AKV_SKR_TENANT_ID");
 
+    std::string resourceUrl = getResourceUrl(KEKUrl);
     std::string tokenUrl = "https://login.microsoftonline.com/" + std::string(tenantId) + "/oauth2/v2.0/token";
-    std::string postData = "client_id=" + std::string(clientId) + "&client_secret=" + std::string(clientSecret) + "&grant_type=client_credentials&scope=https://vault.azure.net/.default";
+    std::string postData = "client_id=" + std::string(clientId) + "&client_secret=" + std::string(clientSecret) + "&grant_type=client_credentials&scope= " + resourceUrl;
 
     CURL *curl = curl_easy_init();
     if (curl)
@@ -675,7 +689,7 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     // Cleanup curl
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    TRACE_OUT("SKR response: %s",  Util::reduct_log(responseStr).c_str());
+    TRACE_OUT("SKR response: %s", Util::reduct_log(responseStr).c_str());
     TRACE_OUT("Exiting Util::GetKeyVaultResponse()");
     return responseStr;
 }
@@ -697,7 +711,7 @@ bool Util::doSKR(const std::string &attestation_url,
         std::string access_token;
         if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
         {
-            access_token = std::move(Util::GetAADToken());
+            access_token = std::move(Util::GetAADToken(KEKUrl));
         }
         else
         {
@@ -855,7 +869,7 @@ int rsa_encrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *enc, size
         handleErrors();
 
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-    // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
+        // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
 #else
     // Set the RSA padding mode to either PKCS #1 OAEP
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
@@ -908,7 +922,7 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
         handleErrors();
 
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-    // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
+        // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
 #else
     // Set the RSA padding mode to PKCS #1 OAEP
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
