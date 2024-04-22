@@ -187,7 +187,7 @@ static inline std::string GetImdsTokenUrl(std::string url)
 }
 
 // Define a utility method to determine the resource URL based on KEKUrl
-std::string getResourceUrl(const std::string &KEKUrl)
+std::string getResourceUrl(const std::string &KEKUrl, bool isIMDS = true)
 {
     // Constants for suffixes and corresponding resource URLs
     const std::string AKV_URL_SUFFIX = Constants::AKV_URL_SUFFIX;
@@ -199,13 +199,13 @@ std::string getResourceUrl(const std::string &KEKUrl)
     if (KEKUrl.find(AKV_URL_SUFFIX) != std::string::npos)
     {
         TRACE_OUT("AKV resource suffix found in KEKUrl");
-        return AKV_RESOURCE_URL; // Return AKV resource URL
+        return isIMDS ? AKV_RESOURCE_URL : AKV_RESOURCE_URL + "/.default";
     }
     // If AKV suffix is not found, check if MHSM suffix is present
     else if (KEKUrl.find(MHSM_URL_SUFFIX) != std::string::npos)
     {
         TRACE_OUT("MHSM resource suffix found in KEKUrl");
-        return MHSM_RESOURCE_URL; // Return MHSM resource URL
+        return isIMDS ? MHSM_RESOURCE_URL : MHSM_RESOURCE_URL + "/.default";
     }
     // If neither AKV nor MHSM suffix is found, throw an error
     else
@@ -285,7 +285,7 @@ std::string Util::GetAADToken(const std::string &KEKUrl)
     auto clientSecret = std::getenv("AKV_SKR_CLIENT_SECRET");
     auto tenantId = std::getenv("AKV_SKR_TENANT_ID");
 
-    std::string resourceUrl = getResourceUrl(KEKUrl);
+    std::string resourceUrl = getResourceUrl(KEKUrl, false);
     std::string tokenUrl = "https://login.microsoftonline.com/" + std::string(tenantId) + "/oauth2/v2.0/token";
     std::string postData = "client_id=" + std::string(clientId) + "&client_secret=" + std::string(clientSecret) + "&grant_type=client_credentials&scope= " + resourceUrl;
 
