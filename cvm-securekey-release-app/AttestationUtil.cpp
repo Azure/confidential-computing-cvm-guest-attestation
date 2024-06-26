@@ -233,6 +233,16 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
     }
 
+    // ByPassing proxy for IMDS.
+    // ref: https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=windows
+    curlRet = curl_easy_setopt(curl, CURLOPT_PROXY, "");
+    if (curlRet != CURLE_OK)
+    {
+        std::ostringstream oss;
+        oss << "curl_easy_setopt() failed: " << curl_easy_strerror(curlRet);
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Metadata: true");
     curlRet = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
