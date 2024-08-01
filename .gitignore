@@ -73,5 +73,5 @@ packages/
 **/*.cbp
 **/CMakeScripts
 **/compile_commands.json
-
+**/azguestattestation1*
 *.swp

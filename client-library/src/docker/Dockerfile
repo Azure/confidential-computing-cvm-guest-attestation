@@ -1,4 +1,4 @@
-FROM ubuntu:18.04
+FROM ubuntu:22.04
 
 RUN apt-get update
 
@@ -27,8 +27,8 @@ RUN apt-get install -y --fix-missing \
     gnulib \
     pkg-config \
     libjsoncpp-dev \
-    gcc-8 \
-    g++-8 \
+    gcc-12 \
+    g++-12 \
     attr \
     squashfs-tools \
     cryptsetup-bin \
@@ -39,9 +39,6 @@ RUN apt-get install -y --fix-missing \
     rpm \
     debhelper \
     zip
-
-RUN cp /usr/lib/x86_64-linux-gnu/libjsoncpp.a /usr/local/lib && \
-    ls /usr/local/lib/libjsoncpp.a
 
 RUN mkdir -p /usr/src
 
@@ -67,19 +64,15 @@ RUN export CC=gcc && export CXX=g++ && \
     rm -rf /usr/src/tpm2-tss
 
 # Install CMake
-RUN apt-get install -y cmake
-
-# Install git 
-RUN apt-get update
-RUN apt-get install -y git
+RUN apt-get install -y cmake git libboost-all-dev
 
 # Install Google Test
 RUN git clone https://github.com/google/googletest.git /src/googletest && \
-    cd /src/googletest && git checkout bfc0ffc8a698072c794ae7299db9cb6866f4c0bc && \
-    cmake . && make && \
-    cp googlemock/lib* googlemock/gtest/lib* /usr/local/lib && \
-    cp -R /src/googletest/googletest/include/* /usr/local/include && \
-    cp -R /src/googletest/googlemock/include/* /usr/local/include && \
+    cd /src/googletest && git checkout e2239ee6043f73722e7aa812a459f54a28552929 && \
+    cmake . && make && make install && \
+#    cp googlemock/lib* googlemock/gtest/lib* /usr/local/lib && \
+#    cp -R /src/googletest/googletest/include/* /usr/local/include && \
+#    cp -R /src/googletest/googlemock/include/* /usr/local/include && \
     cd / && rm -rf /src/googletest
 
 # Install RapidJSON
@@ -91,20 +84,6 @@ RUN git clone https://github.com/Tencent/rapidjson /usr/src/rapidjson && \
     make install && \
     # Cleanup
     rm -rf /usr/src/rapidjson
-
-# Install Boost
-RUN mkdir -p /usr/src/boost && \
-    cd /usr/src/boost && \
-    wget --quiet https://boostorg.jfrog.io/artifactory/main/release/1.70.0/source/boost_1_70_0.tar.gz && \
-    echo 882b48708d211a5f48e60b0124cf5863c1534cd544ecd0664bb534a4b5d506e9 boost_1_70_0.tar.gz | sha256sum -c && \
-    tar xzf boost_1_70_0.tar.gz && \
-    cd boost_1_70_0 && \
-    # Build
-    ./bootstrap.sh && \
-    # Install
-    ./b2 --without-python install && \
-    # Cleanup
-    rm -rf /usr/src/boost
 
 # Install libarchive
 RUN wget --quiet https://www.libarchive.org/downloads/libarchive-3.4.3.tar.gz && \
