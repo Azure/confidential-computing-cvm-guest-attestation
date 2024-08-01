@@ -75,7 +75,7 @@ public:
   }
 };
 
-int32_t get_attestation_token(const uint8_t* app_data, uint8_t* token, size_t* jwt_len) {
+int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* token, size_t* jwt_len) {
     AttestationClient* attestation_client = nullptr;
     attest::AttestationLogger* logger = nullptr;
     attest::ClientParameters params = {};
@@ -89,6 +89,7 @@ int32_t get_attestation_token(const uint8_t* app_data, uint8_t* token, size_t* j
         params.version = CLIENT_PARAMS_VERSION;
         params.attestation_endpoint_url = (const unsigned char*)"https://sharedeus2.eus2.attest.azure.net/";
         params.client_payload = app_data;
+        params.pcr_selector = pcr;
 
         attest::AttestationResult::ErrorCode err = attestation_client->Attest(params, &jwt).code_;
         if(err != attest::AttestationResult::ErrorCode::SUCCESS)

@@ -77,7 +77,7 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     // Validate the token to make sure that the input parameter is not empty.
     // Check the Version of the structure.
-    if (client_params.version != CLIENT_PARAMS_VERSION ||
+    if (client_params.version > CLIENT_PARAMS_VERSION ||
         client_params.attestation_endpoint_url == nullptr ||
         jwt_token_out == nullptr) {
         CLIENT_LOG_ERROR("Invalid input parameter");
@@ -135,7 +135,9 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
             return result;
         }
     }
-    if((result = getAttestationParameters(client_payload_map,
+
+    uint32_t pcr_selector = client_params.version < 2 ? 0 : client_params.pcr_selector;
+    if((result = getAttestationParameters(client_payload_map, pcr_selector,
                                           params)).code_ !=
                                                     AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to get attestation parameters with error:%s",
@@ -171,7 +173,7 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
             return result;
         }
 
-        if((result = DecryptMaaToken(token_encrypted, token_decrypted)).code_ != AttestationResult::ErrorCode::SUCCESS) {
+        if((result = DecryptMaaToken(pcr_selector, token_encrypted, token_decrypted)).code_ != AttestationResult::ErrorCode::SUCCESS) {
             CLIENT_LOG_ERROR("Failed to Decrypt with error:%d description:%s\n",
                 static_cast<int>(result.code_),
                 result.description_.c_str());
@@ -288,7 +290,7 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
     }
     try {
         Tpm tpm;
-        PcrList list = GetAttestationPcrList();
+        PcrList list = attest::GetAttestationPcrList(0);
         PcrSet pcrValues = tpm.GetPCRValues(list, attestation_hash_alg);
 
         // For encryption type 'NONE', the encrypted data is expected to be the encrypted symmetric key
@@ -340,7 +342,7 @@ void AttestationClientImpl::Free(void* ptr) noexcept {
     free(ptr);
 }
 
-AttestationResult AttestationClientImpl::DecryptMaaToken(const std::string& jwt_token_encrypted,
+AttestationResult AttestationClientImpl::DecryptMaaToken(uint32_t pcr_selector, const std::string& jwt_token_encrypted,
                                                          std::string& jwt_token_decrypted) noexcept {
 
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
@@ -393,8 +395,8 @@ AttestationResult AttestationClientImpl::DecryptMaaToken(const std::string& jwt_
     }
 
     attest::Buffer decrypted_key;
-    // MAA uses RSA-ES with SHA256 as the encryption algorithm.
-    if((result = DecryptInnerKey(encrypted_inner_key,
+    if((result = DecryptInnerKey(pcr_selector,
+                                 encrypted_inner_key,
                                  decrypted_key,
                                  attest::RsaScheme::RsaEs,
                                  attest::RsaHashAlg::RsaSha256)).code_ !=
@@ -460,6 +462,7 @@ AttestationResult AttestationClientImpl::ParseClientPayload(const unsigned char*
 AttestationResult AttestationClientImpl::getAttestationParameters(
                                                 const std::unordered_map<std::string,
                                                                          std::string>& client_payload,
+                                                uint32_t pcr_selector,
                                                 AttestationParameters& params) {
 
 
@@ -494,7 +497,7 @@ AttestationResult AttestationClientImpl::getAttestationParameters(
     }
 
     TpmInfo tpm_info;
-    if((result = GetTpmInfo(tpm_info)).code_ != AttestationResult::ErrorCode::SUCCESS) {
+    if((result = GetTpmInfo(pcr_selector, tpm_info)).code_ != AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to get Tpm information with error:%s",
                          result.description_.c_str());
         return result;
@@ -571,7 +574,7 @@ AttestationResult AttestationClientImpl::GetMeasurements(
     return result;
 }
 
-AttestationResult AttestationClientImpl::GetTpmInfo(TpmInfo& tpm_info) {
+AttestationResult AttestationClientImpl::GetTpmInfo(uint32_t pcr_selector, TpmInfo& tpm_info) {
 
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
@@ -582,7 +585,7 @@ AttestationResult AttestationClientImpl::GetTpmInfo(TpmInfo& tpm_info) {
 
         Buffer aik_pub = tpm.GetAIKPub();
 
-        attest::PcrList pcrs = GetAttestationPcrList();
+        attest::PcrList pcrs = attest::GetAttestationPcrList(pcr_selector);
 
         // Unpack the PCR quote to get the raw quote and arrange the quote
         // signature in a format expected by AAS.
