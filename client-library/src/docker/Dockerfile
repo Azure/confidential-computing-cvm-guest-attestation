@@ -42,29 +42,8 @@ RUN apt-get install -y --fix-missing \
 
 RUN mkdir -p /usr/src
 
-# Install Intel TPM TSS stack
-RUN export CC=gcc && export CXX=g++ && \
-    # Download tpm2-tss
-    mkdir -p /usr/src/tpm2-tss && \
-    cd /usr/src/tpm2-tss && \
-    TSS_VER=2.3.0 && \
-    wget --quiet https://github.com/tpm2-software/tpm2-tss/archive/$TSS_VER.tar.gz && \
-    echo 425fc9abf44ebb662ccfe0cfa8315fc1b9f8eee8ed8fd8e0894961415176524d $TSS_VER.tar.gz | sha256sum -c && \
-    # Build tpm2-tss
-    tar xzf $TSS_VER.tar.gz && \
-    TSS_SRC_DIR=/usr/src/tpm2-tss/tpm2-tss-$TSS_VER && \
-    cd $TSS_SRC_DIR && \
-    ./bootstrap && \
-    ./configure && \
-    make -j$(nproc) check && \
-    # Install
-    make install && \
-    ldconfig && \
-    # Cleanup
-    rm -rf /usr/src/tpm2-tss
-
-# Install CMake
-RUN apt-get install -y cmake git libboost-all-dev
+# Install Boost, TSS2, Archive
+RUN apt-get install -y cmake git libboost-dev libtss2-dev libarchive-dev
 
 # Install Google Test
 RUN git clone https://github.com/google/googletest.git /src/googletest && \
@@ -84,13 +63,6 @@ RUN git clone https://github.com/Tencent/rapidjson /usr/src/rapidjson && \
     make install && \
     # Cleanup
     rm -rf /usr/src/rapidjson
-
-# Install libarchive
-RUN wget --quiet https://www.libarchive.org/downloads/libarchive-3.4.3.tar.gz && \
-    tar -C /usr/src -xzf libarchive-3.4.3.tar.gz && \
-    rm -rf libarchive-3.4.3.tar.gz && cd /usr/src/libarchive-3.4.3 && \
-    ./configure && make && make install && \
-    cd /usr/src && rm -rf libarchive-3.4.3
 
 RUN apt-get update && \
     apt-get install -y software-properties-common && \
