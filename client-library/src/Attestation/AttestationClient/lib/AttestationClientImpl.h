@@ -112,6 +112,7 @@ public:
     /**
      * @brief This function will be used to Decrypt a JWT token received from
      * AAS.
+     * @param[in] pcr_selector Bitfield representing the selected PCRs
      * @param[in] jwt_token_encrypted The encrypted jwt token received from AAS.
      * @param[out] jwt_token_decrypted The decrypted jwt token.
      * @return In case of success, AttestationResult object with error code
@@ -119,7 +120,7 @@ public:
      * In case of failure, an appropriate ErrorCode will be set in the
      * AttestationResult object and error description will be provided.
      */
-    attest::AttestationResult DecryptMaaToken(const std::string& jwt_token_encrypted,
+    attest::AttestationResult DecryptMaaToken(uint32_t pcr_selector, const std::string& jwt_token_encrypted,
                                               std::string& jwt_token_decrypted) noexcept;
 
     /**
@@ -152,6 +153,7 @@ public:
     /**
      * @brief This function will be used to retrieve the Tpm related
      * information from the guest system.
+     * @param[in] pcr_selector Bitfield of PCRs included in quote
      * @param[out] tpm_info The TpmInfo structure that will be filled by the
      * function.
      * @return In case of success, AttestationResult object with error code
@@ -159,7 +161,7 @@ public:
      * In case of failure, an appropriate ErrorCode will be set in the
      * AttestationResult object and error description will be provided.
      */
-    attest::AttestationResult GetTpmInfo(attest::TpmInfo& tpm_info);
+    attest::AttestationResult GetTpmInfo(uint32_t pcr_selector, attest::TpmInfo& tpm_info);
 
     /**
      * @brief This function will be used to retrieve the isolation information
@@ -215,10 +217,16 @@ public:
 
 private:
     /**
+     * @brief Get the list of PCR from the client configuration & platform
+     */
+    attest::PcrList GetAttestationPcrList();
+
+    /**
      * @brief This function will be used to retrieve the attestation parameters
      * needed to send with the attestation request to AAS.
      * @param[in] client_payload The client payload that will be copied over to
      * the params object.
+     * @param[in] pcr_selector Bitfield of PCRs included in the TPM quote
      * @param[out] params The AttestationParameters structure that will be
      * filled by the function.
      * @return In case of success, AttestationResult object with error code
@@ -228,6 +236,7 @@ private:
      */
     attest::AttestationResult getAttestationParameters(const std::unordered_map<std::string,
                                                                                 std::string>& client_payload,
+                                                       uint32_t pcr_selector,
                                                        attest::AttestationParameters& params);
 
     /**

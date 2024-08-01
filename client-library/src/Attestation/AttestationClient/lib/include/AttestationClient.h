@@ -122,10 +122,13 @@ extern "C" {
     void Uninitialize();
 
     /**
-    * Single shot C function for Rust FFI
-    * To avoid managing the lifetime of the MAA token string, we assume jwt is at least 32k
-    * The actual token length is written to *jwt_len
+    * @brief Single shot C function for Rust FFI
+    * @param[in] app_data: JSON user data quoted by the TPM and reported by MAA in runtime claim
+    * @param[in] pcr: bitfield representing the PCRs used in the TPM quote and reported by MAA
+    * @param[out] jwt: 32k buffer where the MAA token will be written
+    * @param[out] jwt_len: size of the written MAA token
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
     */
     DllExports
-    int32_t get_attestation_token(const uint8_t* app_data, uint8_t* jwt, size_t* jwt_len);
+    int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len);
 }

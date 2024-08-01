@@ -129,7 +129,8 @@ bool attest::GetEncryptedJwt(const Json::Value& json_obj,
     return true;
 }
 
-attest::AttestationResult attest::DecryptInnerKey(const attest::Buffer& encrypted_inner_key,
+attest::AttestationResult attest::DecryptInnerKey(uint32_t pcr_selector,
+                                                  const attest::Buffer& encrypted_inner_key,
                                                   attest::Buffer& decrypted_key,
                                                   const attest::RsaScheme rsaWrapAlgId,
                                                   const attest::RsaHashAlg rsaHashAlgId) {
@@ -139,7 +140,7 @@ attest::AttestationResult attest::DecryptInnerKey(const attest::Buffer& encrypte
 
         Tpm tpm;
 
-        attest::PcrList list = GetAttestationPcrList();
+        attest::PcrList list = GetAttestationPcrList(pcr_selector);
 
         attest::PcrSet pcrValues = tpm.GetPCRValues(list, attestation_hash_alg);
 

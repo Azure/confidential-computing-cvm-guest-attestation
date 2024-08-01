@@ -56,14 +56,24 @@ static inline AttestationResult LogErrorAndGetResult(const AttestationResult::Er
 
 namespace attest {
 
-PcrList GetAttestationPcrList() {
-    #ifdef PLATFORM_UNIX
+PcrList GetAttestationPcrList(uint32_t pcr_selector) {
+    if(pcr_selector == 0) {
+        #ifdef PLATFORM_UNIX
         attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7};
-    #else
+        #else
         attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14};
-    #endif
-    return list;
+        #endif
+        return list;
+    } else {
+      attest::PcrList list;
+      for(int bit = 0; bit < 32; bit++) {
+        if((pcr_selector >> bit) & 1)
+          list.push_back(bit);
+      }
+      return list;
+    }
 }
+
 
 namespace os {
 
