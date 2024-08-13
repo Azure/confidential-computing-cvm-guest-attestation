@@ -8,6 +8,8 @@
 #include <iterator>
 #include <cstring>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <tss2/tss2_mu.h>
 
 #include "Exceptions.h"
@@ -333,6 +335,38 @@ attest::TpmVersion Tss2Wrapper::GetVersion()
 }
 
 /* See header */
+std::vector<unsigned char> Tss2Wrapper::UnsealWithEkFromSpec(
+    const std::vector<unsigned char>& importablePublic,
+    const std::vector<unsigned char>& importablePrivate,
+    const std::vector<unsigned char>& encryptedSeed,
+    const attest::PcrSet& pcrSet,
+    const attest::HashAlg hashAlg,
+    const bool usePcrAuth)
+{
+    TPM2B_PUBLIC* outPublic = NULL;
+
+    ESYS_TR ekHandle = Tss2Util::GenerateEkFromSpec(*ctx, false, &outPublic);
+
+    // Store the object in a unique_c_ptr<> to manage clean up after use.
+    unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
+
+    auto unsealedData = UnsealInternal(
+        ekHandle,
+        importablePublic,
+        importablePrivate,
+        encryptedSeed,
+        pcrSet,
+        hashAlg,
+        usePcrAuth);
+
+    // Flush the key object from the tpm to make sure we are not consuming tpm memory.
+    Tss2Util::FlushObjectContext(*ctx, ekHandle);
+
+    return unsealedData;
+
+}
+
+/* See header */
 std::vector<unsigned char> Tss2Wrapper::Unseal(
     const std::vector<unsigned char>& importablePublic,
     const std::vector<unsigned char>& importablePrivate,
@@ -344,15 +378,34 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
     // Open handle to EK
     auto ekHandle = Tss2Util::HandleToEsys(*ctx, EK_PUB_INDEX);
 
-    TPM2B_PUBLIC inPub = {0};
-    TPM2B_PRIVATE inPriv = {0};
-    TPM2B_ENCRYPTED_SECRET seed = {0};
+    return UnsealInternal(
+        ekHandle.get(),
+        importablePublic,
+        importablePrivate,
+        encryptedSeed,
+        pcrSet,
+        hashAlg,
+        usePcrAuth);
+}
+
+std::vector<unsigned char> Tss2Wrapper::UnsealInternal(
+    ESYS_TR keyHandle,
+    const std::vector<unsigned char>& importablePublic,
+    const std::vector<unsigned char>& importablePrivate,
+    const std::vector<unsigned char>& encryptedSeed,
+    const attest::PcrSet& pcrSet,
+    const attest::HashAlg hashAlg,
+    bool usePcrAuth)
+{
+    TPM2B_PUBLIC inPub = { 0 };
+    TPM2B_PRIVATE inPriv = { 0 };
+    TPM2B_ENCRYPTED_SECRET seed = { 0 };
     TSS2_RC ret;
 
     // Unmarshal inPub
     size_t offset = 0;
     ret = Tss2_MU_TPM2B_PUBLIC_Unmarshal(importablePublic.data(),
-            importablePublic.size(), &offset, &inPub);
+        importablePublic.size(), &offset, &inPub);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to unmarshal TPM2B_PUBLIC", ret);
     }
@@ -360,7 +413,7 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
     // Unmarshal inPriv
     offset = 0;
     ret = Tss2_MU_TPM2B_PRIVATE_Unmarshal(importablePrivate.data(), importablePrivate.size(),
-            &offset, &inPriv);
+        &offset, &inPriv);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to unmarshal TPM2B_PRIVATE", ret);
     }
@@ -368,7 +421,7 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
     // Unmarshal seed
     offset = 0;
     ret = Tss2_MU_TPM2B_ENCRYPTED_SECRET_Unmarshal(encryptedSeed.data(), encryptedSeed.size(),
-            &offset, &seed);
+        &offset, &seed);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to unmarshal TPM2B_ENCRYPTED_SECRET", ret);
     }
@@ -388,9 +441,9 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
 
     TPMT_SYM_DEF_OBJECT symAlg;
     symAlg.algorithm = TPM2_ALG_NULL;
-    ret = Esys_Import(this->ctx->Get(), ekHandle.get(),
-            session.GetHandle(), ESYS_TR_NONE, ESYS_TR_NONE,
-            nullptr, &inPub, &inPriv, &seed, &symAlg, &tmpPriv);
+    ret = Esys_Import(this->ctx->Get(), keyHandle,
+        session.GetHandle(), ESYS_TR_NONE, ESYS_TR_NONE,
+        nullptr, &inPub, &inPriv, &seed, &symAlg, &tmpPriv);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to import encrypted data", ret);
     }
@@ -403,9 +456,9 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
     session.PolicySecret(ESYS_TR_RH_ENDORSEMENT);
 
     unique_esys_tr loadedData(this->ctx->Get());
-    ret = Esys_Load(this->ctx->Get(), ekHandle.get(),
-            session.GetHandle(), ESYS_TR_NONE, ESYS_TR_NONE,
-            outPriv.get(), &inPub, loadedData.get_ptr());
+    ret = Esys_Load(this->ctx->Get(), keyHandle,
+        session.GetHandle(), ESYS_TR_NONE, ESYS_TR_NONE,
+        outPriv.get(), &inPub, loadedData.get_ptr());
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to load encrypted data", ret);
     }
@@ -440,8 +493,8 @@ std::vector<unsigned char> Tss2Wrapper::Unseal(
     unique_c_ptr<TPM2B_SENSITIVE_DATA> outData;
     TPM2B_SENSITIVE_DATA* outTmp;
     ret = Esys_Unseal(this->ctx->Get(), loadedData.get(),
-            authSession, ESYS_TR_NONE, ESYS_TR_NONE,
-            &outTmp);
+        authSession, ESYS_TR_NONE, ESYS_TR_NONE,
+        &outTmp);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to Unseal encrypted data", ret);
     }
@@ -505,33 +558,26 @@ attest::PcrQuote Tss2Wrapper::UnpackPcrQuoteToRSA(attest::PcrQuote& pcrQuoteMars
     return pcrQuote;
 }
 
-attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) {
-
-    TPM2B_PUBLIC *outPublic = NULL;
-
-    ESYS_TR primaryHandle = Tss2Util::CreateEphemeralKey(*ctx, pcrSet, &outPublic);
-
-    // Store the object in a unique_c_ptr<> to manage clean up after use.
-    unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
-
-    TPM2B_DATA qualifyingData = {0};
+attest::EphemeralKey Tss2Wrapper::GetCertifiedKeyAndFlushHandle(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle)
+{
+    TPM2B_DATA qualifyingData = { 0 };
     TPMT_SIG_SCHEME inScheme;
     inScheme.scheme = TPM2_ALG_NULL;
-    TPM2B_ATTEST *certifyInfo = NULL;
-    TPMT_SIGNATURE *signature = NULL;
+    TPM2B_ATTEST* certifyInfo = NULL;
+    TPMT_SIGNATURE* signature = NULL;
     auto signHandle = Tss2Util::HandleToEsys(*ctx, AIK_PUB_INDEX);
 
-    TSS2_RC ret = Esys_Certify (this->ctx->Get(),
-                                primaryHandle,
-                                signHandle.get(),
-                                ESYS_TR_PASSWORD,
-                                ESYS_TR_PASSWORD,
-                                ESYS_TR_NONE,
-                                &qualifyingData,
-                                &inScheme,
-                                &certifyInfo,
-                                &signature
-                                );
+    TSS2_RC ret = Esys_Certify(this->ctx->Get(),
+        primaryHandle,
+        signHandle.get(),
+        ESYS_TR_PASSWORD,
+        ESYS_TR_PASSWORD,
+        ESYS_TR_NONE,
+        &qualifyingData,
+        &inScheme,
+        &certifyInfo,
+        &signature
+    );
     if (ret != TSS2_RC_SUCCESS) {
         // Flush the key object from the tpm to make sure we are not consuming tpm memory.
         Tss2Util::FlushObjectContext(*ctx, primaryHandle);
@@ -546,7 +592,7 @@ attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) 
     Tss2Util::FlushObjectContext(*ctx, primaryHandle);
 
     size_t offset = 0;
-    std::vector<unsigned char> keyPub(sizeof(*outPubPtr), '\0') ;
+    std::vector<unsigned char> keyPub(sizeof(*outPubPtr), '\0');
     ret = Tss2_MU_TPM2B_PUBLIC_Marshal(outPubPtr.get(), keyPub.data(), keyPub.size(), &offset);
     if (ret != TSS2_RC_SUCCESS) {
         throw Tss2Exception("Failed to marshal TPM2B_PUBLIC", ret);
@@ -556,11 +602,11 @@ attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) 
     keyPub.resize(offset);
 
     attest::Buffer certifyInfoMarshaled(certifyInfoPtr->attestationData,
-                                        certifyInfoPtr->attestationData + certifyInfoPtr->size);
+        certifyInfoPtr->attestationData + certifyInfoPtr->size);
 
     attest::Buffer certifyInfoSignatureMarshaled(certifyInfoSignaturePtr->signature.rsassa.sig.buffer,
-                                                 certifyInfoSignaturePtr->signature.rsassa.sig.buffer +
-                                                 certifyInfoSignaturePtr->signature.rsassa.sig.size);
+        certifyInfoSignaturePtr->signature.rsassa.sig.buffer +
+        certifyInfoSignaturePtr->signature.rsassa.sig.size);
 
     attest::EphemeralKey ephemeralKey;
     ephemeralKey.encryptionKey = keyPub;
@@ -568,6 +614,18 @@ attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) 
     ephemeralKey.certifyInfoSignature = certifyInfoSignatureMarshaled;
 
     return ephemeralKey;
+}
+
+attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) {
+
+    TPM2B_PUBLIC *outPublic = NULL;
+
+    ESYS_TR primaryHandle = Tss2Util::CreateEphemeralKey(*ctx, pcrSet, &outPublic);
+
+    // Store the object in a unique_c_ptr<> to manage clean up after use.
+    unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
+
+    return GetCertifiedKeyAndFlushHandle(outPubPtr, primaryHandle);
 }
 
 attest::Buffer Tss2Wrapper::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
@@ -605,9 +663,10 @@ attest::Buffer Tss2Wrapper::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet
     TPMT_RSA_DECRYPT scheme;
     scheme.scheme = rsaWrapAlgId;
     scheme.details.oaep.hashAlg = rsaHashAlgId;
+
     TPM2B_PUBLIC_KEY_RSA* decrypted = NULL;
 
-     TSS2_RC ret = Esys_RSA_Decrypt(this->ctx->Get(), primaryHandle,
+    TSS2_RC ret = Esys_RSA_Decrypt(this->ctx->Get(), primaryHandle,
                          session.GetHandle(), ESYS_TR_NONE, ESYS_TR_NONE,
                          &cipher_msg, &scheme, nullptr, &decrypted);
     if (ret != TSS2_RC_SUCCESS) {
@@ -638,4 +697,16 @@ void Tss2Wrapper::WriteAikCert(const std::vector<unsigned char>& aikCert) {
 attest::Buffer Tss2Wrapper::GetHCLReport()
 {
     return Tss2Util::NvRead(*ctx, HCL_REPORT_INDEX);
+}
+
+attest::EphemeralKey Tss2Wrapper::GetEkPubWithCertification()
+{
+    TPM2B_PUBLIC* outPublic = NULL;
+
+    ESYS_TR primaryHandle = Tss2Util::GenerateEkFromSpec(*ctx, false, &outPublic);
+
+    // Store the object in a unique_c_ptr<> to manage clean up after use.
+    unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
+
+    return GetCertifiedKeyAndFlushHandle(outPubPtr, primaryHandle);
 }

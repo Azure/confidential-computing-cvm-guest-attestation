@@ -1,8 +1,28 @@
-//-------------------------------------------------------------------------------------------------
-// <copyright file="SnpVmReport.h" company="Microsoft Corporation">
-// Copyright (c) Microsoft Corporation.  All rights reserved.
-// </copyright>
-//-------------------------------------------------------------------------------------------------
+/*++
+
+Copyright (c) 2014  Microsoft Corporation
+
+Module Name:
+
+    vbsvmcrypto.h
+
+Abstract:
+
+    Contains type definitions used by the crypto and attesation in Isolated VM.
+
+Author:
+
+    Jingbo Wu (jingbowu) 17-April-2018 - Created
+
+Revision History:
+
+--*/
+
+/*
+History: 
+    This header file is copied from the below NuGet version published by the cosine team
+    NuGet Version: microsoft.windows.igvmagent.amd64fre.10.0.25114.1000-220505-1700.rs-onecore-base2-hyp.nupkg
+*/
 
 #pragma once
 
@@ -102,6 +122,59 @@ typedef struct _SNP_VM_REPORT
     SNP_SIGNATURE  SnpSignature;
 } SNP_VM_REPORT;
 
+#define TDX_REPORT_DATA_LENGTH (64)
+typedef struct _TDX_REPORTMAC
+{
+    uint8_t ReportType;
+    uint8_t ReportSubType;
+    uint8_t ReportVersion;
+    uint8_t ReservedTypeMbz;
+    uint8_t ReservedMbz1[12];
+    uint8_t CpuSvn[16];
+    uint8_t TeeTcbInfoHash[48];
+    uint8_t TeeInfoHash[48];
+    uint8_t ReportData[TDX_REPORT_DATA_LENGTH];
+    uint8_t ReservedMbz2[32];
+    uint8_t Mac[32];
+} TDX_REPORTMAC;
+
+typedef struct _TDX_TEE_TCB_INFO
+{
+    uint8_t TeeValid[8];
+    uint8_t TeeTcbSvn[16];
+    uint8_t TeeMrSeam[48];
+    uint8_t TeeMrSeamSigner[48];
+    uint8_t TeeAttributes[8];
+    uint8_t TeeTcbSvn2[16];
+    uint8_t TeeReserved[95];
+} TDX_TEE_TCB_INFO;
+
+typedef struct _TDX_RTMR
+{
+    uint8_t RegisterData[48];
+} TDX_RTMR;
+
+typedef struct _TDX_TDINFO
+{
+    uint8_t Attributes[8];
+    uint8_t XFAM[8];
+    uint8_t Mrtd[48];
+    uint8_t MrConfigId[48];
+    uint8_t MrOwner[48];
+    uint8_t MrOwnerConfig[48];
+    TDX_RTMR RTRM[4];
+    uint8_t ServTd[48];
+    uint8_t ReservedMbz[64];
+} TDX_TDINFO;
+
+typedef struct _TDX_VM_REPORT
+{
+    TDX_REPORTMAC TdxReportMac;
+    TDX_TEE_TCB_INFO TdxTeeTcbInfo;
+    uint8_t TdxReserved[17];
+    TDX_TDINFO TdxTdInfo;
+} TDX_VM_REPORT;
+
 //
 // Union of different signed isolation reports.
 //
@@ -110,6 +183,7 @@ typedef struct _HW_ATTESTATION
     union
     {
         SNP_VM_REPORT SnpReport; // SnpReportData holds hash of HclData
+        TDX_VM_REPORT TdxReport; // SnpReportData holds hash of HclData
     } Report;
 } HW_ATTESTATION;
 
@@ -123,7 +197,8 @@ typedef enum _IGVM_REPORT_TYPE
     InvalidReport = 0,
     ReservedReportType,
     SnpVmReport,
-    TvmReport
+    TvmReport,
+    TdxVmReport
 } IGVM_REPORT_TYPE, *PIGVM_REPORT_TYPE;
 
 // Request type
@@ -143,7 +218,7 @@ typedef enum _IGVM_HASH_TYPE
     Sha512Hash
 } IGVM_HASH_TYPE, *PIGVM_HASH_TYPE;
 
-#define IGVM_ATTEST_VERSION_CURRENT  (1)
+#define IGVM_ATTEST_VERSION_CURRENT (1)
 
 //
 // User data, used for host attestation requests.

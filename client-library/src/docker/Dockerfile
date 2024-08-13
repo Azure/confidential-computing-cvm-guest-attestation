@@ -1,6 +1,8 @@
-FROM ubuntu:18.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
+RUN apt-get install -y python3.8
 
 RUN apt-get install -y curl apt-transport-https lsb-release gnupg
 RUN curl -sL https://packages.microsoft.com/keys/microsoft.asc | \
@@ -21,66 +23,86 @@ RUN apt-get install -y --fix-missing \
     automake \
     build-essential \
     doxygen \
-    libssl-dev \
     libtool \
     libgcrypt-dev \
     gnulib \
+    g++-8 \
     pkg-config \
     libjsoncpp-dev \
     gcc-8 \
-    g++-8 \
     attr \
     squashfs-tools \
     cryptsetup-bin \
     libcap-dev \
-    python-pip \
-    libcurl4-openssl-dev \
+    python3-pip \
     libtspi-dev \
     rpm \
     debhelper \
-    zip
+    libgtest-dev \
+    libgmock-dev \
+    cmake \
+    git \
+    zip \
+    uuid-dev \
+    libjson-c-dev
+
+# Needed to run the Attestation extension tests.
+RUN pip3 install mock
 
 RUN cp /usr/lib/x86_64-linux-gnu/libjsoncpp.a /usr/local/lib && \
-    ls /usr/local/lib/libjsoncpp.a
+    ls /usr/local/lib/libjsoncpp.a && \
+    cp /usr/lib/x86_64-linux-gnu/libgtest.a /usr/local/lib && \
+    ls /usr/local/lib/libgtest.a && \
+    cp /usr/lib/x86_64-linux-gnu/libgtest_main.a /usr/local/lib && \
+    ls /usr/local/lib/libgtest_main.a && \
+    cp /usr/lib/x86_64-linux-gnu/libgmock.a /usr/local/lib && \
+    ls /usr/local/lib/libgmock.a && \
+    cp /usr/lib/x86_64-linux-gnu/libgmock_main.a /usr/local/lib && \
+    ls /usr/local/lib/libgmock.a
 
 RUN mkdir -p /usr/src
 
-# Install Intel TPM TSS stack
+RUN wget https://www.openssl.org/source/openssl-3.2.0.tar.gz  && \
+    echo 14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e openssl-3.2.0.tar.gz | sha256sum -c - && \
+    tar -C /tmp -xzf openssl-3.2.0.tar.gz && \
+    rm -rf openssl-3.2.0.tar.gz && \
+    cd /tmp/openssl-3.2.0 && \
+    ./config --prefix=/usr/local/openssl && \
+    make && \
+    make test && \
+    make install && \
+    ln -s /usr/local/openssl/lib64/libssl.so /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
+    ln -s /usr/local/openssl/lib64/libcrypto.so /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
+    ldconfig
+
+#Install curl
+RUN export LDFLAGS="-L/usr/local/openssl/lib64" && \ 
+    export CPPFLAGS="-I/usr/local/openssl/include" && \ 
+    wget --quiet https://curl.se/download/curl-8.5.0.tar.gz && \
+    tar -C /tmp -xzf curl-8.5.0.tar.gz && \
+    rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
+    ./configure --with-ssl --prefix=/usr && \
+    make -j && \
+    make LIBDIR=lib && make install && \
+    ldconfig -n /usr/lib
+
 RUN export CC=gcc && export CXX=g++ && \
+    export LDFLAGS="-L/usr/local/openssl/lib64 -lcrypto" && \
+    export CPPFLAGS="-I/usr/local/openssl/include" && \
     # Download tpm2-tss
     mkdir -p /usr/src/tpm2-tss && \
+    git clone https://github.com/tpm2-software/tpm2-tss.git /usr/src/tpm2-tss && \
     cd /usr/src/tpm2-tss && \
-    TSS_VER=2.3.0 && \
-    wget --quiet https://github.com/tpm2-software/tpm2-tss/archive/$TSS_VER.tar.gz && \
-    echo 425fc9abf44ebb662ccfe0cfa8315fc1b9f8eee8ed8fd8e0894961415176524d $TSS_VER.tar.gz | sha256sum -c && \
+    git checkout 8b404ee7e5886c71aa53accb4ad38823724f7b13 && \
     # Build tpm2-tss
-    tar xzf $TSS_VER.tar.gz && \
-    TSS_SRC_DIR=/usr/src/tpm2-tss/tpm2-tss-$TSS_VER && \
-    cd $TSS_SRC_DIR && \
     ./bootstrap && \
     ./configure && \
-    make -j$(nproc) check && \
+    make -j$(nproc) && \
     # Install
     make install && \
     ldconfig && \
     # Cleanup
     rm -rf /usr/src/tpm2-tss
-
-# Install CMake
-RUN apt-get install -y cmake
-
-# Install git 
-RUN apt-get update
-RUN apt-get install -y git
-
-# Install Google Test
-RUN git clone https://github.com/google/googletest.git /src/googletest && \
-    cd /src/googletest && git checkout bfc0ffc8a698072c794ae7299db9cb6866f4c0bc && \
-    cmake . && make && \
-    cp googlemock/lib* googlemock/gtest/lib* /usr/local/lib && \
-    cp -R /src/googletest/googletest/include/* /usr/local/include && \
-    cp -R /src/googletest/googlemock/include/* /usr/local/include && \
-    cd / && rm -rf /src/googletest
 
 # Install RapidJSON
 RUN git clone https://github.com/Tencent/rapidjson /usr/src/rapidjson && \

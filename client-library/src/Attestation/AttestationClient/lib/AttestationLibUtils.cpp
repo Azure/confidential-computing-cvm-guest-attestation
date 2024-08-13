@@ -11,6 +11,7 @@
 #include <thread>
 #include <climits>
 #include <sstream>
+#include <random>
 #include <curl/curl.h>
 #include <json/json.h>
 #include <boost/algorithm/string.hpp>
@@ -19,13 +20,18 @@
 #include <openssl/x509v3.h> 
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
-
+#include <openssl/core_names.h>
+#ifdef PLATFORM_UNIX
+#include <sys/stat.h>
+#endif
 #include "Logging.h"
 #include "AttestationLibConst.h"
 #include "AttestationLibUtils.h"
 #include "AttestationHelper.h"
 
 #define MAX_RETRIES 3
+#define BACK_OFF_TIME_SECONDS 5
+#define To_MilliSeconds(x) x * 1000
 
 #define HTTP_STATUS_OK 200
 #define HTTP_STATUS_SERVER_ERROR 500
@@ -35,6 +41,7 @@
 #define HTTP_STATUS_BAD_REQUEST 400
 #define HTTP_STATUS_RESOURCE_NOT_FOUND 404
 #define HTTP_STATUS_TOO_MANY_REQUESTS 429
+#define HTTP_STATUS_REQUEST_TIMEOUT 408
 
 /// <summary>
 /// Log the error and return the error code and description
@@ -43,11 +50,11 @@
 /// <param name="errorDescription">The description of the error code</param>
 /// <returns>AttestationResult</returns>
 static inline AttestationResult LogErrorAndGetResult(const AttestationResult::ErrorCode& errorCode,
-    const std::string& errorDescription)
+                                                     const std::string& errorDescription)
 {
     CLIENT_LOG_ERROR("Error code:%d description:%s",
-        errorCode,
-        errorDescription.c_str());
+                      errorCode,
+                      errorDescription.c_str());
     AttestationResult result;
     result.code_ = errorCode;
     result.description_ = errorDescription;
@@ -196,6 +203,15 @@ bool GetWindowsVersion(uint32_t& major_version,
 
 namespace curl {
 
+int generateRandomJitter() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    // Max Jitter of 0 to 5000 ms i.e. 0 to 5 sec
+    std::uniform_int_distribution<> jitter_dist(0, 5000);
+    int jitter_millisecond = static_cast<int>(jitter_dist(gen));
+    CLIENT_LOG_INFO("Adding additonal random jitter of %d milliseconds", jitter_millisecond);
+    return jitter_millisecond;
+}
 
 static size_t writeResponseCallback(void *contents, size_t size, size_t nmemb, void *response)
 {
@@ -287,15 +303,21 @@ AttestationResult SendRequest(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, payload.size());
 
-    // For Linux, We use the native libcurl that is installed from the repo
-    // and the lib reads the ca bundle from a pre-defined location.
-    // In the Windows case, since we link to the lib as an external lib,
-    // we need to explicitly configure the ca bundle location and provide a
-    // ca bundle that the lib can use.
-    #ifndef PLATFORM_UNIX
+#ifdef PLATFORM_UNIX
+    char* cainfo = NULL;
+    curl_easy_getinfo(curl, CURLINFO_CAINFO, &cainfo);
+    struct stat buffer;
+    if(cainfo && stat(cainfo, &buffer) == 0) {
+        CLIENT_LOG_INFO("Using default ca info path: %s", cainfo);
+        curl_easy_setopt(curl, CURLOPT_CAINFO, cainfo);
+    } else {
+        CLIENT_LOG_INFO("Using ca-bundle certs");
+        curl_easy_setopt(curl, CURLOPT_CAINFO, "curl-ca-bundle.crt");
+    }
+#else 
     curl_easy_setopt(curl, CURLOPT_CAINFO, "curl-ca-bundle.crt");
-    #endif
-
+    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
     // Send a pointer to a std::string to hold the response from the end
     // point along with the handler function.
     std::string response;
@@ -322,7 +344,9 @@ AttestationResult SendRequest(const std::string& url,
                 result.code_ = AttestationResult::ErrorCode::ERROR_ATTESTATION_FAILED;
                 result.description_ = error_msg;
                 break;
-        } else if(response_code >= HTTP_STATUS_SERVER_ERROR) {
+        } else if (response_code == HTTP_STATUS_TOO_MANY_REQUESTS 
+                    || response_code == HTTP_STATUS_REQUEST_TIMEOUT
+                    || response_code >= HTTP_STATUS_SERVER_ERROR) {
             std::string error_msg = response;
 
             CLIENT_LOG_ERROR("Http Request failed with error:%ld description:%s",
@@ -342,10 +366,22 @@ AttestationResult SendRequest(const std::string& url,
                 break;
             }
 
+            curl_off_t retry_after_seconds = 0;
+            curl_easy_getinfo(curl, CURLINFO_RETRY_AFTER, &retry_after_seconds);
+            if (retry_after_seconds) {
+                CLIENT_LOG_INFO("Http Request throttled by MAA, retry-after: %ld", retry_after_seconds);
+            }
+
+            long long exponential_back_off_seconds = static_cast<long long>(BACK_OFF_TIME_SECONDS * pow(2.0, static_cast<double>(retries++)));
+            long long sleep_time_milliseconds = To_MilliSeconds((exponential_back_off_seconds > retry_after_seconds ? 
+                                                    exponential_back_off_seconds : 
+                                                    retry_after_seconds)) + static_cast<long long>(generateRandomJitter());
+
+            CLIENT_LOG_INFO("Http Request wait time: %ld", sleep_time_milliseconds);
             // Sleep for the backoff period and try again.
             std::this_thread::sleep_for(
-                std::chrono::seconds(
-                    static_cast<long long>(5 * pow(2.0, static_cast<double>(retries++)))
+                std::chrono::milliseconds(
+                    sleep_time_milliseconds
                 ));
             response = std::string();
             continue;
@@ -420,7 +456,8 @@ namespace crypto {
                                                const attest::RsaScheme rsaWrapAlgId,
                                                const attest::RsaHashAlg rsaHashAlgId,
                                                const Buffer& input_data,
-                                               Buffer& encrypted_data) {
+                                               Buffer& encrypted_data)
+    {
         AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
         if (pkey_bio == NULL ||
             input_data.empty()) {
@@ -431,21 +468,21 @@ namespace crypto {
         const EVP_MD* rsa_md = EVP_md_null();
         switch (rsaHashAlgId)
         {
-        case RsaHashAlg::RsaSha1:
-            rsa_md = EVP_sha1();
-            break;
-        case RsaHashAlg::RsaSha256:
-            rsa_md = EVP_sha256();
-            break;
-        case RsaHashAlg::RsaSha384:
-            rsa_md = EVP_sha384();
-            break;
-        case RsaHashAlg::RsaSha512:
-            rsa_md = EVP_sha512();
-            break;
-        default:
-            return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_INIT_FAILED,
-                                        "EncryptDataWithRSAPubKey failed; called with unknown message digest algorithm");
+            case RsaHashAlg::RsaSha1:
+                rsa_md = EVP_sha1();
+                break;
+            case RsaHashAlg::RsaSha256:
+                rsa_md = EVP_sha256();
+                break;
+            case RsaHashAlg::RsaSha384:
+                rsa_md = EVP_sha384();
+                break;
+            case RsaHashAlg::RsaSha512:
+                rsa_md = EVP_sha512();
+                break;
+            default:
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_INIT_FAILED,
+                                            "EncryptDataWithRSAPubKey failed; called with unknown message digest algorithm");
         }
 
         // Set the RSA padding and message digest algorithm
@@ -453,18 +490,18 @@ namespace crypto {
         int rsa_padding_algo = 0;
         switch (rsaWrapAlgId)
         {
-        case RsaScheme::RsaEs:
-            rsa_padding_algo = RSA_PKCS1_PADDING;
-            break;
-        case RsaScheme::RsaOaep:
-            rsa_padding_algo = RSA_PKCS1_OAEP_PADDING;
-            break;
-        case RsaScheme::RsaNull:
-            rsa_padding_algo = RSA_NO_PADDING;
-            break;
-        default:
-            return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_INIT_FAILED,
-                                 "EncryptDataWithRSAPubKey failed; called with unknown RSA padding algorithm");
+            case RsaScheme::RsaEs:
+                rsa_padding_algo = RSA_PKCS1_PADDING;
+                break;
+            case RsaScheme::RsaOaep:
+                rsa_padding_algo = RSA_PKCS1_OAEP_PADDING;
+                break;
+            case RsaScheme::RsaNull:
+                rsa_padding_algo = RSA_NO_PADDING;
+                break;
+            default:
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_INIT_FAILED,
+                                     "EncryptDataWithRSAPubKey failed; called with unknown RSA padding algorithm");
         }
 
         EVP_PKEY* pkey = PEM_read_bio_PUBKEY(pkey_bio, NULL, NULL, NULL);
@@ -481,7 +518,7 @@ namespace crypto {
         {
             EVP_PKEY_CTX_free(enc_ctx);
             return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_INIT_FAILED,
-                                        "EVP_PKEY_CTX_set_rsa_padding failed");
+                "EVP_PKEY_CTX_set_rsa_padding failed");
         }
 
         // Set the RSA message digest algorithm
@@ -522,14 +559,12 @@ namespace crypto {
         size_t outlen;
         unsigned char* out;
         if (EVP_PKEY_encrypt(enc_ctx, NULL, &outlen, &input_data.front(), input_data.size()) <= 0) {
-            CLIENT_LOG_ERROR("EVP_PKEY_encrypt failed");
             EVP_PKEY_CTX_free(enc_ctx);
             return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_FAILED,
                                         "EVP_PKEY_encrypt failed");
         }
         out = (unsigned char*)OPENSSL_malloc(outlen);
         if (EVP_PKEY_encrypt(enc_ctx, out, &outlen, &input_data.front(), input_data.size()) <= 0) {
-            CLIENT_LOG_ERROR("EVP_PKEY_encrypt failed");
             EVP_PKEY_CTX_free(enc_ctx);
             OPENSSL_free(out);
             return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_EVP_PKEY_ENCRYPT_FAILED,
@@ -553,22 +588,55 @@ namespace crypto {
             return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_INVALID_INPUT_PARAMETER,
                                         "Invalid input parameter");
         }
-        RSA* rsa = NULL;
+        EVP_PKEY_CTX* genctx = EVP_PKEY_CTX_new_from_name(NULL, "RSA", NULL);
+        EVP_PKEY* pkey = NULL;
         try {
             auto n_bin = base64::base64url_to_binary(n);
             auto e_bin = base64::base64url_to_binary(e);
-            BIGNUM* modul = BN_bin2bn(n_bin.data(), n_bin.size(), NULL);
-            BIGNUM* expon = BN_bin2bn(e_bin.data(), e_bin.size(), NULL);
-            rsa = RSA_new();
-            RSA_set0_key(rsa, modul, expon, NULL);
-            PEM_write_bio_RSA_PUBKEY(pkey_bio, rsa);
+            const BIGNUM* modul = BN_bin2bn(n_bin.data(), n_bin.size(), NULL);
+            const BIGNUM* expon = BN_bin2bn(e_bin.data(), e_bin.size(), NULL);
+            OSSL_PARAM rsa_keygen_params[3] = {
+                { OSSL_PKEY_PARAM_RSA_N, OSSL_PARAM_UNSIGNED_INTEGER, n_bin.data(), BN_num_bytes(modul),  NULL},
+                { OSSL_PKEY_PARAM_RSA_E, OSSL_PARAM_UNSIGNED_INTEGER, e_bin.data(), BN_num_bytes(expon), NULL},
+                OSSL_PARAM_END
+            };
+
+            if (OSSL_PARAM_set_BN(&rsa_keygen_params[0], modul) <= 0) {
+                EVP_PKEY_CTX_free(genctx);
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
+                    "OSSL_PARAM_set_BN failed");
+            };
+
+            if (OSSL_PARAM_set_BN(&rsa_keygen_params[1], expon) <= 0) {
+                EVP_PKEY_CTX_free(genctx);
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
+                    "OSSL_PARAM_set_BN failed");
+            }
+
+            if (EVP_PKEY_fromdata_init(genctx) <= 0) {
+                EVP_PKEY_CTX_free(genctx);
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
+                    "EVP_PKEY_fromdata_init failed");
+            }
+
+            if (EVP_PKEY_fromdata(genctx, &pkey, EVP_PKEY_PUBLIC_KEY, rsa_keygen_params) <= 0) {
+                EVP_PKEY_CTX_free(genctx);
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
+                    "EVP_PKEY_fromdata failed");
+            }
+
+            if (PEM_write_bio_PUBKEY(pkey_bio, pkey) <= 0) {
+                EVP_PKEY_CTX_free(genctx);
+                return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
+                    "PEM_write_bio_PUBKEY failed");
+            }
         }
         catch (...) {
             result = LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_CONVERTING_JWK_TO_RSA_PUB,
-                                          "Error while converting JWK to RSA public key");
+                                        "Error while converting JWK to RSA public key");
         }
 
-        RSA_free(rsa);
+        EVP_PKEY_CTX_free(genctx);
         return result;
     }
 } // crypto
@@ -602,7 +670,7 @@ namespace url {
         path = query_idx != std::string::npos ? path.substr(0, query_idx) : path;
         if (dns.empty()) {
             return LogErrorAndGetResult(AttestationResult::ErrorCode::ERROR_PARSING_DNS_INFO,
-                                        "Error extracting DNS info from URL");
+                "Error extracting DNS info from URL");
         }
 
         CLIENT_LOG_INFO("Attestation URL info - protocol {%s}, domain {%s}", 

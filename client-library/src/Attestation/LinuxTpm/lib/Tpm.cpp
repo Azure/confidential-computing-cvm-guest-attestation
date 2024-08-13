@@ -73,6 +73,18 @@ attest::Buffer Tpm::Unseal(
             encryptedBlob, pcrSet, hashAlg, usePcrAuth);
 }
 
+attest::Buffer Tpm::UnsealWithEkFromSpec(
+    const attest::Buffer& importablePublic,
+    const attest::Buffer& importablePrivate,
+    const attest::Buffer& encryptedBlob,
+    const attest::PcrSet& pcrSet,
+    const attest::HashAlg hashAlg,
+    const bool usePcrAuth) const
+{
+    return this->tssWrapper->UnsealWithEkFromSpec(importablePublic, importablePrivate,
+        encryptedBlob, pcrSet, hashAlg, usePcrAuth);
+}
+
 void Tpm::RemovePersistentEk() const
 {
     return this->tssWrapper->RemovePersistentEk();
@@ -109,4 +121,9 @@ void Tpm::WriteAikCert(const attest::Buffer& aikCert) const
 attest::Buffer Tpm::GetHCLReport() const
 {
     return this->tssWrapper->GetHCLReport();
+}
+
+attest::EphemeralKey Tpm::GetEkPubWithCertification() const
+{
+    return this->tssWrapper->GetEkPubWithCertification();
 }

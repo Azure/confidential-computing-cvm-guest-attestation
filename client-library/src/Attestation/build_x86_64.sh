@@ -37,7 +37,7 @@ BUILD_DIR=${ATTESTATION_DIR}/_build/x86_64
 PACKAGE_DIR=${BUILD_DIR}/packages
 LOG_DIR=${BUILD_DIR}/log
 ATTESTATION_LIB_SHARED_DIR=${ATTESTATION_DIR}/AttestationClient/lib/DynamicLibrary
-VERSION="1.0.2"
+VERSION="1.0.5"
 # Create all directories
 mkdir -p $BUILD_DIR
 mkdir -p $PACKAGE_DIR
@@ -52,6 +52,5 @@ cd ${ATTESTATION_LIB_SHARED_DIR}
 cp ${BUILD_DIR}/AttestationClient/lib/DynamicLibrary/libazguestattestation.so.${VERSION} ${PACKAGE_DIR}
 
 ./createDebPackage.sh
-
 
 popd

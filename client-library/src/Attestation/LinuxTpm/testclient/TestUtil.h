@@ -20,5 +20,6 @@ public:
             std::vector<unsigned char>& clearKey,
             std::vector<unsigned char>& outPub,
             std::vector<unsigned char>& outPriv,
-            std::vector<unsigned char>& encryptedSeed);
+            std::vector<unsigned char>& encryptedSeed,
+            bool useStoredEk);
 };

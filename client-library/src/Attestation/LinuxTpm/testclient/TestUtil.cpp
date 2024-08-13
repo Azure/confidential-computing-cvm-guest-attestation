@@ -72,10 +72,25 @@ void TestUtil::SealSeedToEk(
     std::vector<unsigned char>& clearKey,
     std::vector<unsigned char>& outPub,
     std::vector<unsigned char>& outPriv,
-    std::vector<unsigned char>& encryptedSeed)
+    std::vector<unsigned char>& encryptedSeed,
+    bool useStoredEk)
 {
     TSS2_RC ret;
-    auto parent = Tss2Util::HandleToEsys(ctx, EK_PUB_INDEX);
+    unique_esys_tr parent(ctx.Get());
+    if (useStoredEk)
+    {
+        parent = std::move(Tss2Util::HandleToEsys(ctx, EK_PUB_INDEX));
+    }
+    else
+    {
+        TPM2B_PUBLIC* outPublic = NULL;
+        ESYS_TR ekHandle = Tss2Util::GenerateEkFromSpec(ctx, false, &outPublic);
+        // Store the object in a unique_c_ptr<> to manage clean up after use.
+        unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
+
+        unique_esys_tr ek(ekHandle, ctx.Get());
+        parent = std::move(ek);
+    }
 
     TPM2B_PUBLIC inPub = {0};
     inPub.publicArea.type = TPM2_ALG_KEYEDHASH;

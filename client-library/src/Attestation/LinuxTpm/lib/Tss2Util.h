@@ -34,6 +34,17 @@ public:
     static unique_c_ptr<TPM2B_PUBLIC> GenerateEk(Tss2Ctx& ctx);
 
     /**
+     * Generates the manufacturer defined EK and EK handle but do not persistes it
+     *
+     * param[in] ctx: wrapper for the TPM2 TSS context which is passed with each TPM2 API call
+     * param[in] setAdminWithAuthPolicy: if true set Admin auth Policy for TPM2_Certify() operations on Ek
+     * param[out] outPub: TPM2B_PUBIC object of the created key.
+     *
+     * returns: ESYS_TR handle of the created key.
+     */
+    static ESYS_TR GenerateEkFromSpec(Tss2Ctx& ctx, bool setAdminWithAuthPolicy, TPM2B_PUBLIC** outPub);
+
+    /**
      * Generates the manufacturer defined EK and persistes it to EK_PUB_INDEX
      *
      * returns: unique_ptr to the TPM2B_PUBLIC structure containing the EKpub

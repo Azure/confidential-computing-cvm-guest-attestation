@@ -22,10 +22,15 @@
 #include "AttestationLibConst.h"
 #include "TpmUnseal.h"
 #include "HttpClient.h"
+#include "AttestationLibTelemetry.h"
 
 // IMDS endpoint for getting the VCek certificate
 constexpr char imds_endpoint[] = "http://169.254.169.254/metadata";
 constexpr char vcek_cert_path[] = "/THIM/amd/certification";
+
+// IMDS endpoint for getting td quote (TDX Only)
+constexpr char acc_endpoint[] = "http://169.254.169.254/acc";
+constexpr char td_quote_path[] = "/tdquote";
 
 attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
@@ -37,6 +42,9 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     if ((result = http_client.InvokeHttpImdsRequest(http_response, url, HttpClient::HttpVerb::GET)).code_ != AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to retrieve VCek certificate from IMDS: %s",
             result.description_.c_str());
+        if (attest::telemetry_reporting.get() != nullptr) {
+            attest::telemetry_reporting->UpdateEvent("Get VCekCert", "Failed to retrive VCek certificate from IMDS", attest::TelemetryReportingBase::EventLevel::IMDS_QUERY_VCek_CERT);
+        }
         return result;
     }
 
@@ -63,5 +71,39 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     CLIENT_LOG_DEBUG("VCek cert received from IMDS successfully");
     std::string cert_chain = cert + chain;
     vcek_cert = attest::base64::base64_encode(cert_chain);
+    return result;
+}
+
+attest::AttestationResult ImdsOperations::GetTdxQuote(const std::string &imds_request,
+                                                      std::string &imds_response) {
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+    std::string content_type = "Content-Type:application/json";
+    std::string http_response;
+    std::string url = std::string(acc_endpoint) + std::string(td_quote_path);
+
+    CLIENT_LOG_INFO("Starting request to IMDS");
+
+    HttpClient http_client;
+    result = http_client.InvokeHttpImdsRequest(
+        http_response,
+        url,
+        HttpClient::HttpVerb::POST,
+        imds_request,
+        content_type);
+
+    if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
+        CLIENT_LOG_ERROR("Failed to retrieve Td Quote Data from IMDS: %s",
+                         result.description_.c_str());
+        return result;
+    }
+
+    if (http_response.empty()) {
+        CLIENT_LOG_ERROR("Empty response received from the endpoint");
+        return AttestationResult::ErrorCode::ERROR_EMPTY_RESPONSE;
+    }
+
+    CLIENT_LOG_INFO("Td Quote received from IMDS successfully");
+    imds_response = http_response;
+
     return result;
 }

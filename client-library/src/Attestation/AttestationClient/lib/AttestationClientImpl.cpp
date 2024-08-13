@@ -36,6 +36,7 @@
 #include "TpmUnseal.h"
 #include "ImdsOperations.h"
 #include "HclReportParser.h"
+#include "TpmCertOperations.h"
 
 #define MAX_ATTESTATION_RETRIES 3
 
@@ -84,6 +85,34 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
         result.description_ = std::string("Invalid input parameter");
         return result;
     }
+
+    TpmCertOperations tpm_cert_ops;
+    bool is_ak_cert_renewal_required = false;
+    if ((result = tpm_cert_ops.IsAkCertRenewalRequired(is_ak_cert_renewal_required)).code_ != AttestationResult::ErrorCode::SUCCESS) {
+        CLIENT_LOG_ERROR("Failure while checking AkCert Renewal state %s", result.description_.c_str());
+        if (result.tpm_error_code_ != 0) {
+            CLIENT_LOG_ERROR("Internal TPM Error occurred, Tpm Error Code: %d", result.tpm_error_code_);
+            return result;
+        } else if (result.code_ == attest::AttestationResult::ErrorCode::ERROR_AK_CERT_PROVISIONING_FAILED) {
+            CLIENT_LOG_ERROR("Attestation Key cert provisioning delayed. Please try attestation after some time.");
+            result.description_ = std::string("AK cert provisioning delayed. Please try attestation after some time.");
+            return result;
+        }
+    }
+
+    result = AttestationResult::ErrorCode::SUCCESS;
+    if (is_ak_cert_renewal_required) {
+        if ((result = tpm_cert_ops.RenewAndReplaceAkCert()).code_ != AttestationResult::ErrorCode::SUCCESS) {
+            CLIENT_LOG_ERROR("Failed to renew AkCert, description: %s with error code: %d", result.description_, static_cast<int>(result.code_));
+            if (telemetry_reporting.get() != nullptr) {
+                telemetry_reporting->UpdateEvent("AkRenew", 
+                                                "Failed to renew AkCert, error description: " + result.description_, 
+                                                TelemetryReportingBase::EventLevel::AK_RENEW_UNEXPECTED_ERROR);
+            }
+        }
+    }
+
+    result = AttestationResult::ErrorCode::SUCCESS;
 
     std::string url = std::string(const_cast<char*>(reinterpret_cast<const char*>(client_params.attestation_endpoint_url)));
     // parse the url and extract the dns
@@ -169,6 +198,104 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
     std::memcpy(jwt_token, token_decrypted.data(), token_decrypted.size());
     jwt_token[token_decrypted.size()] = '\0';
     *jwt_token_out = jwt_token;
+    return result;
+}
+
+AttestationResult GetTdxPlatformEvidence(unsigned char **evidence_out,
+                                         attest::Buffer &tdx_report,
+                                         attest::Buffer &runtime_data) {
+    using namespace std::chrono;
+
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+
+    std::vector<unsigned char> hardware_report(tdx_report.begin(), tdx_report.end());
+    std::string encoded_report = attest::base64::binary_to_base64url(hardware_report);
+    std::string imds_request = "{\"report\":\"" + encoded_report + "\"}";
+
+    CLIENT_LOG_INFO("Starting request to get td quote");
+
+    auto quote_start = high_resolution_clock::now();
+    ImdsOperations imds_ops;
+    std::string imds_response;
+    result = imds_ops.GetTdxQuote(imds_request, imds_response);
+    if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
+        CLIENT_LOG_ERROR("Failed to retrieve the td quote from IMDS");
+        return result;
+    }
+    CLIENT_LOG_INFO("Received td quote successfully");
+
+    auto quote_stop = high_resolution_clock::now();
+    duration<double, std::milli> quote_elapsed = quote_stop - quote_start;
+    CLIENT_LOG_INFO(std::string("Td quote request time: " + std::to_string(quote_elapsed.count()) + " ms").c_str());
+
+    // Parses the returned json response
+    Json::Value json_response;
+    Json::Reader reader;
+    bool success = reader.parse(imds_response, json_response);
+    if (!success) {
+        result.code_ = AttestationResult::ErrorCode::ERROR_RESPONSE_PARSING;
+        result.description_ = std::string("Failed to parse quote response");
+        CLIENT_LOG_ERROR(result.description_.c_str());
+        return result;
+    }
+
+    std::string encoded_quote = json_response["quote"].asString();
+    if (encoded_quote.empty()) {
+        result.code_ = AttestationResult::ErrorCode::ERROR_EMPTY_TD_QUOTE;
+        result.description_ = std::string("Empty Quote received from IMDS Quote Endpoint");
+        return result;
+    }
+
+    std::string encoded_claims = attest::base64::binary_to_base64url(runtime_data);
+
+    // checks where we are sending the request
+    std::stringstream stream;
+    stream << "{\"quote\":\"" << encoded_quote
+           << "\",\"runtimeData\":{\"data\":\""
+           << encoded_claims << "\",\"dataType\":\"JSON\"}}";
+    std::string evidence_str = stream.str();
+
+    unsigned char *evidence = (unsigned char *)malloc((sizeof(unsigned char) * evidence_str.size()) + 1); // allocating an extra byte for the null char at the end
+    std::memcpy(evidence, evidence_str.data(), evidence_str.size());
+    evidence[evidence_str.size()] = '\0';
+    *evidence_out = evidence;
+
+    return result;
+}
+
+AttestationResult AttestationClientImpl::GetHardwarePlatformEvidence(unsigned char **evidence_out) noexcept
+{
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+
+    Buffer hcl_report;
+    try {
+        CLIENT_LOG_INFO("Getting hardware platform evidence...");
+        Tpm tpm;
+        hcl_report = tpm.GetHCLReport();
+
+        Buffer tdx_report, runtime_data;
+        HclReportParser hcl_report_parser;
+
+        ReportType report_type = hcl_report_parser.GetReportType(hcl_report);
+        if (report_type == ReportType::TDX) {
+            result = hcl_report_parser.ExtractTdxReportAndRuntimeDataFromHclReport(hcl_report,
+                                                                                   tdx_report,
+                                                                                   runtime_data);
+            if (result.code_ != AttestationResult::ErrorCode::SUCCESS) {
+                return result;
+            }
+
+            return GetTdxPlatformEvidence(evidence_out, tdx_report, runtime_data);
+        }
+        else if (report_type == ReportType::SNP) {}
+        else {
+            CLIENT_LOG_ERROR("Failed to get report type");
+        }
+    }
+    catch (...) {
+        CLIENT_LOG_ERROR("Error while getting hardware platform evidence");
+    }
+
     return result;
 }
 
@@ -364,6 +491,7 @@ AttestationResult AttestationClientImpl::DecryptMaaToken(const std::string& jwt_
     }
 
     attest::Buffer decrypted_key;
+    // MAA uses RSA-ES with SHA256 as the encryption algorithm.
     if((result = DecryptInnerKey(encrypted_inner_key,
                                  decrypted_key,
                                  attest::RsaScheme::RsaEs,
@@ -629,21 +757,19 @@ AttestationResult AttestationClientImpl::GetOSInfo(OsInfo& os_info) {
     std::string distro_name = entry->second;
 
     entry = os_release_entries.find(std::string(g_distro_version_key));
+    std::string version_str =  std::string("1.0");
     if(entry == os_release_entries.end()) {
-        CLIENT_LOG_ERROR("Distro version not found");
-        result.code_ = AttestationResult::ErrorCode::ERROR_FAILED_TO_GET_OS_INFO;
-        result.description_ = std::string("Distro version not found");
-        return result;
+        CLIENT_LOG_ERROR("Distro version not found, using default version");
+    } else {
+        version_str = entry->second;
     }
-    std::string version_str =  entry->second;
 
     uint32_t major_version = 0;
     uint32_t minor_version = 0;
     if(!os::ParseVersionString(version_str, major_version, minor_version)) {
-        CLIENT_LOG_ERROR("Failed to process distro version");
-        result.code_ = AttestationResult::ErrorCode::ERROR_FAILED_TO_GET_OS_INFO;
-        result.description_ = std::string("Failed to process distro version");
-        return result;
+        CLIENT_LOG_ERROR("Failed to process distro version, using default version");
+        major_version = 1;
+        minor_version = 0;
     }
     os_info.type = OsType::LINUX;
     os_info.distro_name = distro_name;
@@ -678,14 +804,23 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
     isolation_info = IsolationInfo();
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     Buffer hcl_report;
+    std::string isolation_info_str = std::string();
     try {
         Tpm tpm;
         hcl_report = tpm.GetHCLReport();
         // If HCL report exists, then it's a CVM
         isolation_info.isolation_type_ = attest::IsolationType::SEV_SNP;
+        isolation_info_str = "CVM";
     }
     catch (...) {
         isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
+        isolation_info_str = "TVM";
+    }
+
+    if(telemetry_reporting.get() != nullptr) {
+        telemetry_reporting->UpdateEvent("IsolationInfo", 
+                                            isolation_info_str, 
+                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
     }
 
     if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {

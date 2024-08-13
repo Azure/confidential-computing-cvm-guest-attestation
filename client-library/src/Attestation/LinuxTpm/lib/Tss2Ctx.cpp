@@ -8,11 +8,12 @@
 #include "Tss2Ctx.h"
 #ifndef PLATFORM_UNIX
 #include "tss2/tss2_tcti_tbs.h"  // Windows context handling is routed to tbs library
-#define TPM_DEVICE "" // For windows we don't need the device Manager context string. 
+#define TPM_DEVICE "" // For windows we don't need the device Manager context string.
+#define TCTI_LIB_NAME "tbs"
 #else 
 #define TPM_DEVICE "/dev/tpmrm0" // Use in-kernel resource manager.
+#define TCTI_LIB_NAME "device"
 #endif // !PLATFORM_UNIX
-
 
 Tss2Ctx::Tss2Ctx()
 {
@@ -35,7 +36,11 @@ Tss2Ctx::~Tss2Ctx()
     }
 
     if (tctiCtx != nullptr) {
+#ifdef USE_NEW_TCTI_INITIALIZATION
+        Tss2_Tcti_Finalize(tctiCtx);
+#else
         Tss2_Tcti_Finalize((TSS2_TCTI_CONTEXT*)tctiCtx.get());
+#endif // USE_NEW_TCTI_INITIALIZATION
     }
 }
 
@@ -55,6 +60,18 @@ ESYS_CONTEXT* Tss2Ctx::Get()
 TSS2_TCTI_CONTEXT* Tss2Ctx::InitializeTcti()
 {
     TSS2_RC ret { TSS2_TCTI_RC_GENERAL_FAILURE };
+    
+    // This is the current way to initialize the TCTI context in the TSS version being used by
+    // the Asz client, using a define to avoid affecting existing code.
+#ifdef USE_NEW_TCTI_INITIALIZATION
+    ret = Tss2_TctiLdr_Initialize(TCTI_LIB_NAME, &tctiCtx);
+
+    if (ret != TSS2_RC_SUCCESS) {
+        throw Tss2Exception("Failed to get TCTI context", ret);
+    }
+
+    return tctiCtx;
+#else
     size_t size {0};
     const char* device = TPM_DEVICE;
     // Get tcti size
@@ -84,5 +101,6 @@ TSS2_TCTI_CONTEXT* Tss2Ctx::InitializeTcti()
     }
 
     return (TSS2_TCTI_CONTEXT*)tctiCtx.get();
+#endif // USE_NEW_TCTI_INITIALIZATION
 }
 

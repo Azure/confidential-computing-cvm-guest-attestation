@@ -123,6 +123,25 @@ public:
         const attest::HashAlg hashAlg,
         const bool usePcrAuth = true) override;
 
+    /**
+     * Unseal encryptedSeed using the TPM Ek which is generated from Spec
+     *
+     * param[in] importablePublic: Public portion of object to be unsealed
+     * param[in] importablePrivate: Private portion of object to be unsealed
+     * param[in] encryptedSeed: Encrypted symmetric key seed to be used for unsealing
+     * param[in] pcrSet: PCRs which object was sealed to
+     * param[in] hashAlg: Algorithm used to generate PCR digest in pcrSet
+     *
+     * returns: Clear text data of sealed object
+     */
+    virtual std::vector<unsigned char> UnsealWithEkFromSpec(
+        const std::vector<unsigned char>& importablePublic,
+        const std::vector<unsigned char>& importablePrivate,
+        const std::vector<unsigned char>& encryptedSeed,
+        const attest::PcrSet& pcrSet,
+        const attest::HashAlg hashAlg,
+        const bool usePcrAuth = true) override;
+
     //TODO: Move this to Tss2Utils as this function does not use Tpm context in
     //any way.
     /**
@@ -170,7 +189,7 @@ public:
     attest::Buffer DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
                                            const attest::Buffer& encryptedBlob,
                                            const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
-                                           const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) override;
+                                           const attest::RsaHashAlg rsaHashAlgId  = attest::RsaHashAlg::RsaSha1) override;
 
     /**
      * Removes the EK from TPM NVRAM
@@ -199,6 +218,43 @@ public:
      */
     attest::Buffer GetHCLReport() override;
 
+    /**
+     * Retrieves the Ek Pub certified by the AIK
+     */
+    attest::EphemeralKey GetEkPubWithCertification() override;
+
 private:
+    /**
+     * Certifies the key with AK, generates the ephemeral buffer AND Flushes the provided primary handle
+     *
+     * param[in] outPubPtr: The Public key that should be outputted in the returned Ephemeral structure
+     * param[in] primaryHandle: The ESYS handle of the outPublic key which needs to be certified
+     *
+     * returns: The ephemeral structure containing the public key and the certification info
+     */
+    attest::EphemeralKey GetCertifiedKeyAndFlushHandle(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle);
+
+
+    /**
+     * Unseal encryptedSeed using the TPM key
+     *
+     * param[in] keyHandle: TPM encryption key handle
+     * param[in] importablePublic: Public portion of object to be unsealed
+     * param[in] importablePrivate: Private portion of object to be unsealed
+     * param[in] encryptedSeed: Encrypted symmetric key seed to be used for unsealing
+     * param[in] pcrSet: PCRs which object was sealed to
+     * param[in] hashAlg: Algorithm used to generate PCR digest in pcrSet
+     *
+     * returns: Clear text data of sealed object
+     */
+    std::vector<unsigned char> UnsealInternal(
+        ESYS_TR keyHandle,
+        const std::vector<unsigned char>& importablePublic,
+        const std::vector<unsigned char>& importablePrivate,
+        const std::vector<unsigned char>& encryptedSeed,
+        const attest::PcrSet& pcrSet,
+        const attest::HashAlg hashAlg,
+        bool usePcrAuth);
+
     std::unique_ptr<Tss2Ctx> ctx;
 };

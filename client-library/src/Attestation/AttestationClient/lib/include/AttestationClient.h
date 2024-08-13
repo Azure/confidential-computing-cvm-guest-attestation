@@ -9,6 +9,7 @@
 
 #include "AttestationLogger.h"
 #include "AttestationLibTypes.h"
+#include "TelemetryReportingBase.h"
 
 #ifdef ATTESTATIONLIB_EXPORTS
 #define DllExports __declspec(dllexport)
@@ -76,10 +77,10 @@ public:
      * @param[in] encryption_metadata: The encryption metadata
      * @param[in] encryption_metadata_size: The size of encryption metadata
      * @param[out] decrypted_data: The decrypted data (the memory is allocated by the method and the
-     * caller is expected to free this memory by calling Attest::Free() method)
-     * @param[out] decrypted_data_size: The size of decrypted data
      * @param[in] rsaWrapAlgId: Rsa wrap algorithm id. Defaults to RSAES for backcompat with MAA.
      * @param[in] rsaHashAlgId: Rsa hash algorithm id. Defaults to SHA1 for backcompat with mHSM.
+     * caller is expected to free this memory by calling Attest::Free() method)
+     * @param[out] decrypted_data_size: The size of decrypted data
      * @return In case of success, AttestationResult object with error code ErrorCode::Success
      * will be returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -105,6 +106,7 @@ extern "C" {
      * @brief This function intializes the attestation client library
      * @param[in] attestation_logger: The handle that will be used for logging.
      * @param[out] client: AttestationClient object that will be populated and
+     * @param[in] telemetry_reporting: Optional handle that will be used to report telemetry events.
      * returned when Initialize() succeeds.
      * Initialize returns a singleton pointer and the method should not be called
      * again unless Uninitialize() is called.

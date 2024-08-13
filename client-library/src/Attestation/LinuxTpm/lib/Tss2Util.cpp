@@ -24,6 +24,7 @@
 #define __TPM2_MAX_NV_BUFFER_SIZE 512
 
 // Forward declarations for private C-style functions
+static void _PopulateParametersEkFromSpec(TPM2B_PUBLIC& inPub, bool setAdminWithAuthPolicy = true);
 static void _PopulateEkPublicInput(Tss2Ctx& ctx, TPM2B_PUBLIC& inPub);
 static const EVP_MD* _GetOpenSslAlg(attest::HashAlg algorithm);
 
@@ -65,6 +66,39 @@ unique_c_ptr<TPM2B_PUBLIC> Tss2Util::GenerateEk(Tss2Ctx& ctx)
     unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPub);
 
     return outPubPtr;
+}
+
+/* See header */
+ESYS_TR Tss2Util::GenerateEkFromSpec(Tss2Ctx& ctx, bool setAdminWithAuthPolicy, TPM2B_PUBLIC** outPub)
+{
+    ESYS_TR primaryHandle = ESYS_TR_NONE;
+    TPM2B_PUBLIC inPub = { 0 };
+    _PopulateParametersEkFromSpec(inPub, setAdminWithAuthPolicy);
+
+    TPM2B_SENSITIVE_CREATE inSensitivePrimary = { 0 };
+    TPM2B_DATA outsideInfo = { 0 };
+    TPML_PCR_SELECTION creationPCR = { 0 };
+
+    TSS2_RC ret = Esys_CreatePrimary(
+        ctx.Get(),
+        ESYS_TR_RH_ENDORSEMENT,
+        ESYS_TR_PASSWORD,
+        ESYS_TR_NONE,
+        ESYS_TR_NONE,
+        &inSensitivePrimary,
+        &inPub,
+        &outsideInfo,
+        &creationPCR,
+        &primaryHandle, 
+        outPub, 
+        nullptr, 
+        nullptr, 
+        nullptr);
+    if (ret != TSS2_RC_SUCCESS) {
+        throw Tss2Exception("Failed to create Ephemeral Key", ret);
+    }
+
+    return primaryHandle;
 }
 
 /* See header */
@@ -235,28 +269,7 @@ void _PopulateEkPublicInput(Tss2Ctx& ctx, TPM2B_PUBLIC& inPub)
         }
 
         // There was no Ek template. Use default values for EK generation
-        const unsigned char EK_AUTH_POLICY[] = {
-            0x83, 0x71, 0x97, 0x67, 0x44, 0x84, 0xb3, 0xf8,
-            0x1a, 0x90, 0xcc, 0x8d, 0x46, 0xa5, 0xd7, 0x24,
-            0xfd, 0x52, 0xd7, 0x6e, 0x06, 0x52, 0x0b, 0x64,
-            0xf2, 0xa1, 0xda, 0x1b, 0x33, 0x14, 0x69, 0xaa,
-        };
-        std::memcpy(&inPub.publicArea.authPolicy.buffer, &EK_AUTH_POLICY, sizeof(EK_AUTH_POLICY));
-        inPub.publicArea.authPolicy.size = sizeof(EK_AUTH_POLICY);
-
-        inPub.publicArea.nameAlg = TPM2_ALG_SHA256;
-        inPub.publicArea.type = TPM2_ALG_RSA;
-        inPub.publicArea.objectAttributes = TPMA_OBJECT_RESTRICTED|TPMA_OBJECT_DECRYPT|
-                                            TPMA_OBJECT_FIXEDTPM|TPMA_OBJECT_FIXEDPARENT|
-                                            TPMA_OBJECT_SENSITIVEDATAORIGIN|TPMA_OBJECT_ADMINWITHPOLICY;
-
-        inPub.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
-        inPub.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
-        inPub.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_CFB;
-        inPub.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
-        inPub.publicArea.parameters.rsaDetail.keyBits = 2048;
-        inPub.publicArea.parameters.rsaDetail.exponent = 0; // TPM will use default for RSA
-        inPub.publicArea.unique.rsa.size = 256;
+        _PopulateParametersEkFromSpec(inPub);
     }
 
     //
@@ -272,6 +285,49 @@ void _PopulateEkPublicInput(Tss2Ctx& ctx, TPM2B_PUBLIC& inPub)
             throw;
         }
     }
+}
+
+/**
+ * Populates EK TPM2B_PUBLIC with the EK template found in NVRAM in the
+ * TPM. If no EK template present, the default values are used as defined
+ * in the EK spec.
+ *
+ * param[in] ctx: TSS ESAPI context
+ * param[in] setAdminWithAuthPolicy: if true set Admin auth Policy for TPM2_Certify() operations on Ek
+ * param[inout] inPub: EK TPM2B_PUBLIC structure to be populated
+ */
+void _PopulateParametersEkFromSpec(TPM2B_PUBLIC& inPub, bool setAdminWithAuthPolicy)
+{
+    TSS2_RC ret;
+
+    // There was no Ek template. Use default values for EK generation
+    const unsigned char EK_AUTH_POLICY[] = {
+        0x83, 0x71, 0x97, 0x67, 0x44, 0x84, 0xb3, 0xf8,
+        0x1a, 0x90, 0xcc, 0x8d, 0x46, 0xa5, 0xd7, 0x24,
+        0xfd, 0x52, 0xd7, 0x6e, 0x06, 0x52, 0x0b, 0x64,
+        0xf2, 0xa1, 0xda, 0x1b, 0x33, 0x14, 0x69, 0xaa,
+    };
+    std::memcpy(&inPub.publicArea.authPolicy.buffer, &EK_AUTH_POLICY, sizeof(EK_AUTH_POLICY));
+    inPub.publicArea.authPolicy.size = sizeof(EK_AUTH_POLICY);
+
+    inPub.publicArea.nameAlg = TPM2_ALG_SHA256;
+    inPub.publicArea.type = TPM2_ALG_RSA;
+    inPub.publicArea.objectAttributes = TPMA_OBJECT_RESTRICTED | TPMA_OBJECT_DECRYPT |
+        TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT |
+        TPMA_OBJECT_SENSITIVEDATAORIGIN;
+
+    if (setAdminWithAuthPolicy)
+    {
+        inPub.publicArea.objectAttributes |= TPMA_OBJECT_ADMINWITHPOLICY;
+    }
+
+    inPub.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+    inPub.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    inPub.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_CFB;
+    inPub.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
+    inPub.publicArea.parameters.rsaDetail.keyBits = 2048;
+    inPub.publicArea.parameters.rsaDetail.exponent = 0; // TPM will use default for RSA
+    inPub.publicArea.unique.rsa.size = 256;
 }
 
 /**

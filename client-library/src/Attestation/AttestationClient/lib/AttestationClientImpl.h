@@ -12,10 +12,10 @@
 #include "Tpm.h"
 #include "AttestationClient.h"
 #include "IsolationInfo.h"
+#include "AttestationLibTelemetry.h"
 
 class AttestationClientImpl : public AttestationClient {
 public:
-
     AttestationClientImpl(const std::shared_ptr<attest::AttestationLogger>& log_handle);
 
     ~AttestationClientImpl() = default;
@@ -72,7 +72,7 @@ public:
                                       uint32_t* encrypted_data_size,
                                       unsigned char** encryption_metadata,
                                       uint32_t* encryption_metadata_size,
-                                      const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                      const attest::RsaScheme rsaWrapAlgId  = attest::RsaScheme::RsaEs,
                                       const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
 
     /**
@@ -100,7 +100,7 @@ public:
                                       uint32_t encryption_metadata_size,
                                       unsigned char** decrypted_data,
                                       uint32_t* decrypted_data_size,
-                                      const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                      const attest::RsaScheme rsaWrapAlgId  = attest::RsaScheme::RsaEs,
                                       const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
 
     /*
@@ -259,7 +259,15 @@ private:
     attest::AttestationResult sendHttpRequest(const std::string& payload,
                                               std::string& response);
 
-    
+    /**
+     * @brief This API initiates retrieves the Hardware Platform Evidence.
+     * @param[out] evidence The Hardware Evidence as a JSON string from the Machine VM is running on.
+     * @return In case of success, AttestationResult object with error code
+     * ErrorCode::Success will be returned.
+     * In case of failure, an appropriate ErrorCode will be set in the
+     * AttestationResult object and error description will be provided.
+     */
+    attest::AttestationResult GetHardwarePlatformEvidence(unsigned char **evidence) noexcept;    
 
     std::string attestation_url_;
 };

@@ -13,6 +13,7 @@
 #include "NativeConverter.h"
 #include "TpmUnseal.h"
 #include "Logging.h"
+#include "Tpm.h"
 
 using namespace attest;
 
