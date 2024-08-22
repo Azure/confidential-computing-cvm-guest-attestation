@@ -24,7 +24,6 @@ bool Initialize(attest::AttestationLogger* attestation_logger,
         if (attestation_client == nullptr) {
             attestation_client = new AttestationClientImpl(logger);
         }
-        
         *client = attestation_client;
     }
     catch (...) {

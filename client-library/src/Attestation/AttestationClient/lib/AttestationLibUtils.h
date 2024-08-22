@@ -110,6 +110,8 @@ namespace crypto {
      * @brief This function will be used to encrypt the input buffer
      * using the RSA public key 
      * @param[in] pkey_bio The RSA public key BIO.
+     * @param[in] rsaWrapAlgId: Rsa wrap algorithm id.
+     * @param[in] rsaHashAlgId: Rsa hash algorithm id.
      * @param[in] input_data The input buffer to be encrypted
      * @param[out] encrypted_data The encrypted output buffer
      * @return On sucess, the function returns

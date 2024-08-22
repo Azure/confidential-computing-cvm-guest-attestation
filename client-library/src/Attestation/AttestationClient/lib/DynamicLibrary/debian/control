@@ -1,5 +1,5 @@
 Source: azguestattestation1
-Section: misc
+Section: unknown
 Priority: optional
 Maintainer: Microsoft Corp
 Build-Depends: debhelper (>=9)

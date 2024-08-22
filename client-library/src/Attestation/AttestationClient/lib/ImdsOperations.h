@@ -33,17 +33,4 @@ public:
      * AttestationResult object and error description will be provided.
      */
     attest::AttestationResult GetVCekCert(std::string& vcek_cert);
-
-    /**
-     * @brief This function will be used to retrieve the Platform Evidence from IMDS endpoint.
-     * @param[in] imds_request the report data in the form of a JSON string.
-     * Ex. {"Report": "<Base64 Endoded Report>"}
-     * @param[out] imds_response the platform evidence in the form of a JSON string.
-     * Tdx Exmaple: {"Quote": "<Base64 Encoded Quote>"}
-     * @return In case of success, AttestationResult object with error code
-     * ErrorCode::Success will be returned.
-     * In case of failure, an appropriate ErrorCode will be set in the
-     * AttestationResult object and error description will be provided.
-     */
-    attest::AttestationResult GetTdxQuote(const std::string &imds_request, std::string &imds_response);
 };

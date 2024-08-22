@@ -12,12 +12,6 @@
 #include "AttestationParameters.h"
 #include "AttestationClient.h"
 
-typedef enum ReportType {
-    SNP,
-    TDX,
-    UNDEFINED
-} ReportType;
-
 class HclReportParser {
 public:
     /**
@@ -34,27 +28,4 @@ public:
     AttestationResult ExtractSnpReportAndRuntimeDataFromHclReport(const attest::Buffer& hcl_report,
                                                      attest::Buffer& snp_report,
                                                      attest::Buffer& runtime_data);
-
-    /**
-     * @brief This function will be used to extract the TDX report
-     * and runtime metadata from the HCL report
-     * @param[in] hcl_report The HCL report
-     * @param[out] tdx_report The TDX report
-     * @param[out] runtime_data The runtime metadata
-     * @return In case of success, AttestationResult object with error code
-     * ErrorCode::Success will be returned.
-     * In case of failure, an appropriate ErrorCode will be set in the
-     * AttestationResult object and error description will be provided.
-     */
-    AttestationResult ExtractTdxReportAndRuntimeDataFromHclReport(const attest::Buffer &hcl_report,
-                                                                  attest::Buffer &tdx_report,
-                                                                  attest::Buffer &runtime_data);
-
-    /**
-     * @brief This function will be used to get the report type
-     * and runtime metadata from the HCL report
-     * @param[in] hcl_report The HCL report
-     * @return the type of report SNP, TDX, or UNDEFINED if there is any issues
-     */
-    ReportType GetReportType(const attest::Buffer &hcl_report);
 };

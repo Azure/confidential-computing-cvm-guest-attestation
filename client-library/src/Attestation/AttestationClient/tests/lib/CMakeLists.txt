@@ -25,7 +25,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../LinuxTpm/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/include
     ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src
-    ${CMAKE_SOURCE_DIR}/../external/VbsVmCrypto
+    ${CMAKE_SOURCE_DIR}/../external/SnpVmReport
 )
 
 find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/include
