@@ -6,51 +6,11 @@
 
 #include <string>
 #include <vector>
-#include <Tpm.h>
+#include <string>
+#include <chrono>
 
 namespace attest
 {
-    namespace json
-    {
-        /**
-         * Given raw data for aikCert, aikPub, pcrQuote, pcrValues, tcgLog,
-         * encodes raw data to Base64 strings and creates a json body out of
-         * the encoded data for sending to service
-         * 
-         * param[in] aikCert: binary aik certificate
-         * param[in] aikPub: binary aik public key
-         * param[in] pcrQuote: struct of binary pcr quote and signature
-         * param[in] pcrHash: vector containing sha256 hash of pcr values
-         * param[in] pcrValues: vector of pcrvalues with each entry containing
-         *                      pcr index and binary pcr digest
-         * param[in] aikPub: binary tcg log
-         * 
-         * returns: String of Json body structured as such:
-         *      {
-         *          aik_cert: base64 encoding of aikCert
-         *          aik_pub: base64 encoding of aikPub
-         *          pcr_quote: base64 encoding of pcrQuote.quote
-         *          pcr_signature: base64 encoding of pcrQuote.signature
-         *          pcr_hash: base64 encoding of pcrHash
-         *          tcg_log: base64 encoding of tcgLog
-         *          pcr_values: [
-         *              { ... },
-         *              { index: pcr index, value: base64 encoding of pcr digest at index },
-         *              { ... }
-         *          ]
-         *      }
-         */
-        std::string get_json(
-            std::vector<unsigned char> aikCert,
-            std::vector<unsigned char> aikPub,
-            attest::PcrQuote pcrQuote,
-            std::vector<unsigned char> pcrHash,
-            attest::PcrSet pcrValues,
-            std::vector<unsigned char> tcgLog);
-        
-        void parse_json(std::string response);
-    }
-
     namespace base64
     {
         /**
@@ -107,5 +67,32 @@ namespace attest
          * returns: base64 encoded string
          */
         std::string base64_decode(const std::string& data);
+    }
+
+    namespace utils
+    {
+        /**
+        * @brief This function gets current time in epochs [Time elapsed since 1/1/1970 00:00:00 GMT] [in milliseconds]
+        * @return the unix timestamp in milliseconds
+        */
+        unsigned long TimeSinceEpochMillisec();
+
+        /**
+        * @brief This function gets current time in UTC
+        * @return the current UTC timestamp
+        */
+        std::string GetCurrentUtcTime();
+
+        /**
+        * @brief This function generates a uuid
+        * @return uuid
+        */
+        std::string Uuid();
+
+        /**
+        * @brief This function gets the process id of the caller
+        * @return the process id
+        */
+        unsigned long GetPid();
     }
 }

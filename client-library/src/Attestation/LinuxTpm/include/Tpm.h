@@ -40,6 +40,15 @@ public:
         const attest::PcrSet& pcrSet,
         const attest::HashAlg hashAlg,
         const bool usePcrAuth = true) const;
+
+    attest::Buffer UnsealWithEkFromSpec(
+        const std::vector<unsigned char>& importablePublic,
+        const std::vector<unsigned char>& importablePrivate,
+        const std::vector<unsigned char>& encryptedSeed,
+        const attest::PcrSet& pcrSet,
+        const attest::HashAlg hashAlg,
+        const bool usePcrAuth = true) const;
+
     void RemovePersistentEk() const;
 
     attest::Buffer UnpackAiKPubToRSA(attest::Buffer& aikPubMarshaled) const;
@@ -47,6 +56,7 @@ public:
 
     attest::EphemeralKey GetEphemeralKey(const attest::PcrSet& pcrSet) const;
 
+    // Default RSA scheme to RSAES and hash algorithm to SHA1 for backcompat with MAA.
     attest::Buffer DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
                                            const attest::Buffer& encryptedBlob,
                                            const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
@@ -54,6 +64,8 @@ public:
 
     void WriteAikCert(const attest::Buffer& aikCert) const;
     attest::Buffer GetHCLReport() const;
+
+    attest::EphemeralKey GetEkPubWithCertification() const;
 
 private:
     std::unique_ptr<TssWrapper> tssWrapper;

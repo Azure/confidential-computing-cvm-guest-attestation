@@ -335,9 +335,11 @@ void process_unseal()
 
     TestUtil::PopulateCurrentPcrs(tmpCtx, pcrSet);
 
+    cout << "Unealing from stored Ek" << std::endl;
+
     // Fake seal data
     std::vector<unsigned char> clearKey{'A', 'B', 'C'};
-    TestUtil::SealSeedToEk(tmpCtx, pcrSet, hashAlg, clearKey, inPub, inPriv, encryptedSeed);
+    TestUtil::SealSeedToEk(tmpCtx, pcrSet, hashAlg, clearKey, inPub, inPriv, encryptedSeed, true);
 
     auto data = g_tpm.Unseal(inPub, inPriv, encryptedSeed, pcrSet, hashAlg, false);
 
@@ -362,6 +364,63 @@ void process_unseal()
     }
     cout.copyfmt(state);
     cout << endl;
+
+    cout << "Unealing from generated Ek" << std::endl;
+
+    // Fake seal data
+    std::vector<unsigned char> clearKey2{ 'A', 'B', 'C' };
+    TestUtil::SealSeedToEk(tmpCtx, pcrSet, hashAlg, clearKey2, inPub, inPriv, encryptedSeed, false);
+
+    auto data2 = g_tpm.UnsealWithEkFromSpec(inPub, inPriv, encryptedSeed, pcrSet, hashAlg, false);
+
+    cout << "Expected Seed: 0x";
+    std::ios state2(NULL);
+    state2.copyfmt(std::cout);
+    cout << hex;
+    for (auto& byte : clearKey)
+    {
+        // this ensures leading zero not lost when printing out byte
+        cout << setfill('0') << setw(2) << (int)byte;
+    }
+    cout.copyfmt(state2);
+    cout << endl;
+
+    cout << "Actual decrypted seed: 0x";
+    state2.copyfmt(std::cout);
+    cout << hex;
+    for (auto& byte : data)
+    {
+        cout << (int)byte;
+    }
+    cout.copyfmt(state2);
+    cout << endl;
+}
+
+/**
+* Retrieves the on demand generated EK as per Spec and gets it certified by the AK Cert
+*/
+void process_get_certifiedek()
+{
+    auto ekpubFile = prepend_tempdir_path("ek.pub.certified");
+    auto certifyInfoFile = prepend_tempdir_path("ek.pub.certifyinfo");
+    auto certifyInfoSignatureFile = prepend_tempdir_path("ek.pub.certifyinfo.signature");
+
+    auto ekPubCertified = g_tpm.GetEkPubWithCertification();
+
+    std::ofstream ekpubf(ekpubFile);
+    std::ostream_iterator<unsigned char> ekpubItr(ekpubf);
+    std::copy(ekPubCertified.encryptionKey.begin(), ekPubCertified.encryptionKey.end(), ekpubItr);
+    cout << "Wrote EK Pub to " << ekpubFile << endl;
+
+    std::ofstream certifyinfof(certifyInfoFile);
+    std::ostream_iterator<unsigned char> certifyinfoItr(certifyinfof);
+    std::copy(ekPubCertified.certifyInfo.begin(), ekPubCertified.certifyInfo.end(), certifyinfoItr);
+    cout << "Wrote Certified Information to " << certifyInfoFile << endl;
+
+    std::ofstream certifyinfosigf(certifyInfoSignatureFile);
+    std::ostream_iterator<unsigned char> certifyinfosigItr(certifyinfosigf);
+    std::copy(ekPubCertified.certifyInfoSignature.begin(), ekPubCertified.certifyInfoSignature.end(), certifyinfosigItr);
+    cout << "Wrote Certified Information Signature to " << certifyInfoSignatureFile << endl;
 }
 
 using test_function = void(*)();
@@ -376,7 +435,8 @@ static unordered_map<string, test_function> g_tests = {
     {"pcrvalues", process_get_pcrvalues},
     {"tcglog", process_get_tcglog},
     {"generateek", process_create_ek},
-    {"unseal", process_unseal}
+    {"unseal", process_unseal},
+    {"certifyek", process_get_certifiedek}
 };
 
 void print_usage() {
@@ -435,8 +495,9 @@ bool process_hardware_tpm()
     for (auto it : g_tests)
     {
         // ignore aik tests
-        if (it.first.compare("aikpub") == 0 ||
-            it.first.compare("aikcert") == 0) continue;
+        if (it.first.compare("aikpub") == 0  ||
+            it.first.compare("aikcert") == 0 ||
+            it.first.compare("certifyek") == 0) continue;
 
         // Will only be true if all commands return true
         all_succeeded = process_command(it.first) && all_succeeded;

@@ -22,6 +22,7 @@
 #include "AttestationLibConst.h"
 #include "TpmUnseal.h"
 #include "HttpClient.h"
+#include "AttestationLibTelemetry.h"
 
 // IMDS endpoint for getting the VCek certificate
 constexpr char imds_endpoint[] = "http://169.254.169.254/metadata";
@@ -37,6 +38,9 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     if ((result = http_client.InvokeHttpImdsRequest(http_response, url, HttpClient::HttpVerb::GET)).code_ != AttestationResult::ErrorCode::SUCCESS) {
         CLIENT_LOG_ERROR("Failed to retrieve VCek certificate from IMDS: %s",
             result.description_.c_str());
+        if (attest::telemetry_reporting.get() != nullptr) {
+            attest::telemetry_reporting->UpdateEvent("Get VCekCert", "Failed to retrive VCek certificate from IMDS", attest::TelemetryReportingBase::EventLevel::IMDS_QUERY_VCek_CERT);
+        }
         return result;
     }
 

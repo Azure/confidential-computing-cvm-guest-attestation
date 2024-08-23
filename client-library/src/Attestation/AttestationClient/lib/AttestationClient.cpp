@@ -19,11 +19,11 @@ bool Initialize(attest::AttestationLogger* attestation_logger,
     }
 
     std::shared_ptr<attest::AttestationLogger> logger(attestation_logger);
+    
     try {
         if (attestation_client == nullptr) {
             attestation_client = new AttestationClientImpl(logger);
         }
-
         *client = attestation_client;
     }
     catch (...) {

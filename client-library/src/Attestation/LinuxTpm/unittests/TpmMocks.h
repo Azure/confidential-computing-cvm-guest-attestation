@@ -171,6 +171,22 @@ public:
                                   ESYS_TR shandle3,
                                   const TPM2B_MAX_NV_BUFFER* data,
                                   UINT16 offset) = 0;
+
+    virtual TSS2_RC Esys_Certify(
+        ESYS_CONTEXT* esysContext,
+        ESYS_TR objectHandle,
+        ESYS_TR signHandle,
+        ESYS_TR shandle1,
+        ESYS_TR shandle2,
+        ESYS_TR shandle3,
+        const TPM2B_DATA* qualifyingData,
+        const TPMT_SIG_SCHEME* inScheme,
+        TPM2B_ATTEST** certifyInfo,
+        TPMT_SIGNATURE** signature) = 0;
+
+    virtual TSS2_RC Esys_FlushContext(
+        ESYS_CONTEXT* esysContext,
+        ESYS_TR flushHandle) = 0;
 };
 
 /**
@@ -300,5 +316,19 @@ public:
                                         ESYS_TR shandle3,
                                         const TPM2B_MAX_NV_BUFFER* data,
                                         UINT16 offset));
+
+    MOCK_METHOD10(Esys_Certify, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                        ESYS_TR objectHandle,
+                                        ESYS_TR signHandle,
+                                        ESYS_TR shandle1,
+                                        ESYS_TR shandle2,
+                                        ESYS_TR shandle3,
+                                        const TPM2B_DATA* qualifyingData,
+                                        const TPMT_SIG_SCHEME* inScheme,
+                                        TPM2B_ATTEST** certifyInfo,
+                                        TPMT_SIGNATURE** signature));
+
+    MOCK_METHOD2(Esys_FlushContext, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                            ESYS_TR flushHandle));
 };
 

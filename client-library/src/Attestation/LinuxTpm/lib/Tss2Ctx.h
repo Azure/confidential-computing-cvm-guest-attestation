@@ -7,7 +7,11 @@
 #pragma once
 
 #include <tss2/tss2_esys.h>
+#ifdef USE_NEW_TCTI_INITIALIZATION
+#include <tss2/tss2_tctildr.h>
+#else
 #include <tss2/tss2_tcti_device.h>
+#endif // USE_NEW_TCTI_INITIALIZATION
 
 #include <memory>
 
@@ -24,7 +28,11 @@ public:
 
 private:
     ESYS_CONTEXT* ctx = nullptr;
+#ifdef USE_NEW_TCTI_INITIALIZATION
+    TSS2_TCTI_CONTEXT* tctiCtx = nullptr;
+#else
     std::unique_ptr<unsigned char[]> tctiCtx = nullptr;
+#endif // USE_NEW_TCTI_INITIALIZATION
 
     TSS2_TCTI_CONTEXT* InitializeTcti();
 };

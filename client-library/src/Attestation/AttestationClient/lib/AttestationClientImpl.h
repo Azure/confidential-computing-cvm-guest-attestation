@@ -12,10 +12,10 @@
 #include "Tpm.h"
 #include "AttestationClient.h"
 #include "IsolationInfo.h"
+#include "AttestationLibTelemetry.h"
 
 class AttestationClientImpl : public AttestationClient {
 public:
-
     AttestationClientImpl(const std::shared_ptr<attest::AttestationLogger>& log_handle);
 
     ~AttestationClientImpl() = default;
@@ -257,9 +257,7 @@ private:
      * AttestationResult object and error description will be provided.
      */
     attest::AttestationResult sendHttpRequest(const std::string& payload,
-                                              std::string& response);
-
-    
+                                              std::string& response);  
 
     std::string attestation_url_;
 };

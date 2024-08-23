@@ -95,7 +95,7 @@ public:
     virtual attest::TpmVersion GetVersion() = 0;
 
     /**
-     * Unseal encryptedSeed using the TPM
+     * Unseal encryptedSeed using the TPM Ek saved in NV index
      *
      * param[in] importablePublic: Public portion of object to be unsealed
      * param[in] importablePrivate: Private portion of object to be unsealed
@@ -112,6 +112,25 @@ public:
                 const attest::PcrSet& pcrSet,
                 const attest::HashAlg hashAlg,
                 const bool usePcrAuth = true) = 0;
+
+    /**
+     * Unseal encryptedSeed using the TPM Ek which is generated from Spec
+     *
+     * param[in] importablePublic: Public portion of object to be unsealed
+     * param[in] importablePrivate: Private portion of object to be unsealed
+     * param[in] encryptedSeed: Encrypted symmetric key seed to be used for unsealing
+     * param[in] pcrSet: PCRs which object was sealed to
+     * param[in] hashAlg: Algorithm used to generate PCR digest in pcrSet
+     *
+     * returns: Clear text data of sealed object
+     */
+    virtual std::vector<unsigned char> UnsealWithEkFromSpec(
+        const std::vector<unsigned char>& importablePublic,
+        const std::vector<unsigned char>& importablePrivate,
+        const std::vector<unsigned char>& encryptedSeed,
+        const attest::PcrSet& pcrSet,
+        const attest::HashAlg hashAlg,
+        const bool usePcrAuth = true) = 0;
 
     /**
      * Removes the EK from TPM NVRAM
@@ -174,4 +193,12 @@ public:
      * Retrieves the HCL report for CVMs
      */
     virtual attest::Buffer GetHCLReport() = 0;
+
+    /**
+     * Creates the EK Pub key along with a certifyInfo object for the key that
+     * is signed with the AIK.
+     *
+     * returns: An attest::EphemeralKey object representing the Ek Pub and its certification info.
+     */
+    virtual attest::EphemeralKey GetEkPubWithCertification() = 0;
 };

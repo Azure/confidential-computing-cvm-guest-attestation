@@ -48,7 +48,11 @@ namespace attest {
             ERROR_EVP_PKEY_ENCRYPT_FAILED = -25,
             ERROR_DATA_DECRYPTION_TPM_ERROR = -26,
             ERROR_PARSING_DNS_INFO = -27,
-            ERROR_PARSING_ATTESTATION_RESPONSE = -28
+            ERROR_PARSING_ATTESTATION_RESPONSE = -28,
+            ERROR_AK_CERT_PROVISIONING_FAILED = -29,
+            ERROR_EMPTY_TD_QUOTE = -30,
+            ERROR_AK_CERT_PARSING = -31,
+            ERROR_AK_CERT_RENEW = -32
         };
 
         AttestationResult() = default;
@@ -104,7 +108,7 @@ namespace attest {
 
     enum RsaHashAlg : uint16_t
     {
-        RsaSha1 = 0x0004, // TPM2_ALG_SHA1
+        RsaSha1   = 0x0004, // TPM2_ALG_SHA1
         RsaSha256 = 0x000B, // TPM2_ALG_SHA256
         RsaSha384 = 0x000C, // TPM2_ALG_SHA384
         RsaSha512 = 0x000D, // TPM2_ALG_SHA512

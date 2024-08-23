@@ -88,6 +88,7 @@ TSS2_RC Esys_CreatePrimary(ESYS_CONTEXT *esysContext,
 
     auto rc = tpmLibMockObj->Esys_CreatePrimary(&params);
     *outPublic = *params.outPublic; // Copy out param that matters
+    *objectHandle = *params.objectHandle; // Copy out param that matters
     return rc;
 }
 
@@ -220,6 +221,22 @@ TSS2_RC Esys_NV_Write(ESYS_CONTEXT* esysContext,
 {
     return tpmLibMockObj->Esys_NV_Write(esysContext, authHandle, nvIndex, shandle1, shandle2, shandle3, data, offset);
 }
+
+TSS2_RC Esys_Certify(
+    ESYS_CONTEXT* esysContext,
+    ESYS_TR objectHandle,
+    ESYS_TR signHandle,
+    ESYS_TR shandle1,
+    ESYS_TR shandle2,
+    ESYS_TR shandle3,
+    const TPM2B_DATA* qualifyingData,
+    const TPMT_SIG_SCHEME* inScheme,
+    TPM2B_ATTEST** certifyInfo,
+    TPMT_SIGNATURE** signature)
+{
+    return tpmLibMockObj->Esys_Certify(esysContext, objectHandle, signHandle, shandle1, shandle2, shandle3, qualifyingData, inScheme, certifyInfo, signature);
+}
+
 //
 // Uninteresting tss functions which will just return the same thing every time,
 // regardless of the caller. These don't really need to make use of the gmock framework
@@ -350,7 +367,7 @@ Esys_FlushContext(
     ESYS_CONTEXT *esysContext,
     ESYS_TR flushHandle)
 {
-    return 0;
+    return tpmLibMockObj->Esys_FlushContext(esysContext, flushHandle);
 }
 
 TSS2_RC
@@ -369,5 +386,7 @@ Esys_Duplicate(
 {
     return 1;
 }
+
+
 
 } // extern "C"

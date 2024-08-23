@@ -143,7 +143,7 @@ typedef enum _IGVM_HASH_TYPE
     Sha512Hash
 } IGVM_HASH_TYPE, *PIGVM_HASH_TYPE;
 
-#define IGVM_ATTEST_VERSION_CURRENT  (1)
+#define IGVM_ATTEST_VERSION_CURRENT (1)
 
 //
 // User data, used for host attestation requests.

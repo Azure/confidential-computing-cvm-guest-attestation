@@ -15,6 +15,8 @@
 #include "TpmMocks.h"
 #include "TpmMockData.h"
 
+#include <tss2/tss2_mu.h>
+
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Mock;
@@ -167,8 +169,11 @@ TEST_F(TpmTest, GetEkPub_Generate)
     ek_pub->publicArea.type = TPM2_ALG_NULL;
     ek_pub->publicArea.nameAlg = TPM2_ALG_NULL;
 
+    ESYS_TR ekHandle = 1;
+
     ESYS_CREATEPRIMARY_PARAMS params;
     params.outPublic = &ek_pub;
+    params.objectHandle = &ekHandle;
 
     EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_,_,_,_,_,_))
         .Times(3)
@@ -259,8 +264,11 @@ TEST_F(TpmTest, GetEkPub_PopulateTemplate)
     ek_pub->publicArea.type = TPM2_ALG_NULL;
     ek_pub->publicArea.nameAlg = TPM2_ALG_NULL;
 
+    ESYS_TR ekHandle = 1;
+
     ESYS_CREATEPRIMARY_PARAMS params;
     params.outPublic = &ek_pub;
+    params.objectHandle = &ekHandle;
 
     EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_,_,ESYS_TR_NONE,ESYS_TR_NONE,ESYS_TR_NONE,_))
         .Times(3)
@@ -304,8 +312,11 @@ TEST_F(TpmTest, GetEkPub_WithoutPersisting)
     ek_pub->publicArea.type = TPM2_ALG_NULL;
     ek_pub->publicArea.nameAlg = TPM2_ALG_NULL;
 
+    ESYS_TR ekHandle = 1;
+
     ESYS_CREATEPRIMARY_PARAMS params;
     params.outPublic = &ek_pub;
+    params.objectHandle = &ekHandle;
 
     EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
         .Times(2)
@@ -322,6 +333,73 @@ TEST_F(TpmTest, GetEkPub_WithoutPersisting)
 
     auto ekPub = tpm->GetEkPubWithoutPersisting();
     EXPECT_EQ(ekPub.size(), MOCK_TPM_PUBLIC_SIZE + sizeof(ek_pub->size));
+}
+
+TEST_F(TpmTest, GetEkPub_WithCertification)
+{
+    //
+    // Mock data/functions
+    //
+    auto ek_pub = (TPM2B_PUBLIC*)calloc(1, sizeof(TPM2B_PUBLIC));
+    ek_pub->size = MOCK_TPM_PUBLIC_SIZE;
+
+    // Set the alg types to a specific value since Marshalling of the structure requires a valid alg to set in the structure.
+    ek_pub->publicArea.type = TPM2_ALG_NULL;
+    ek_pub->publicArea.nameAlg = TPM2_ALG_NULL;
+
+    ESYS_TR ekHandle = 1;
+
+    ESYS_CREATEPRIMARY_PARAMS params;
+    params.outPublic = &ek_pub;
+    params.objectHandle = &ekHandle;
+
+    // called once in the call for HandleToEsys
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
+        .Times(1);
+
+    // Create primary is mocked using a struct for input parameters
+    EXPECT_CALL(*tpmLibMockObj, Esys_CreatePrimary(_))
+        .WillOnce(DoAll(SetArgPointee<0>(params), Return(0)));
+
+    // Evict control is mocked using a struct for input parameters
+    EXPECT_CALL(*tpmLibMockObj, Esys_EvictControl(_, _, _, _, _, _, _, _))
+        .Times(0);
+
+    // the generated key must be flushed
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, _))
+        .Times(1);
+
+    auto certifyInfo = (TPM2B_ATTEST*)calloc(1, sizeof(TPM2B_ATTEST));
+    auto* attestData = (TPMS_ATTEST*)(certifyInfo->attestationData);
+    attestData->magic = TPM2_GENERATED_VALUE + 1;
+    certifyInfo->size = sizeof(TPMS_ATTEST);
+
+    auto signature = (TPMT_SIGNATURE*)calloc(1, sizeof(TPMT_SIGNATURE));
+    signature->sigAlg = TPM2_ALG_RSA;
+    signature->signature.rsassa.hash = TPM2_ALG_SHA256;
+    signature->signature.rsassa.sig.size = 1;
+    signature->signature.rsassa.sig.buffer[0] = 0x99; // random
+
+    // set up the certification call
+    EXPECT_CALL(*tpmLibMockObj, Esys_Certify(_, _, _, _, _, _, _, _, _, _))
+        .WillOnce(DoAll(SetArgPointee<8>(certifyInfo), SetArgPointee<9>(signature), Return(0)));
+
+    auto ekPubCertified = tpm->GetEkPubWithCertification();
+
+    size_t offset = 0;
+    TPM2B_PUBLIC ekPubOut = { 0 };
+    TSS2_RC ret = Tss2_MU_TPM2B_PUBLIC_Unmarshal(ekPubCertified.encryptionKey.data(),
+        ekPubCertified.encryptionKey.size(), &offset, &ekPubOut);
+    EXPECT_EQ(ret, TSS2_RC_SUCCESS);
+
+    // verify the returned values
+    EXPECT_EQ(MOCK_TPM_PUBLIC_SIZE, ekPubOut.size);
+
+    TPMS_ATTEST* attestationData = (TPMS_ATTEST*)(ekPubCertified.certifyInfo.data());
+    EXPECT_EQ(TPM2_GENERATED_VALUE + 1, attestationData->magic);
+
+    EXPECT_EQ(1, ekPubCertified.certifyInfoSignature.size());
+    EXPECT_EQ(0x99, ekPubCertified.certifyInfoSignature[0]);
 }
 
 /**
@@ -756,6 +834,79 @@ TEST_F(TpmTest, Unseal_positive) {
     pcrSet.hashAlg = attest::HashAlg::Sha256;
     attest::HashAlg hashAlg = attest::HashAlg::Sha256;
     auto decrypted = tpm->Unseal(inPub, inPriv, data, pcrSet, hashAlg);
+
+    EXPECT_EQ(decrypted.size(), 1);
+    EXPECT_EQ(decrypted[0], 1);
+}
+
+
+TEST_F(TpmTest, Unseal_withEkFromSpecPositive) 
+{
+    ESYS_TR ekHandle = 1;
+    ESYS_TR loadedDataHandle = 2;
+    auto ek_pub = (TPM2B_PUBLIC*)calloc(1, sizeof(TPM2B_PUBLIC));
+    ek_pub->size = MOCK_TPM_PUBLIC_SIZE;
+
+    // Set the alg types to a specific value since Marshalling of the structure requires a valid alg to set in the structure.
+    ek_pub->publicArea.type = TPM2_ALG_NULL;
+    ek_pub->publicArea.nameAlg = TPM2_ALG_NULL;
+
+
+    ESYS_CREATEPRIMARY_PARAMS createPrimaryParams;
+    createPrimaryParams.objectHandle = &ekHandle;
+    createPrimaryParams.outPublic = &ek_pub;;
+
+    // Create primary is mocked using a struct for input parameters
+    EXPECT_CALL(*tpmLibMockObj, Esys_CreatePrimary(_))
+        .Times(1)
+        .WillOnce(DoAll(SetArgPointee<0>(createPrimaryParams), Return(0)));
+
+    // Evict control is mocked using a struct for input parameters
+    EXPECT_CALL(*tpmLibMockObj, Esys_EvictControl(_, _, _, _, _, _, _, _))
+        .Times(0);
+
+    // the generated key must be flushed
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, _))
+        .Times(1);
+
+    auto outData = (TPM2B_SENSITIVE_DATA*)calloc(1, sizeof(TPM2B_SENSITIVE_DATA));
+    outData->size = 1;
+    outData->buffer[0] = 1;
+
+    auto outPriv = (TPM2B_PRIVATE*)calloc(1, sizeof(TPM2B_PRIVATE));
+    outPriv->size = 10;
+    ESYS_IMPORT_PARAMS params;
+    params.outPrivate = &outPriv;
+
+    // Import is mocked using a struct for input parameters
+    EXPECT_CALL(*tpmLibMockObj, Esys_Import(_))
+        .WillOnce(DoAll(SetArgPointee<0>(params), Return(0)));
+
+    EXPECT_CALL(*tpmLibMockObj, Esys_Load(_, ekHandle, _, ESYS_TR_NONE, ESYS_TR_NONE, outPriv, _, _))
+        .Times(1)
+        .WillOnce(DoAll(SetArgPointee<7>(loadedDataHandle), Return(0)));
+
+    // TssPcrSelection calls GetCapability to get number of PCRs implemented
+    auto caps = (TPMS_CAPABILITY_DATA*)calloc(1, sizeof(TPMS_CAPABILITY_DATA));
+    caps->data.tpmProperties.count = 1;
+    caps->data.tpmProperties.tpmProperty[0].property = TPM2_PT_PCR_COUNT;
+    caps->data.tpmProperties.tpmProperty[0].value = MOCK_MAX_PCR_COUNT;
+
+    EXPECT_CALL(*tpmLibMockObj, Esys_GetCapability(_, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, TPM2_CAP_TPM_PROPERTIES, TPM2_PT_PCR_COUNT, 1, _, _))
+        .Times(1)
+        .WillOnce(DoAll(SetArgPointee<8>(caps), Return(0)));
+
+    EXPECT_CALL(*tpmLibMockObj, Esys_Unseal(_, loadedDataHandle, _, _, _, _))
+        .Times(1)
+        .WillOnce(DoAll(SetArgPointee<5>(outData), Return(0)));
+
+    std::vector<unsigned char> inPub(sizeof(TPM2B_PUBLIC));
+    std::vector<unsigned char> inPriv(sizeof(TPM2B_PRIVATE));
+    std::vector<unsigned char> data(20);
+    attest::PcrSet pcrSet;
+    pcrSet.hashAlg = attest::HashAlg::Sha256;
+    attest::HashAlg hashAlg = attest::HashAlg::Sha256;
+    auto decrypted = tpm->UnsealWithEkFromSpec(inPub, inPriv, data, pcrSet, hashAlg);
 
     EXPECT_EQ(decrypted.size(), 1);
     EXPECT_EQ(decrypted[0], 1);

@@ -66,6 +66,8 @@
 #define JSON_ISOLATION_RUNTIME_DATA_KEY "RunTimeData"
 #define JSON_ISOLATION_EVIDENCE_SNPREPORT "SnpReport"
 #define JSON_ISOLATION_EVIDENCE_VCEKCERT "VcekCertChain"
+#define JSON_AK_CERT_PEM "AkCertPem"
+#define JSON_AK_CERT_QUERY_ID "CertQueryId"
 
 /*********************Attestation Client*************************************/
 
@@ -78,9 +80,3 @@
 #define JSON_REPORT_ATTESTATION_STATUS_MESSAGE_KEY  "AttestationStatusMessage"
 #define JSON_REPORT_PLATFORM_ERROR_MESSAGE_KEY  "PlatformErrorMessage"
 #define JSON_REPORT_AAS_ATTESTATION_URI  "AttestationUri"
-#define JSON_HEARTBEAT_VERSION_KEY "version"
-#define JSON_HEARTBEAT_VERSION_VALUE 1.0
-#define JSON_HEARTBEAT_ELEMENT_KEY "heartbeat"
-#define JSON_HEARTBEAT_STATUS_KEY "status"
-#define JSON_HEARTBEAT_STATUS_READY_VALUE "ready"
-#define JSON_HEARTBEAT_STATUS_NOT_READY_VALUE "notready"

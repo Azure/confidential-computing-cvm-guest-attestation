@@ -20,7 +20,7 @@ cd ${TEMP}
 export PACKAGE=azguestattestation1
 
 #MUST be same as the version in the latest entry in debian/changelog file.
-export VERSION=1.0.2
+export VERSION=1.0.5
 
 cp ${ATTESTATIONLIBPATH}/*.so.${VERSION} .
 

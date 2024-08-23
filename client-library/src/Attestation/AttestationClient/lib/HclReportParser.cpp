@@ -12,6 +12,7 @@
 #include "AttestationClient.h"
 #include "HclReportParser.h"
 #include "SnpVmReport.h"
+#include "AttestationLibTelemetry.h"
 
 AttestationResult HclReportParser::ExtractSnpReportAndRuntimeDataFromHclReport(const attest::Buffer& hcl_report,
                                                                   attest::Buffer& snp_report,
@@ -21,6 +22,11 @@ AttestationResult HclReportParser::ExtractSnpReportAndRuntimeDataFromHclReport(c
         CLIENT_LOG_ERROR("Empty HCL report");
         result.code_ = AttestationResult::ErrorCode::ERROR_HCL_REPORT_EMPTY;
         result.description_ = std::string("Empty HCL report");
+        if (telemetry_reporting.get() != nullptr) {
+            telemetry_reporting->UpdateEvent("HCL Report parsing", 
+                                                result.description_, 
+                                                attest::TelemetryReportingBase::EventLevel::SNP_REPORT_STATUS);
+        }
         return result;
     }
     try {
@@ -36,6 +42,13 @@ AttestationResult HclReportParser::ExtractSnpReportAndRuntimeDataFromHclReport(c
     catch (...) {
         result.code_ = AttestationResult::ErrorCode::ERROR_HCL_REPORT_PARSING_FAILURE;
         result.description_ = std::string("Failed to parse SNP report or variable data from the HCL report");
+        
+        if (telemetry_reporting.get() != nullptr) {
+            telemetry_reporting->UpdateEvent("HCL Report parsing", 
+                                                result.description_, 
+                                                attest::TelemetryReportingBase::EventLevel::SNP_REPORT_STATUS);
+        }
+
     }
     return result;
 }
