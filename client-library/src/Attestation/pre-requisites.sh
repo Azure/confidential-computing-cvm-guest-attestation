@@ -67,23 +67,24 @@ sudo wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && \
 
 cd ${CURRENT_DIR}
 
-export LDFLAGS="-L/usr/local/attestationssl/lib64" && \ 
-	export CPPFLAGS="-I/usr/local/attestationssl/include" && \ 
+export LDFLAGS="-L/usr/local/attestationssl/lib64 $LDFLAGS" && \ 
+	export CPPFLAGS="-I/usr/local/attestationssl/include $CPPFLAGS" && \ 
     sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
     sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
     sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
-    ./configure --with-ssl --prefix=/usr/local/attestationcurl && \
+    env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig ./configure --with-ssl=/usr/local/attestationssl --prefix=/usr/local/attestationcurl && \
     sudo make -j$(nproc) && \
     sudo make LIBDIR=lib && sudo make install && \
-    sudo ldconfig -n /usr/local/attestationcurl/lib
+    sudo ldconfig -n /usr/local/attestationcurl/lib && \
+    sudo ldconfig
 
 cd ${CURRENT_DIR}
 
 sudo mkdir -p /usr/src
 
 export CC=gcc && export CXX=g++ && \
-    export LDFLAGS="-L/usr/local/attestationssl/lib64 -lcrypto" && \
-    export CPPFLAGS="-I/usr/local/attestationssl/include" && \
+    export LDFLAGS="-L/usr/local/attestationssl/lib64 -lcrypto $LDFLAGS" && \
+    export CPPFLAGS="-I/usr/local/attestationssl/include $CPPFLAGS" && \
     # Download tpm2-tss
     sudo mkdir -p /usr/src/tpm2-tss && \
 	sudo git config --global --add safe.directory /usr/src/tpm2-tss && \
@@ -92,7 +93,7 @@ export CC=gcc && export CXX=g++ && \
     sudo git checkout 8b404ee7e5886c71aa53accb4ad38823724f7b13 && \
     # Build tpm2-tss
     sudo ./bootstrap && \
-    sudo ./configure && \
+    sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig ./configure && \
     sudo make -j$(nproc) && \
     # Install
     sudo make install && \

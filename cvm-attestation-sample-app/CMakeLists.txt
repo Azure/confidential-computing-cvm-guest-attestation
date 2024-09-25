@@ -21,6 +21,6 @@ add_executable(${CMAKE_PROJECT_TARGET} main.cpp
 					Logger.cpp
                                        )
 
-target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation)
+target_link_libraries(${CMAKE_PROJECT_TARGET} azguestattestation -lz)
 target_link_libraries(${CMAKE_PROJECT_TARGET} curl)
 target_link_libraries(${CMAKE_PROJECT_TARGET} jsoncpp)
