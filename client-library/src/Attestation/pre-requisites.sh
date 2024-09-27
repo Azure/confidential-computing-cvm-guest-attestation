@@ -34,24 +34,14 @@ sudo apt-get install -y --fix-missing \
     uuid-dev \
     libjson-c-dev \
 	libarchive-dev \
-	libboost-dev
+	libboost-dev \
+    libcurl4-openssl-dev \
+    nlohmann-json3-dev
 
 # Needed to sudo the Attestation extension tests.
 sudo pip3 install mock
 
-#sudo cp /usr/lib/x86_64-linux-gnu/libjsoncpp.a /usr/local/lib && \
-#    sudo ls /usr/local/lib/libjsoncpp.a && \
-#    sudo cp /usr/lib/x86_64-linux-gnu/libgtest.a /usr/local/lib && \
-#    sudo ls /usr/local/lib/libgtest.a && \
-#    sudo cp /usr/lib/x86_64-linux-gnu/libgtest_main.a /usr/local/lib && \
-#    sudo ls /usr/local/lib/libgtest_main.a && \
-#    sudo cp /usr/lib/x86_64-linux-gnu/libgmock.a /usr/local/lib && \
-#    sudo ls /usr/local/lib/libgmock.a && \
-#    sudo cp /usr/lib/x86_64-linux-gnu/libgmock_main.a /usr/local/lib && \
-#    sudo ls /usr/local/lib/libgmock.a
-
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
-
 
 sudo wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && \
     echo 14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e openssl-3.2.0.tar.gz | sha256sum -c - && \
@@ -60,10 +50,7 @@ sudo wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && \
     cd /tmp/openssl-3.2.0 && \
     sudo ./config --prefix=/usr/local/attestationssl --openssldir=/usr/local/attestationssl && \
     sudo make -j$(nproc) && \
-    sudo make install && \
-    sudo ln -sf /usr/local/attestationssl/lib64/libssl.so /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
-    sudo ln -sf /usr/local/attestationssl/lib64/libcrypto.so /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
-    sudo ldconfig
+    sudo make install_sw
 
 cd ${CURRENT_DIR}
 
@@ -74,9 +61,7 @@ export LDFLAGS="-L/usr/local/attestationssl/lib64 $LDFLAGS" && \
     sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
     env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig ./configure --with-ssl=/usr/local/attestationssl --prefix=/usr/local/attestationcurl && \
     sudo make -j$(nproc) && \
-    sudo make LIBDIR=lib && sudo make install && \
-    sudo ldconfig -n /usr/local/attestationcurl/lib && \
-    sudo ldconfig
+    sudo make LIBDIR=lib && sudo make install
 
 cd ${CURRENT_DIR}
 
