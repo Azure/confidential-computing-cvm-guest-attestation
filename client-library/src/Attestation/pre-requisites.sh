@@ -43,11 +43,11 @@ sudo pip3 install mock
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
 
-sudo wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && \
-    echo 14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e openssl-3.2.0.tar.gz | sha256sum -c - && \
-    sudo tar -C /tmp -xzf openssl-3.2.0.tar.gz && \
-    sudo rm -rf openssl-3.2.0.tar.gz && \
-    cd /tmp/openssl-3.2.0 && \
+sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
+    echo 2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281 openssl-3.3.2.tar.gz | sha256sum -c - && \
+    sudo tar -C /tmp -xzf openssl-3.3.2.tar.gz && \
+    sudo rm -rf openssl-3.3.2.tar.gz && \
+    cd /tmp/openssl-3.3.2 && \
     sudo ./config --prefix=/usr/local/attestationssl --openssldir=/usr/local/attestationssl && \
     sudo make -j$(nproc) && \
     sudo make install_sw
@@ -75,7 +75,6 @@ export CC=gcc && export CXX=g++ && \
 	sudo git config --global --add safe.directory /usr/src/tpm2-tss && \
     sudo git clone https://github.com/tpm2-software/tpm2-tss.git /usr/src/tpm2-tss && \
     cd /usr/src/tpm2-tss && \
-    sudo git checkout 8b404ee7e5886c71aa53accb4ad38823724f7b13 && \
     # Build tpm2-tss
     sudo ./bootstrap && \
     sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig ./configure && \
@@ -85,19 +84,6 @@ export CC=gcc && export CXX=g++ && \
     sudo ldconfig && \
     # Cleanup
     sudo rm -rf /usr/src/tpm2-tss
-
-cd ${CURRENT_DIR}
-
-# Install RapidJSON
-sudo git config --global --add safe.directory /usr/src/rapidjson
-sudo git clone https://github.com/Tencent/rapidjson /usr/src/rapidjson && \
-    cd /usr/src/rapidjson && sudo mkdir -p build && cd build && \
-    # Build
-    sudo cmake .. && sudo make -j$(nproc) && \
-    # Install
-    sudo make install && \
-    # Cleanup
-    sudo rm -rf /usr/src/rapidjson
 
 cd ${CURRENT_DIR}
 
