@@ -34,13 +34,14 @@ sudo apt-get install -y --fix-missing \
     uuid-dev \
     libjson-c-dev \
 	libarchive-dev \
-	libboost-dev
+	libboost-dev \
+    libcurl4-openssl-dev \
+    nlohmann-json3-dev
 
 # Needed to sudo the Attestation extension tests.
 sudo pip3 install mock
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
-
 
 sudo wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && \
     echo 14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e openssl-3.2.0.tar.gz | sha256sum -c - && \
