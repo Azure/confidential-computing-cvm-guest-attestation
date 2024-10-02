@@ -132,5 +132,5 @@ extern "C" {
     * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
     */
     DllExports
-    int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len);
+    int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len, const char* endpoint_url);
 }
