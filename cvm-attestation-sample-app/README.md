@@ -17,7 +17,7 @@ Guest attestation is the process of cryptographically appraising a VM’s report
 ![image](https://user-images.githubusercontent.com/32008026/170388502-17e56492-8604-400f-ae04-b6548baac22d.png)
 
 
-## Build Instructions for Linux
+## Build Instructions for Linux (Using Pre-built attestation lib package)
 
 Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
 
@@ -46,6 +46,25 @@ Once the above packages have been installed, use the below steps to build and ru
 
 ```sh
 $ cd cvm-attestation-sample-app/
+$ cmake .
+$ make
+$ sudo ./AttestationClient -o token
+```
+
+
+## Build Instructions for Linux (Using self-contained attestation lib)
+
+Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
+
+Use the below command to build and install the Attestation lib.
+```sh
+$ cd cvm-attestation-sample-app/
+$ sudo ./OneClickLibInstall.sh
+```
+
+Once the attestation lib is installed, use the below steps to build and run the app
+
+```sh
 $ cmake .
 $ make
 $ sudo ./AttestationClient -o token
