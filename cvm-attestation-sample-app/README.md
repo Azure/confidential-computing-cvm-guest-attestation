@@ -54,8 +54,6 @@ $ sudo ./AttestationClient -o token
 
 ## Build Instructions for Linux (Using self-contained attestation lib)
 
-Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
-
 Use the below command to build and install the Attestation lib.
 ```sh
 $ cd cvm-attestation-sample-app/
