@@ -23,4 +23,4 @@ sudo ./client-library/src/Attestation/pre-requisites.sh
 sudo ./client-library/src/Attestation/build.sh
 ```
 
-AttestationLibrary would be built at path client-library/src/Attestation/_build/x86_64/Attestation/packages
+AttestationLibrary would be built at path client-library/src/Attestation/_build/x86_64/packages/attestationlibrary
