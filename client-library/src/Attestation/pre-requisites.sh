@@ -5,7 +5,7 @@ sudo apt-get update
 sudo apt-get install -y --fix-missing \
     build-essential \
     python3 \
-	wget \
+    wget \
     autoconf \
     autoconf-archive \
     automake \
@@ -33,8 +33,8 @@ sudo apt-get install -y --fix-missing \
     zip \
     uuid-dev \
     libjson-c-dev \
-	libarchive-dev \
-	libboost-dev \
+    libarchive-dev \
+    libboost-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev
 
@@ -55,7 +55,7 @@ sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
 cd ${CURRENT_DIR}
 
 export LDFLAGS="-L/usr/local/attestationssl/lib64 $LDFLAGS" && \ 
-	export CPPFLAGS="-I/usr/local/attestationssl/include $CPPFLAGS" && \ 
+    export CPPFLAGS="-I/usr/local/attestationssl/include $CPPFLAGS" && \ 
     sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
     sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
     sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
@@ -72,7 +72,7 @@ export CC=gcc && export CXX=g++ && \
     export CPPFLAGS="-I/usr/local/attestationssl/include $CPPFLAGS" && \
     # Download tpm2-tss
     sudo mkdir -p /usr/src/tpm2-tss && \
-	sudo git config --global --add safe.directory /usr/src/tpm2-tss && \
+    sudo git config --global --add safe.directory /usr/src/tpm2-tss && \
     sudo git clone https://github.com/tpm2-software/tpm2-tss.git /usr/src/tpm2-tss && \
     cd /usr/src/tpm2-tss && \
     # Build tpm2-tss
