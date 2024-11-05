@@ -131,4 +131,41 @@ extern "C" {
     */
     DllExports
     int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len, const char* endpoint_url);
+
+    /**
+    * @brief Start an attestation session
+    * @param[in] st will be set to the 
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
+    */
+    DllExports
+    int32_t ga_create(void **st);
+
+    /**
+    * @brief Free the state of an attestation session
+    * @param[in] st: attestation session
+    */
+    DllExports
+    void ga_free(void *st);
+
+    /**
+    * @brief Get an attestation token from a session
+    * @param[in] app_data: JSON user data quoted by the TPM and reported by MAA in runtime claim
+    * @param[in] pcr: bitfield representing the PCRs used in the TPM quote and reported by MAA
+    * @param[out] jwt: 32k buffer where the MAA token will be written
+    * @param[out] jwt_len: size of the written MAA token
+    * @return NULL on error, attestation object on success
+    */
+    DllExports
+    int32_t ga_get_token(void *st, const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len, const char* endpoint_url);
+
+    /**
+    * @brief decrypt a value encrypted with the ephemeral attested key
+    * This MUST use RSA[2048]-OEAP-SHA256, and decryption is done in-place.
+    * @param[inout] cipher: encrypted value, plaintext will be written in place
+    * @param[inout] len: encrypted value length, plaintext length will be written
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
+    */
+    DllExports
+    int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len);
+
 }
