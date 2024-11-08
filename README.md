@@ -2,6 +2,7 @@
 
 > This repo has been populated by an initial template to help get you started. Please
 > make sure to update the content to build a great experience for community-building.
+> The repo is cloned to customize the generation of guest attestation report (Microsoft Azure Attestation - MAA) automation (bootstraping) and deployed to cloud with Terraform 
 
 As the maintainer of this project, please make a few updates:
 
