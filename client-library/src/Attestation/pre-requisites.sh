@@ -59,7 +59,7 @@ export LDFLAGS="-L/usr/local/attestationssl/lib64 $LDFLAGS" && \
     sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
     sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
     sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
-    env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig ./configure --with-ssl=/usr/local/attestationssl --prefix=/usr/local/attestationcurl && \
+    env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig ./configure --without-zstd --with-ssl=/usr/local/attestationssl --prefix=/usr/local/attestationcurl && \
     sudo make -j$(nproc) && \
     sudo make LIBDIR=lib && sudo make install
 
@@ -77,7 +77,7 @@ export CC=gcc && export CXX=g++ && \
     cd /usr/src/tpm2-tss && \
     # Build tpm2-tss
     sudo ./bootstrap && \
-    sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig ./configure && \
+    sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig:/usr/local/attestationssl/lib64/pkgconfig ./configure && \
     sudo make -j$(nproc) && \
     # Install
     sudo make install && \
