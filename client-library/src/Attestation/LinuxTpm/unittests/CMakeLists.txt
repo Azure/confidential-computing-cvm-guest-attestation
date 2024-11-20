@@ -11,6 +11,9 @@ include_directories(${GTEST_INCLUDE_DIRS})
 find_package(GMock REQUIRED)
 include_directories(${GMOCK_INCLUDE_DIRS})
 
+find_package(Tss2 REQUIRED)
+include_directories(${TSS2_INCLUDE_DIRS})
+
 # Add local includes
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
