@@ -77,7 +77,7 @@ export CC=gcc && export CXX=g++ && \
     cd /usr/src/tpm2-tss && \
     # Build tpm2-tss
     sudo ./bootstrap && \
-    sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig:/usr/local/attestationssl/lib64/pkgconfig ./configure --prefix=/usr/local/tpm2-tss && \
+    sudo env PKG_CONFIG_PATH=/usr/local/attestationcurl/lib/pkgconfig:/usr/local/attestationssl/lib64/pkgconfig ./configure --prefix=/usr/local/attestationtpm2-tss && \
     sudo make -j$(nproc) && \
     # Install
     sudo make install && \
