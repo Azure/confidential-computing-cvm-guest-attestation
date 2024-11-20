@@ -5,6 +5,9 @@ project(azguestattestation VERSION 1.0.5)
 
 set(CMAKE_PROJECT_TARGET azguestattestation)
 
+find_package(Tss2 REQUIRED)
+include_directories(${TSS2_INCLUDE_DIRS})
+
 add_definitions (-DPLATFORM_UNIX)
 
 find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/local/attestationcurl/include
