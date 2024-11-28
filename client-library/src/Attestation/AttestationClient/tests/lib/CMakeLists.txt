@@ -54,10 +54,10 @@ add_executable(${CMAKE_PROJECT_TARGET} ClientLibTests.cpp
                                        ../../lib/AttestationLibTelemetry.cpp
                                        ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
 
-find_library(CURL_LIB NAMES libcurl.a PATHS /usr/local/attestationcurl/lib
+find_library(CURL_LIB NAMES curl PATHS /usr/local/attestationcurl/lib
                                            NO_DEFAULT_PATH)
 
-find_library(SSL_LIB NAMES libssl.a PATHS /usr/local/attestationssl/lib64
+find_library(SSL_LIB NAMES ssl PATHS /usr/local/attestationssl/lib64
                                            NO_DEFAULT_PATH)
 
 

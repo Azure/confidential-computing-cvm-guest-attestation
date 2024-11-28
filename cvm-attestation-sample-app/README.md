@@ -56,16 +56,16 @@ $ sudo ./AttestationClient -o token
 
 Use the below command to build and install the Attestation lib.
 ```sh
-$ cd cvm-attestation-sample-app/
-$ sudo ./OneClickLibInstall.sh
+cd cvm-attestation-sample-app/
+sudo ./ClientLibBuildAndInstall.sh
 ```
 
 Once the attestation lib is installed, use the below steps to build and run the app
 
 ```sh
-$ cmake .
-$ make
-$ sudo ./AttestationClient -o token
+cmake .
+make
+sudo ./AttestationClient -o token
 ```
 
 ![image](https://user-images.githubusercontent.com/32008026/170384716-d13876e2-4078-47bd-9994-5ca44318b4d4.png)

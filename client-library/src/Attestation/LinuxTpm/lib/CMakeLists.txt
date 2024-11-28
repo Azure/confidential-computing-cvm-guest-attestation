@@ -15,9 +15,9 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR}/../include
 
 file(GLOB SOURCES "*.cpp")
 
-find_library(CRYPTO_LIB NAMES libcrypto.a PATHS /usr/local/attestationssl/lib64
+find_library(CRYPTO_LIB NAMES crypto PATHS /usr/local/attestationssl/lib64
                                            NO_DEFAULT_PATH)
-find_library(SSL_LIB NAMES libssl.a PATHS /usr/local/attestationssl/lib64
+find_library(SSL_LIB NAMES ssl PATHS /usr/local/attestationssl/lib64
                                            NO_DEFAULT_PATH)
 
 add_library(${CMAKE_PROJECT_TARGET} ${SOURCES})

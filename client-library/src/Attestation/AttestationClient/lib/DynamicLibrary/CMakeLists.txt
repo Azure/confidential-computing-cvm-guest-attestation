@@ -45,7 +45,7 @@ add_library(${CMAKE_PROJECT_TARGET} SHARED ../../AttestationHelper.cpp
                                            ../AttestationLibTelemetry.cpp
                                            ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
                                            
-find_library(CURL_LIB NAMES libcurl.a PATHS /usr/local/attestationcurl/lib
+find_library(CURL_LIB NAMES curl PATHS /usr/local/attestationcurl/lib
                                            NO_DEFAULT_PATH)
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} Tpm2)

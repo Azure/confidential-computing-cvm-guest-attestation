@@ -19,3 +19,5 @@ override_dh_install:
 override_dh_link:
 	dh_link usr/lib/${PACKAGE}/libazguestattestation.so.${VERSION} usr/lib/libazguestattestation.so.1
 	dh_link usr/lib/${PACKAGE}/libazguestattestation.so.${VERSION} usr/lib/libazguestattestation.so
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
