@@ -53,6 +53,8 @@ $ sudo ./AttestationClient -o token
 
 
 ## Build Instructions for Linux (Using self-contained attestation lib)
+**Note**
+The build instructions using self-contained attestation lib have been created using Debian based distribution (Ubuntu) and verified on Ubuntu 20, 22 and 24 based Confidential VM images.
 
 Use the below command to build and install the Attestation lib.
 ```sh
