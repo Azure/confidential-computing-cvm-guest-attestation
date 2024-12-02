@@ -4,7 +4,7 @@ This document describes how to compile and build Attestation Library from source
 
 **Note**
 
-The build instructions have been created using Debian based distribution (Ubuntu).
+The build instructions have been created using Debian based distribution (Ubuntu) and verified on Ubuntu 20, 22 and 24 based Confidential VM images.
 
 ***Build Attestation Library***
 
