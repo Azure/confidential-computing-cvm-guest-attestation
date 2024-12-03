@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 
 if (NOT DEFINED ENV{CC} )
-    set (CMAKE_C_COMPILER "/usr/bin/gcc-8")
-    set (CMAKE_CXX_COMPILER "/usr/bin/g++-8")
+    set (CMAKE_C_COMPILER "/usr/bin/gcc")
+    set (CMAKE_CXX_COMPILER "/usr/bin/g++")
 endif ()
 set (CMAKE_CXX_STANDARD 14)
 

@@ -5,11 +5,14 @@ project(azguestattestation VERSION 1.0.5)
 
 set(CMAKE_PROJECT_TARGET azguestattestation)
 
+find_package(Tss2 REQUIRED)
+include_directories(${TSS2_INCLUDE_DIRS})
+
 add_definitions (-DPLATFORM_UNIX)
 
-find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/include
+find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/local/attestationcurl/include
                                             NO_DEFAULT_PATH)
-find_path(CRYPTO_INCLUDE_DIR NAMES openssl PATHS /usr/local/openssl/include
+find_path(CRYPTO_INCLUDE_DIR NAMES openssl PATHS /usr/local/attestationssl/include
                                             NO_DEFAULT_PATH)
 include_directories()
 
@@ -42,7 +45,7 @@ add_library(${CMAKE_PROJECT_TARGET} SHARED ../../AttestationHelper.cpp
                                            ../AttestationLibTelemetry.cpp
                                            ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
                                            
-find_library(CURL_LIB NAMES libcurl.a PATHS /usr/lib
+find_library(CURL_LIB NAMES curl PATHS /usr/local/attestationcurl/lib
                                            NO_DEFAULT_PATH)
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} Tpm2)

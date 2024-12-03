@@ -28,9 +28,9 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/../external/SnpVmReport
 )
 
-find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/include
+find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/local/attestationcurl/include
                                             NO_DEFAULT_PATH)
-find_path(CRYPTO_INCLUDE_DIR NAMES openssl PATHS /usr/local/openssl/include
+find_path(CRYPTO_INCLUDE_DIR NAMES openssl PATHS /usr/local/attestationssl/include
                                             NO_DEFAULT_PATH)
 include_directories(${CURL_INCLUDE_DIR}
                     ${CRYPTO_INCLUDE_DIR}
@@ -54,10 +54,10 @@ add_executable(${CMAKE_PROJECT_TARGET} ClientLibTests.cpp
                                        ../../lib/AttestationLibTelemetry.cpp
                                        ${CMAKE_SOURCE_DIR}/../external/jsoncpp-0.10.7/src/jsoncpp.cpp)
 
-find_library(CURL_LIB NAMES libcurl.a PATHS /usr/lib
+find_library(CURL_LIB NAMES curl PATHS /usr/local/attestationcurl/lib
                                            NO_DEFAULT_PATH)
 
-find_library(SSL_LIB NAMES libssl.a PATHS /usr/local/openssl/lib64
+find_library(SSL_LIB NAMES ssl PATHS /usr/local/attestationssl/lib64
                                            NO_DEFAULT_PATH)
 
 
