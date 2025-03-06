@@ -158,7 +158,7 @@ void JsonWebToken::ParseToken(std::string const&token, bool verify)
             this->jwt = json::parse(payload);
 			if (this->jwt["exp"].is_number() && this->jwt["iat"].is_number()) {
 				// Check if the token is expired or not yet valid
-				// In CPS, the token expiration is set to 30 minutes after
+				// In Azure, the token expiration is set to 30 minutes after
 				// the token is issued & signed.
 				/*time_t exp = this->jwt["exp"];
                 time_t iat = this->jwt["iat"];

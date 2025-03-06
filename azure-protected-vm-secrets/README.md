@@ -1,6 +1,6 @@
-# Secret Protection Library
+# Azure Protected VM Secrets
 
-Welcome to the SecretsProvisioningLibrary project! This documentation is intended to help developers understand the structure and functionality of the project, as well as provide guidance on how to build, test, and extend the library. The linrary provides in-guest components the ability to decrypt secrets that are protected from the host by the DataProtectionService in CPS. This gives control plane services the ability to protect a secret from the host, and for the guest component to decrypt the secret for provisioning.
+Welcome to the Azure Protected VM Secrets Library project! This documentation is intended to help developers understand the structure and functionality of the project, as well as provide guidance on how to build, test, and extend the library. The library provides in-guest components the ability to decrypt secrets that are protected from the host by the Azure. This gives control plane services the ability to protect a secret from the host, and for the guest component to decrypt the secret for provisioning.
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@ Welcome to the SecretsProvisioningLibrary project! This documentation is intende
 
 ## Usage
 
-The ProtectSecret method is invoked by the Cloud Provisioning Service to protect the secret and return a JWT token. The UnProtectSecret method is executed by the guest's executable, utilizing the TPM to securely unprotect the secret from the JWT token.
+The ProtectSecret method is invoked by the Azure to protect the secret and return a JWT token. The UnProtectSecret method is executed by the guest's executable, utilizing the TPM to securely unprotect the secret from the JWT token.
 
 ### JWT data contract
 
@@ -48,7 +48,7 @@ The JWT will be signed with the signature in the JWS signature field. The Leaf c
 
 TODO:
 
-- JWT will be appended with a magic string to indicate just looking at the blob that it is a secret provisioned by Cloud Provisioning. This will help quickly return plain text passwords back. This will be unpeeled before making unprotect secret call.
+- JWT will be appended with a magic string to indicate just looking at the blob that it is a secret provisioned by Azure. This will help quickly return plain text passwords back. This will be unpeeled before making unprotect secret call.
 
 - Add protocol version like `"version": "1" // Protocol version`
 
@@ -95,9 +95,9 @@ _Note_: Signature verification is not implemented in Linux in this drop.
 
 ## Project Structure
 
-The `SecretsProvisioningLibrary` project is organized into several directories and files. Here is an overview of the key components:
+The Azure Protected VM Secrets project is organized into several directories and files. Here is an overview of the key components:
 
-- **src/SecretsProvisioningLibrary**: Contains the main library source code.
+- **azure-protected-vm-secrets**: Contains the main library source code.
   - **CMakeLists.txt**: CMake configuration file for building the library.
   - **SecretsProvisioningLibrary.vcxproj**: Visual Studio project file for building the library on Windows.
   - **Linux**: Contains Linux-specific implementations.
@@ -110,17 +110,17 @@ The `SecretsProvisioningLibrary` project is organized into several directories a
     - **BcryptECDiffieHellman.cpp/h**: Implementation of ECDH using BCrypt.
   - **SecretsProvisioningLibrary.nuspec**: NuGet package specification for the library.
 
-- **src/SecretsProvisioningLibrary/SecretsProvisioningSample**: Contains sample code demonstrating how to use the library.
+- **azure-protected-vm-secrets/SecretsProvisioningSample**: Contains sample code demonstrating how to use the library.
   - **CMakeLists.txt**: CMake configuration file for building the sample.
   - **SecretsProvisioningSample.vcxproj**: Visual Studio project file for building the sample on Windows.
   - **main.cpp**: Entry point for the sample application.
 
-- **src/SecretsProvisioningLibrary/SecretsProvsioningUT**: Contains unit tests for the library.
+- **azure-protected-vm-secrets/SecretsProvsioningUT**: Contains unit tests for the library.
   - **CMakeLists.txt**: CMake configuration file for building the unit tests.
   - **SecretsProvsioningUT.vcxproj**: Visual Studio project file for building the unit tests on Windows.
   - **BcryptTests.cpp**: Unit tests for the library.
 
-- **src/SecretsProvisioningLibrary/SecretsProvisioningFunctionalityTest**: Contains functionality tests for the library.
+- **azure-protected-vm-secrets/SecretsProvisioningFunctionalityTest**: Contains functionality tests for the library.
   - **SecretsProvisioningFunctionalityTest.vcxproj**: Visual Studio project file for building the functionality tests on Windows.
   - **test.cpp**: Functionality tests for the library.
 
@@ -139,8 +139,8 @@ The `SecretsProvisioningLibrary` project is organized into several directories a
 1. **Clone the Repository**:
 
    ```sh
-   git clone https://msazure.visualstudio.com/DefaultCollection/One/_git/Security-AzureConfidentialVM
-   cd Security-AzureConfidentialVM/src/SecretsProvisioningLibrary
+   git clone https://github.com/Azure/confidential-computing-cvm-guest-attestation.git
+   cd azure-protected-vm-secrets
    ```
 
 2. **Configure the Project**:
@@ -162,8 +162,8 @@ The `SecretsProvisioningLibrary` project is organized into several directories a
 1. **Clone the Repository**:
 
    ```sh
-   git clone https://msazure.visualstudio.com/DefaultCollection/One/_git/Security-AzureConfidentialVM
-   cd Security-AzureConfidentialVM/src/SecretsProvisioningLibrary
+   git clone https://github.com/Azure/confidential-computing-cvm-guest-attestation.git
+   cd azure-protected-vm-secrets
    ```
 
 2. **Open the Solution**:
@@ -179,7 +179,7 @@ The `SecretsProvisioningLibrary` project is organized into several directories a
 1. **Navigate to the Build Directory**:
 
    ```sh
-   cd AzureConfidentialVM/src/SecretsProvisioningLibrary/build
+   cd azure-protected-vm-secrets/build
    ```
 
 2. **Run the Tests**:
