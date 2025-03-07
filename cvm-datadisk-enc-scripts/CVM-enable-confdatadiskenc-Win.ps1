@@ -86,7 +86,7 @@ $KV_UAI_ID                   = "client_id=$clientId"
 
 $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryption"
-$ExtHandlerVer               = "2.4"
+$ExtHandlerVer               = "2.5"
 $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
@@ -105,7 +105,6 @@ $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
 $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_ID)
 $pubSettings.Add("VolumeType", "Data")
-$pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 # Settings for enabling temp disk encryption only providing Azure managed HSM (mHSM) resource. For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
@@ -118,6 +117,9 @@ $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 #$pubsettings.Add("KeyStoreType",              "ManagedHSM")
 #$pubsettings.Add("EncryptionOperation",       $EncryptionOperation)
 #$pubSettings.Add("KeyEncryptionAlgorithm",    "RSA-OAEP")
+
+#this feature is in private preview, So to set the below flag to enable data disk encryption feature.
+$pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 
 Set-AzVMExtension `
     -ResourceGroupName $resourceGroup `
