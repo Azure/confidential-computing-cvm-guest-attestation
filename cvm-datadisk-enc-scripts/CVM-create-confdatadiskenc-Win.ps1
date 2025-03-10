@@ -135,8 +135,8 @@ Start-Sleep 60
 # Assign wrapKey,UnwrapKey for Confidential OS disk encryption.
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $des.Identity.PrincipalId -PermissionsToKeys get,wrapKey,unwrapKey
 
-# Grant get, release permissions to Confidential Guest VM Agent.
-$cvmAgent = Get-AzADServicePrincipal -DisplayName "Confidential Guest VM Agent"
+# Grant get, release permissions to Confidential Confidential VM Orchestrator.
+$cvmAgent = Get-AzADServicePrincipal -DisplayName "Confidential VM Orchestrator"
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $cvmAgent.Id -PermissionsToKeys Get,Release
 
 # Create the confidential VM.

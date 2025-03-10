@@ -139,8 +139,8 @@ Start-Sleep 60
 # Assign wrapKey,UnwrapKey for CPS to work with CMK. (Get and Release are sufficient for DDE)
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $des.Identity.PrincipalId -PermissionsToKeys get,wrapKey,unwrapKey
 
-# Grant get, release permissions to Confidential Guest VM Agent.
-$cvmAgent = Get-AzADServicePrincipal -DisplayName "Confidential Guest VM Agent"
+# Grant get, release permissions to Confidential VM Orchestrator.
+$cvmAgent = Get-AzADServicePrincipal -DisplayName "Confidential VM Orchestrator"
 Set-AzKeyVaultAccessPolicy -VaultName $kvName -ResourceGroupName $resourceGroup -ObjectId $cvmAgent.Id -PermissionsToKeys Get,Release
 
 # Create the confidential VM.
