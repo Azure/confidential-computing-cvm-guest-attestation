@@ -84,6 +84,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
 # Settings for enabling temp disk encryption only providing Azure Key Vault resource.
+# Note: Key names in PublicSetting are case sensitive. Do not change the case.
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
