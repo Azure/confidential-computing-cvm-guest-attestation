@@ -3,7 +3,7 @@
  This script can be used to turn on confidential temp disk encryption for an existing Azure Linux confidential VM.
  Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each step for your case. Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
 
- Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encryption on.
                2-) The VM SKU has a temp disk and it is formatted as ext4.
 
  Status: This script is for public preview.
@@ -54,6 +54,7 @@ $ExtHandlerVer               = "1.4"
 $EncryptionOperation         = "EnableEncryption"
 
 # Settings for enabling temp disk encryption only providing Azure Key Vault resource.
+# Note: Key names in PublicSetting are case sensitive. Do not change the case.
 $pubSettings                 = @{};
 $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
