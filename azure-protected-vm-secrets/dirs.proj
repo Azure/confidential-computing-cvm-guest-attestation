@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.Build.Traversal">
+  <ItemGroup>
+    <ProjectFile Include=".\SecretsProvisioningLibrary.vcxproj" />
+    <ProjectFile Include=".\SecretsProvisioningSample\dirs.proj" />
+    <ProjectFile Include=".\SecretsProvsioningUT\dirs.proj" />
+    <ProjectFile Include=".\DynamicSecretsProvisioningLibrary\dirs.proj" />
+    <ProjectFile Include=".\DynamicSecretsProvisioningSample\dirs.proj" />
+  </ItemGroup>
+</Project>
+
