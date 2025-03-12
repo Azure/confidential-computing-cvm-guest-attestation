@@ -19,26 +19,34 @@ Guest attestation is the process of cryptographically appraising a VM’s report
 
 ## Build Instructions for Linux (Using Pre-built attestation lib package)
 
-Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
+Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt database is up to date (`sudo apt update`).
 
 Use the below command to install the `build-essential` package. This package will install everything required for compiling our sample application written in C++.
 ```sh
-$ sudo apt-get install build-essential
+$ sudo apt install build-essential
 ```
 
 Install the below packages
 ```sh
-$ sudo apt-get install libcurl4-openssl-dev
-$ sudo apt-get install libjsoncpp-dev
-$ sudo apt-get install libboost-all-dev
-$ sudo apt-get install cmake
+$ sudo apt install libcurl4-openssl-dev
+$ sudo apt install libjsoncpp-dev
+$ sudo apt install libboost-all-dev
+$ sudo apt install cmake
 $ sudo apt install nlohmann-json3-dev
+$ sudo apt 
 ```
 
 Download the attestation package from the following location - https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/
 
+Use the below command to install libssl1.1 if using Ubuntu
+```sh
+$ wget http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb
+$ sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb
+```
+
 Use the below command to install the attestation package
 ```sh
+$ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.2_amd64.deb
 $ sudo dpkg -i azguestattestation1_1.0.2_amd64.deb
 ```
 
