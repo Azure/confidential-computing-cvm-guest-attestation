@@ -2,7 +2,10 @@
 #include <stdarg.h>
 #include <cstring> // Add this include for strrchr
 #include <iostream>
-#ifndef PLATFORM_UNIX
+#ifdef PLATFORM_UNIX
+#include <systemd/sd-journal.h>
+#include <syslog.h>
+#else
 #include <windows.h>
 #endif
 #include "LibraryLogger.h"
@@ -27,7 +30,9 @@ namespace SecretsLogger {
         const char* fmt,
         ...)
     {
-#ifndef PLATFORM_UNIX
+#ifdef PLATFORM_UNIX
+        int priority = LOG_INFO;
+#else
         WORD wType = EVENTLOG_INFORMATION_TYPE;
 #endif
         char message[MAX_MESSAGE_SIZE];
@@ -38,6 +43,9 @@ namespace SecretsLogger {
         case LogLevel::Debug:
 #if (defined _DEBUG) || (defined DEBUG)
             lvl = "[DEBUG]";
+#ifdef PLATFORM_UNIX
+            priority = LOG_DEBUG;
+#endif
 #else
             return;
 #endif // DEBUG
@@ -47,13 +55,17 @@ namespace SecretsLogger {
             break;
         case LogLevel::Warning:
             lvl = "[WARNING]";
-#ifndef PLATFORM_UNIX
+#ifdef PLATFORM_UNIX
+            priority = LOG_WARNING;
+#else
             wType = EVENTLOG_WARNING_TYPE;
 #endif
             break;
         case LogLevel::Error:
             lvl = "[ERROR]";
-#ifndef PLATFORM_UNIX
+#ifdef PLATFORM_UNIX
+            priority = LOG_ERR;
+#else
             wType = EVENTLOG_ERROR_TYPE;
 #endif
             break;
@@ -74,22 +86,16 @@ namespace SecretsLogger {
             return;
         }
 #endif
-        va_list args; va_start(args, fmt);
-        fprintf(
-            stdout,
-            LOG_FMT,
-            lvl,
-            file,
-            function,
-            line,
-            eventName);
-        vfprintf(stdout, fmt, args);
-        fprintf(stdout, "\n");
-        
-#ifndef PLATFORM_UNIX
+        // Format the message
+        va_list args;
+        va_list args_copy;
+        va_start(args, fmt);
+        va_copy(args_copy, args);
+
         int written = snprintf(
             message,
-            MAX_MESSAGE_SIZE, LOG_FMT,
+            MAX_MESSAGE_SIZE,
+            LOG_FMT,
             lvl,
             file,
             function,
@@ -99,6 +105,23 @@ namespace SecretsLogger {
         if (written > 0 && written < MAX_MESSAGE_SIZE) {
             vsnprintf(message + written, MAX_MESSAGE_SIZE - written, fmt, args);
         }
+        va_end(args_copy);
+        va_end(args);
+
+        fprintf(stdout, "%s", message);
+        
+#ifdef PLATFORM_UNIX
+        // Log to systemd journal
+        sd_journal_send(
+            "PRIORITY=%i", priority,
+            "SYSLOG_IDENTIFIER=%s", PROVIDER_NAME,
+            "CODE_FILE=%s", file,
+            "CODE_FUNC=%s", function,
+            "CODE_LINE=%d", line,
+            "MESSAGE=%s", message,
+            NULL);
+#else
+        // Log to Windows Event Log
         const char* msg = message;
         ReportEventA(
             hApplication,

@@ -189,14 +189,16 @@ void JsonWebToken::ParseToken(std::string const&token, bool verify)
     if (!signatureBase64.empty()) {
         this->signature = encoders::base64_url_decode(signatureBase64);
         if (verify) {
-            std::string signed_prtion = token.substr(0, token.find_last_of('.'));
+            std::string signed_portion = token.substr(0, token.find_last_of('.'));
 #ifndef PLATFORM_UNIX
 			std::unique_ptr<WincryptX509> x509 = std::make_unique<WincryptX509>();
 #else
             std::unique_ptr<OsslX509> x509 = std::make_unique<OsslX509>();
 #endif
             try {
-                x509->LoadIntermediateCertificate(INTERCERT);
+                for (const auto& cert : INTERMEDIATE_CERTS) {
+                    x509->LoadIntermediateCertificate(cert);
+                }
                 x509->LoadLeafCertificate(std::string(this->header["x5c"]).c_str());
                 if (!x509->VerifyCertChain()) {
                     throw JwtError("Failed to verify certificate chain.");
@@ -205,7 +207,7 @@ void JsonWebToken::ParseToken(std::string const&token, bool verify)
                     LIBSECRETS_LOG(
                         LogLevel::Debug, "Successfully Verified Certificate chain\n", "");
                 }
-                std::vector<unsigned char> signed_data(signed_prtion.begin(), signed_prtion.end());
+                std::vector<unsigned char> signed_data(signed_portion.begin(), signed_portion.end());
                 if (!x509->VerifySignature(signed_data, this->signature)) {
                     throw JwtError("Failed to verify certificate chain.");
                 }

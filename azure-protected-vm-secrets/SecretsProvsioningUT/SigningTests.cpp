@@ -104,7 +104,9 @@ TEST(X509Tests, LoadCertificate) {
 #else
 	std::unique_ptr<WincryptX509> x509 = std::make_unique<WincryptX509>();
 #endif // !PLATFORM_UNIX
-    x509->LoadIntermediateCertificate(INTERCERT);
+    for (const auto& cert : INTERMEDIATE_CERTS) {
+        x509->LoadIntermediateCertificate(cert);
+    }
     x509->LoadLeafCertificate(cert_str.c_str());
     bool result = x509->VerifyCertChain();
     EXPECT_TRUE(result);
@@ -126,7 +128,9 @@ TEST(X509Tests, ValidateSignature) {
 #else
 	std::unique_ptr<WincryptX509> x509 = std::make_unique<WincryptX509>();
 #endif // !PLATFORM_UNIX
-    x509->LoadIntermediateCertificate(INTERCERT);
+    for (const auto& cert : INTERMEDIATE_CERTS) {
+        x509->LoadIntermediateCertificate(cert);
+    }
     x509->LoadLeafCertificate(cert_str.c_str());
     bool result = x509->VerifyCertChain();
     EXPECT_TRUE(result);
@@ -155,7 +159,9 @@ TEST(X509Tests, FailValidateSignature) {
 #else
 	std::unique_ptr<WincryptX509> x509 = std::make_unique<WincryptX509>();
 #endif // !PLATFORM_UNIX
-    x509->LoadIntermediateCertificate(INTERCERT);
+    for (const auto& cert : INTERMEDIATE_CERTS) {
+        x509->LoadIntermediateCertificate(cert);
+    }
     x509->LoadLeafCertificate(cert_str.c_str());
     bool result = x509->VerifyCertChain();
     EXPECT_TRUE(result);
