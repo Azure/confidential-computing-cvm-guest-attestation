@@ -26,6 +26,7 @@ DEBIAN_FRONTEND=noninteractive sudo apt-get install cmake libssl-dev \
     doxygen \
     libjson-c-dev \
     libusb-1.0-0-dev \
+    libsystemd-dev \
     libftdi-dev -y
 
 dir=./repos
