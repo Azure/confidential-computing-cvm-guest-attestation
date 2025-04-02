@@ -196,9 +196,8 @@ void JsonWebToken::ParseToken(std::string const&token, bool verify)
             std::unique_ptr<OsslX509> x509 = std::make_unique<OsslX509>();
 #endif
             try {
-                for (const auto& cert : INTERMEDIATE_CERTS) {
-                    x509->LoadIntermediateCertificate(cert);
-                }
+                std::for_each(std::begin(INTERMEDIATE_CERTS), std::end(INTERMEDIATE_CERTS),
+                    [&](const auto cert) { x509->LoadIntermediateCertificate(cert); } );
                 x509->LoadLeafCertificate(std::string(this->header["x5c"]).c_str());
                 if (!x509->VerifyCertChain()) {
                     throw JwtError("Failed to verify certificate chain.");
