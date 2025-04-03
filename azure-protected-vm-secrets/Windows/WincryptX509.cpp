@@ -283,7 +283,7 @@ void WincryptX509::LoadLeafCertificate(const char* cert)
 
 void WincryptX509::LoadIntermediateCertificate(const char* cert)
 {
-    PCCERT_CONTEXT pInterCertContext = LoadCertificate(encoders::base64_decode(INTERCERT));
+    PCCERT_CONTEXT pInterCertContext = LoadCertificate(encoders::base64_decode(cert));
     if (!CertAddCertificateContextToStore(this->hStore, pInterCertContext, CERT_STORE_ADD_ALWAYS, NULL)) {
 		// LibraryError, WinCrypt subclass, certStoreError
         throw WinCryptError("CertAddCertificateContextToStore - Intermediate - failed.", GetLastError(),

@@ -51,12 +51,34 @@ find_package(OpenSSL REQUIRED)
 file(GLOB SOURCES "*.cpp" "Linux/*.cpp")
 
 # Add nlohmann/json.hpp using FetchContent
-find_package(nlohmann_json REQUIRED)
+include(FetchContent)
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+FetchContent_MakeAvailable(json)
+# find_package(nlohmann_json REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SYSTEMD libsystemd)
+
+if(NOT SYSTEMD_FOUND)
+    # Fallback for older or different distributions
+    find_path(SYSTEMD_INCLUDE_DIRS systemd/sd-journal.h)
+    find_library(SYSTEMD_LIBRARIES systemd)
+    if(SYSTEMD_INCLUDE_DIRS AND SYSTEMD_LIBRARIES)
+        set(SYSTEMD_FOUND TRUE)
+    endif()
+endif()
+
+if(SYSTEMD_FOUND)
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
+    add_definitions(-DUSE_SYSTEMD)
+else()
+    message(WARNING "systemd development files not found - falling back to stdout logging only")
+endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 add_library(${CMAKE_PROJECT_TARGET} STATIC ${SOURCES})
-# target_link_libraries(${CMAKE_PROJECT_TARGET} tss2-rc)
+target_link_libraries(${CMAKE_PROJECT_TARGET} ${SYSTEMD_LIBRARIES})
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${TSS2_LIBRARIES})
 #target_link_libraries(${CMAKE_PROJECT_TARGET} ${CRYPTO_LIB})
 target_link_libraries(${CMAKE_PROJECT_TARGET} OpenSSL::Crypto)
