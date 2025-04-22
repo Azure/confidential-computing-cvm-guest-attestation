@@ -276,7 +276,8 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
                                                  unsigned char** decrypted_data,
                                                  uint32_t* decrypted_data_size,
                                                  const attest::RsaScheme rsaWrapAlgId,
-                                                 const attest::RsaHashAlg rsaHashAlgId) noexcept {
+                                                 const attest::RsaHashAlg rsaHashAlgId,
+                                                 uint32_t pcr_bitmask) noexcept {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     if (encrypted_data == nullptr ||
         encrypted_data_size <= 0  ||
@@ -290,7 +291,7 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
     }
     try {
         Tpm tpm;
-        PcrList list = attest::GetAttestationPcrList(0);
+        PcrList list = attest::GetAttestationPcrList(pcr_bitmask);
         PcrSet pcrValues = tpm.GetPCRValues(list, attestation_hash_alg);
 
         // For encryption type 'NONE', the encrypted data is expected to be the encrypted symmetric key
