@@ -80,6 +80,7 @@ public:
      * @param[out] decrypted_data_size: The size of decrypted data
      * @param[in] rsaWrapAlgId: Rsa wrap algorithm id. Defaults to RSAES for backcompat with MAA.
      * @param[in] rsaHashAlgId: Rsa hash algorithm id. Defaults to SHA1 for backcompat with mHSM.
+     * @param[in] pcr_bitmask: The PCR bitmask used to create the ephemeral key.
      * @return In case of success, AttestationResult object with error code ErrorCode::Success
      * will be returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -91,7 +92,8 @@ public:
                                               unsigned char** decrypted_data,
                                               uint32_t* decrypted_data_size,
                                               const attest::RsaScheme tpm2RsaAlgId = attest::RsaScheme::RsaEs,
-                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1) noexcept = 0;
+                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1,
+                                              uint32_t pcr_bitmask = 0) noexcept = 0;
 
     /**
      * @brief This API deallocates the memory previously allocated by the library
@@ -163,9 +165,11 @@ extern "C" {
     * This MUST use RSA[2048]-OEAP-SHA256, and decryption is done in-place.
     * @param[inout] cipher: encrypted value, plaintext will be written in place
     * @param[inout] len: encrypted value length, plaintext length will be written
+    * @param[in] pcr_bitmask: bitmask representing the PCRs used to decrypt the value.
+    * This value should match the PCRs used during fetching MAA token.
     * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
     */
     DllExports
-    int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len);
+    int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len, uint32_t pcr_bitmask);
 
 }
