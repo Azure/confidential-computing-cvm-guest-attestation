@@ -71,7 +71,10 @@ public:
     va_end(args);
 
     if(level <= attest::AttestationLogger::Info)
+    {
       printf("[Attest][%s][%s]<%s:%d> %s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
+      fflush(stdout);
+    }
   }
 };
 
