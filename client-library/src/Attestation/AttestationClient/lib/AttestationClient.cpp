@@ -71,7 +71,10 @@ public:
     va_end(args);
 
     if(level <= attest::AttestationLogger::Info)
+    {
       printf("[Attest][%s][%s]<%s:%d> %s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
+      fflush(stdout);
+    }
   }
 };
 
@@ -130,13 +133,13 @@ int32_t ga_get_token(void *st, const uint8_t* app_data, uint32_t pcr, uint8_t* t
     }
 }
 
-int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len) {
+int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len, uint32_t pcr_bitmask) {
     if(!st) return (int32_t)attest::AttestationResult::ErrorCode::ERROR_FAILED_MEMORY_ALLOCATION;
     AttestationClient* attestation_client = static_cast<AttestationClient*>(st);
     unsigned char *plaintext = NULL;
     uint32_t plain_len = 0;
 
-    attest::AttestationResult res = attestation_client->Decrypt(attest::EncryptionType::NONE, cipher, *len, NULL, 0, &plaintext, &plain_len, attest::RsaScheme::RsaOaep, attest::RsaHashAlg::RsaSha256);
+    attest::AttestationResult res = attestation_client->Decrypt(attest::EncryptionType::NONE, cipher, *len, NULL, 0, &plaintext, &plain_len, attest::RsaScheme::RsaOaep, attest::RsaHashAlg::RsaSha256, pcr_bitmask);
     int32_t rc = (int32_t) res.code_;
 
     if(rc) return rc;
