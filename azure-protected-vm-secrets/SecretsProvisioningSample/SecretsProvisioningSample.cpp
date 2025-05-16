@@ -19,10 +19,9 @@
 #include "Windows/BcryptHKDF.h"
 #include "BcryptError.h"
 #endif // PLATFORM_UNIX
-// #include "ECDiffieHellman.h"
-// #include "HKDF.h"
 #include "JsonWebToken.h"
 #include "System.h"
+#include "Policy.h"
 #include <nlohmann/json.hpp>
 
 std::vector<BYTE> MakeRandomBytes(size_t a_Length)
@@ -75,6 +74,15 @@ bool IsKeyPresent() {
 void GetVmidFromSmbios() {
     std::string uuid = GetSystemUuid();
     std::cout << "UUID: " << uuid << std::endl;
+}
+
+void IsCvm() {
+	if (is_cvm()) {
+		std::cout << "This is a CVM" << std::endl;
+	}
+	else {
+		std::cout << "This is not a CVM" << std::endl;
+	}
 }
 
 std::string Encrypt(const char* data) {
@@ -208,7 +216,10 @@ std::string Decrypt(const char* jwt) {
 	std::string secret;
     char* output_secret = nullptr;
     int jwtlen = strlen(jwt); // hacky way to get the length of the jwt
-	long result = unprotect_secret((char*)(jwt), jwtlen, &output_secret);
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret((char*)(jwt), jwtlen, policy, &output_secret, &eval_policy);
 	if (result <= 0) {
 		std::cout << "Failed to unprotect secret" << std::hex << result << std::endl;
 		return secret;

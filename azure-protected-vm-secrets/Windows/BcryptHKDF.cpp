@@ -13,6 +13,45 @@
 #include "..\DebugInfo.h"
 
 #define SHA256_HASH_SIZE 32
+#define SHA384_HASH_SIZE 48
+#define SHA512_HASH_SIZE 64
+
+std::vector<unsigned char> BcryptSha(const std::vector<unsigned char>& data, const size_t hashSize) {
+	NTSTATUS status;
+	BCRYPT_ALG_HANDLE hAlg;
+	LPCWSTR hashAlg;
+    switch (hashSize) {
+        case SHA256_HASH_SIZE:
+            hashAlg = BCRYPT_SHA256_ALGORITHM;
+            break;
+        case SHA384_HASH_SIZE:
+			hashAlg = BCRYPT_SHA384_ALGORITHM;
+            break;
+        case SHA512_HASH_SIZE:
+			hashAlg = BCRYPT_SHA512_ALGORITHM;
+            break;
+        default:
+            throw std::invalid_argument("Unsupported hash size");
+    }
+	status = BCryptOpenAlgorithmProvider(
+		&hAlg, hashAlg,
+		NULL, 0);
+
+	std::vector<unsigned char> outputHash(hashSize);
+
+	status = BCryptHash(
+		hAlg, NULL, NULL,
+		(PUCHAR)data.data(), data.size(),
+		outputHash.data(), hashSize);
+	if (STATUS_SUCCESS != status) {
+		// Handle error
+		// CryptoError, Hash subclass, hashError
+		throw BcryptError(status, "BCryptHash for HMAC failed.\n",
+			ErrorCode::CryptographyError_HKDF_extractError);
+	}
+	return outputHash;
+}
+
 
 BcryptHKDF::BcryptHKDF(BCRYPT_SECRET_HANDLE secret) {
 	if (secret == NULL) {

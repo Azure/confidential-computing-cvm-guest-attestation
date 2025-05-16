@@ -12,8 +12,10 @@
 #include "BcryptError.h"
 #endif // !PLATFORM_UNIX
 #include "AesWrapper.h"
+#include "HclReportParser.h"
 #include "Tpm.h"
 #include "JsonWebToken.h"
+#include "Policy.h"
 #include "System.h"
 #ifdef PLATFORM_UNIX
 #include "Linux/OsslAesWrapper.h"
@@ -26,21 +28,13 @@
 #include "Windows/BcryptHKDF.h"
 #endif // PLATFORM_UNIX
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 using namespace SecretsLogger;
 
-// See header file for function description
-#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
-__declspec(dllexport)
-#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
-long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret) {
-	std::unique_ptr<char*> inOutputSecret;
-	long result = 0;
+std::vector<unsigned char> decrypt_secret(json claims) {
     std::unique_ptr<AesWrapper> aesWrapper;
     std::unique_ptr<AesCreator> aesCreator;
     std::unique_ptr<AesChainingInfo>  aesChainingInfo;
@@ -56,15 +50,8 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret) {
 	std::string infoString = GetSystemUuid();
 	std::vector<unsigned char> infoData(infoString.begin(), infoString.end());
 
-    std::string jwtStr(jwt, jwt + jwtlen);
-    LIBSECRETS_LOG(LogLevel::Debug, "Unprotect Secret\n", "JWT %s", jwtStr.c_str());
-    jwtObj = std::make_unique<JsonWebToken>();
-    
-	try {
-        // Parse the JWT
-		jwtObj->ParseToken(jwtStr, true);
-		json claims = jwtObj->getClaims();
-
+	try
+	{
 		LIBSECRETS_LOG(LogLevel::Debug, "Unprotect Secret\n", "JWT claims\n %s", claims.dump(4).c_str());
 
 		salt = encoders::base64_decode(claims["salt"]);
@@ -77,9 +64,8 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret) {
 		Tpm tpm{};
 		std::vector<unsigned char> aesKey = tpm.RsaDecrypt(wrappedAesKey);
 		if (aesKey.size() == 0) {
-			printf("Failed to decrypt data\n");
-			result = LONG_MIN;
-			return result;
+			LIBSECRETS_LOG(LogLevel::Error, "TPM Decrypt\n", "ptext len %d", aesKey.size());
+			return aesKey;
 		}
 
 #ifndef PLATFORM_UNIX
@@ -92,9 +78,8 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret) {
         aesChainingInfo = aesWrapper->SetChainingInfo(wrappingNonce);
 		std::vector<unsigned char> encodedEcdhPrivate = aesWrapper->Decrypt(encryptedEcdhPrivate, aesChainingInfo.get());
 		if (encodedEcdhPrivate.size() == 0) {
-			LIBSECRETS_LOG(LogLevel::Error, "TPM Decrypt\n", "ptext len %d", encodedEcdhPrivate.size());
-			result = LONG_MIN;
-			return result;
+			LIBSECRETS_LOG(LogLevel::Error, "Decrypt ECDH Private returned empty\n", "encodedEcdhPrivate.size() == 0");
+			return encodedEcdhPrivate;
 		}
 
 		// Import ECDH keys
@@ -120,58 +105,97 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret) {
 		aesWrapper->SetKey(aesKey);
         aesChainingInfo = aesWrapper->SetChainingInfo(dataNonce);
 		std::vector<unsigned char> plaintextData = aesWrapper->Decrypt(encryptedSecret, aesChainingInfo.get());
+		return plaintextData;
+	}
+	catch (...) {
+		LIBSECRETS_LOG(LogLevel::Error, "Exception in Decryption\n", "An error occurred during decryption");
+		throw;
+	}
+}
 
-		// Marshal to C string
-		std::unique_ptr<char[]> inOutputSecret(new char[plaintextData.size()]);
-		if (inOutputSecret == nullptr) {
-			LIBSECRETS_LOG(LogLevel::Warning, "Unprotect Secret\n", "Pointer allocation failed");
-			return LONG_MIN;
+// See header file for function description
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char** output_secret, unsigned int* eval_policy) {
+	// Check if the policy is valid
+	PolicyEvaluator pe(static_cast<PolicyOption>(policy), std::string(jwt, jwtlen));
+	std::vector<unsigned char> plaintextData;
+	std::unique_ptr<char[]> inOutputSecret;
+	long result = 0;
+
+	*eval_policy = static_cast<unsigned int>(pe.GetEvaluatedPolicy());
+	if (!pe.IsCompliant()) {
+		LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n", "Invalid policy %d does not match evaluated settings %d", policy, *eval_policy);
+		return (long)ErrorCode::PolicyMismatchError; // return error code for policy mismatch
+	}
+	if (pe.IsLegacy()) {
+		plaintextData = pe.GetLegacyString();
+	}
+	else {
+		json claims = pe.GetClaims();
+		try {
+			plaintextData = decrypt_secret(claims);
+			if (plaintextData.size() == 0) {
+				LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n", "Decrypted data is 0 Length");
+				return LONG_MIN;
+			}
 		}
+		catch (TpmError err) {
+			LIBSECRETS_LOG(LogLevel::Error, "TPM Decrypt\n",
+				"TPM error 0x%x occurred\n Description %s",
+				err.getReturnCode(), err.getTPMError());
+			result = (long)err.GetLibRC();
+		}
+#ifndef PLATFORM_UNIX
+		catch (BcryptError err) {
+			LIBSECRETS_LOG(LogLevel::Error, "Bcrypt Decrypt\n",
+				"Bcrypt status 0x%x occurred\n Message %s\t Bcrypt Info%s",
+				err.getStatusCode(), err.what(), err.getErrorInfo());
+			result = (long)err.GetLibRC();
+		}
+		catch (WinCryptError err) {
+			LIBSECRETS_LOG(LogLevel::Error, "WinCrypt Decode\n",
+				"Message %s\t Bcrypt Info%s",
+				err.what(), err.GetErrorMessage());
+			result = (long)err.GetLibRC();
+		}
+#else
+		catch (OsslError err) {
+			LIBSECRETS_LOG(LogLevel::Error, "Openssl Decode\n",
+				"Message %s\t Openssl Info%s",
+				err.what(), err.getErrorInfo());
+			result = (long)ErrorCode::CryptographyError;
+		}
+#endif // !PLATFORM_UNIX
+		catch (JwtError err) {
+			LIBSECRETS_LOG(LogLevel::Error, "JWT Validation\n",
+				"JWT error occurred\n Message %s",
+				err.what());
+			result = (long)err.GetLibRC();
+		}
+		catch (std::runtime_error e) {
+			LIBSECRETS_LOG(LogLevel::Error, "runtime Exception\n", "error info %s", e.what());
+			result = LONG_MIN;
+		}
+		catch (std::exception e) {
+			LIBSECRETS_LOG(LogLevel::Error, "Standard Exception\n", "error info %s", e.what());
+			result = LONG_MIN;
+		}
+	}
+	// Marshal to C string
+	inOutputSecret = std::make_unique<char[]>(plaintextData.size());
+	if (inOutputSecret == nullptr) {
+		LIBSECRETS_LOG(LogLevel::Warning, "Unprotect Secret\n", "Pointer allocation failed");
+		return LONG_MIN;
+	}
+
+	if (result == 0) {
+		// Successful decryption, copy the data to output_secret
 		std::copy(plaintextData.begin(), plaintextData.end(), inOutputSecret.get());
 		*output_secret = inOutputSecret.release();
 		result = static_cast<long>(plaintextData.size());
 	}
-	catch (TpmError err) {
-		LIBSECRETS_LOG(LogLevel::Error, "TPM Decrypt\n",
-			"TPM error 0x%x occurred\n Description %s",
-			err.getReturnCode(), err.getTPMError());
-		result = (long)err.GetLibRC();
-	}
-#ifndef PLATFORM_UNIX
-    catch (BcryptError err) {
-        LIBSECRETS_LOG(LogLevel::Error, "Bcrypt Decrypt\n",
-            "Bcrypt status 0x%x occurred\n Message %s\t Bcrypt Info%s",
-            err.getStatusCode(), err.what(), err.getErrorInfo());
-        result = (long)err.GetLibRC();
-    }
-	catch (WinCryptError err) {
-		LIBSECRETS_LOG(LogLevel::Error, "WinCrypt Decode\n",
-			"Message %s\t Bcrypt Info%s",
-			err.what(), err.GetErrorMessage());
-		result = (long)err.GetLibRC();
-	}
-#else
-	catch (OsslError err) {
-		LIBSECRETS_LOG(LogLevel::Error, "Openssl Decode\n",
-			"Message %s\t Openssl Info%s",
-			err.what(), err.getErrorInfo());
-		result = (long)ErrorCode::CryptographyError;
-	}
-#endif // !PLATFORM_UNIX
-	catch (JwtError err) {
-		LIBSECRETS_LOG(LogLevel::Error, "JWT Validation\n",
-			"JWT error occurred\n Message %s",
-			err.what());
-		result = (long)err.GetLibRC();
-	}
-    catch (std::runtime_error e) {
-        LIBSECRETS_LOG(LogLevel::Error, "runtime Exception\n", "error info %s", e.what());
-        result = LONG_MIN;
-    }
-    catch (std::exception e) {
-        LIBSECRETS_LOG(LogLevel::Error, "Standard Exception\n", "error info %s", e.what());
-        result = LONG_MIN;
-    }
         
     return result;
 }
@@ -182,6 +206,35 @@ __declspec(dllexport)
 void free_secret(char* secret) {
 	if (secret != nullptr)
 		delete[] secret;
+}
+
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+bool is_cvm() {
+	Tpm tpm{};
+	try {
+		std::vector<unsigned char> hclReport = tpm.ReadHclReport();
+		if (hclReport.size() == 0) {
+			LIBSECRETS_LOG(LogLevel::Debug, "TPM Read HCL Report", "HCL Report is 0 Length");
+			return false;
+		}
+		LIBSECRETS_LOG(LogLevel::Debug, "Completed Read HCL Report", "HCL Report size is : %d", hclReport.size());
+		HclReportParser hclReportParser;
+		if (hclReportParser.IsValidHclReport(hclReport)) {
+			LIBSECRETS_LOG(LogLevel::Debug, "Parse HCL Report", "HCL Report is valid");
+			return true;
+		}
+		else {
+			LIBSECRETS_LOG(LogLevel::Debug, "Parse HCL Report", "HCL Report is not valid");
+			return false;
+		}
+	}
+	catch (TpmError err) {
+		LIBSECRETS_LOG(LogLevel::Error, "TPM Read HCL Report", "TPM error 0x%x occurred\n Description %s",
+			err.getReturnCode(), err.getTPMError());
+		return false;
+	}
 }
 
 #ifdef __cplusplus

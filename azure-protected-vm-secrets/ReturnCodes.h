@@ -13,6 +13,7 @@ enum class ErrorCode {
     TpmError_Context_tctiInitError = TpmError - 5,
     TpmError_Context_esysFinalError = TpmError - 6,
     TpmError_Context_esysInitError = TpmError - 7,
+    TpmError_Handles_esysNvReadError = TpmError - 8,
 
     CryptographyError = -1 * 0x2000,
     CryptographyError_AES_encryptError = CryptographyError - 1,
@@ -51,6 +52,8 @@ enum class ErrorCode {
     LibraryError_WinCrypt_certLoadError = LibraryErrors - 6,
     LibraryError_WinCrypt_certChainError = LibraryErrors - 7,
 	LibraryError_JsonHpp_jsonParseError = LibraryErrors - 8,
+
+    PolicyMismatchError = -1 * 0x5000,
 
     UnknownError = -1 * 0x5000
 };

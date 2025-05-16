@@ -26,11 +26,13 @@ set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} dl ${
 
 set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 
+set(ATTESTATION_INCLUDE_DIRS external/attestation/)
+
 # Find Boost
 find_package(Boost REQUIRED)
 
 #find_package(Tss2 REQUIRED)
-include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${ATTESTATION_INCLUDE_DIRS})
 
 # set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)

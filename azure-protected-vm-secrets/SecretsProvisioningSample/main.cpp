@@ -44,6 +44,9 @@ int main(int argc, char* argv[])
 	else if (command == "GetVmid") {
 		GetVmidFromSmbios();
 	}
+	else if (command == "IsCvm") {
+		IsCvm();
+	}
 	else if (command == "Encrypt") {
 		if (argc < 3) {
 			std::cout << "Please provide a string to encrypt." << std::endl;
