@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 //SecretsProvisioningLibrary.cpp : Defines the functions for the static library.
 //
 #define WIN32_LEAN_AND_MEAN

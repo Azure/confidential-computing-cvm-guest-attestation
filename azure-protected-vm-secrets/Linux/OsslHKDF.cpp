@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 // #include "HKDF.h"
 #include "OsslHKDF.h"
 #include <openssl/evp.h>

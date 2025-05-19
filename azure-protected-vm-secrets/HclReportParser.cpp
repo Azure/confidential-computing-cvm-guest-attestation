@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "HclReportParser.h"
 #include "Linux/OsslHKDF.h"
 #include "LibraryLogger.h"

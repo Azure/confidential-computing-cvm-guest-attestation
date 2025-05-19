@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 // #include "X509.h"
 #include "OsslX509.h"
 #include "OsslError.h"

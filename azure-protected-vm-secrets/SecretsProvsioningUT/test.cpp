@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "Tpm.h"

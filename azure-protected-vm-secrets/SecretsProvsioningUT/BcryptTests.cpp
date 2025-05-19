@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #ifndef PLATFORM_UNIX

@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "pch.h"
 #include <nlohmann/json.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>

@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 // SecretsProvisioningSample.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
