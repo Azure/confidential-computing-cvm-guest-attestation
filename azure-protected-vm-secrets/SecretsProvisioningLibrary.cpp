@@ -10,15 +10,6 @@
 
 #include "LibraryLogger.h"
 #include "TpmError.h"
-#ifndef PLATFORM_UNIX
-#include "BcryptError.h"
-#endif // !PLATFORM_UNIX
-#include "AesWrapper.h"
-#include "HclReportParser.h"
-#include "Tpm.h"
-#include "JsonWebToken.h"
-#include "Policy.h"
-#include "System.h"
 #ifdef PLATFORM_UNIX
 #include "Linux/OsslAesWrapper.h"
 #include "Linux/OsslECDiffieHellman.h"
@@ -28,11 +19,14 @@
 #include "Windows/BcryptAesWrapper.h"
 #include "Windows/BcryptECDiffieHellman.h"
 #include "Windows/BcryptHKDF.h"
+#include "BcryptError.h"
 #endif // PLATFORM_UNIX
-
-#ifdef __cplusplus
-extern "C" {
-#endif // __cplusplus
+#include "AesWrapper.h"
+#include "HclReportParser.h"
+#include "Tpm.h"
+#include "JsonWebToken.h"
+#include "Policy.h"
+#include "System.h"
 
 using namespace SecretsLogger;
 
@@ -114,6 +108,10 @@ std::vector<unsigned char> decrypt_secret(json claims) {
 		throw;
 	}
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
 
 // See header file for function description
 #ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS

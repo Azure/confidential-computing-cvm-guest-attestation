@@ -1,7 +1,7 @@
 r"""Wrapper for SecretsProvisioningLibrary.h
 
 Generated with:
-/home/corsinidb/.local/bin/ctypesgen -l ../../../x64/Release/DynamicSecretsProvisioningLibrary.dll ../SecretsProvisioningLibrary.h -o pySecretsProvisioningLibrary.py
+ctypesgen -l libDynamicSecretsProvisioningLibrary.so SecretsProvisioningLibrary.h -o pySecretsProvisioningLibrary.py
 
 Do not modify this file.
 """
@@ -860,20 +860,37 @@ del loaderclass
 add_library_search_dirs([])
 
 # Begin libraries
-_libs["C:\DynamicSecretsProvisioningLibrary.dll"] = load_library("C:\DynamicSecretsProvisioningLibrary.dll")
+_libs["libDynamicSecretsProvisioningLibrary.so"] = load_library("libDynamicSecretsProvisioningLibrary.so")
 
 # 1 libraries
 # End libraries
 
 # No modules
 
-# /mnt/c/repos/Security-AzureConfidentialVM/src/Libraries/SecretsProvisioningLibrary/SecretsProvisioningLibrary.h: 17
+# azure-protected-vm-secrets/SecretsProvisioningLibrary.h: 19
 for _lib in _libs.values():
     if not _lib.has("unprotect_secret", "cdecl"):
         continue
     unprotect_secret = _lib.get("unprotect_secret", "cdecl")
-    unprotect_secret.argtypes = [String, c_uint, POINTER(POINTER(c_char))]
+    unprotect_secret.argtypes = [String, c_uint, c_uint, POINTER(POINTER(c_char)), POINTER(c_uint)]
     unprotect_secret.restype = c_long
+    break
+
+# azure-protected-vm-secrets/SecretsProvisioningLibrary.h: 23
+for _lib in _libs.values():
+    if not _lib.has("free_secret", "cdecl"):
+        continue
+    free_secret = _lib.get("free_secret", "cdecl")
+    free_secret.argtypes = [String]
+    free_secret.restype = None
+    break
+
+for _lib in _libs.values():
+    if not _lib.has("is_cvm", "cdecl"):
+        continue
+    is_cvm = _lib.get("is_cvm", "cdecl")
+    is_cvm.argtypes = None
+    is_cvm.restype = bool
     break
 
 # No inserted files

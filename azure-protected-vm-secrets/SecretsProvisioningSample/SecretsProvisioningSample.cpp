@@ -218,8 +218,7 @@ std::string Decrypt(const char* jwt) {
 	std::string secret;
     char* output_secret = nullptr;
     int jwtlen = strlen(jwt); // hacky way to get the length of the jwt
-	unsigned int policy = 0;
-	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int policy = 2;
 	unsigned int eval_policy = 0;
 	long result = unprotect_secret((char*)(jwt), jwtlen, policy, &output_secret, &eval_policy);
 	if (result <= 0) {

@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-#include "HclReportParser.h"
+#ifdef PLATFORM_UNIX
 #include "Linux/OsslHKDF.h"
+#else
+#include <windows.h>
+#include "Windows/BcryptHKDF.h"
+#endif
+#include "SnpVmReport.h"
+#include "HclReportParser.h"
 #include "LibraryLogger.h"
 #include "DebugInfo.h"
-#include <memory>
 #include <vector>
-#include <stdexcept>
-#include <openssl/evp.h>
 
 using namespace SecretsLogger;
 
@@ -52,7 +55,7 @@ bool HclReportParser::IsValidHclReport(const std::vector<unsigned char>& hclRepo
 #ifdef PLATFORM_UNIX
         std::vector<unsigned char> report_hash = OsslSha(variable_data, hash_size);
 #else
-        // TODO: Implement hash calculation for non-UNIX platforms
+        std::vector<unsigned char> report_hash = BcryptSha(variable_data, hash_size);
 #endif
         return (report_hash == reportedHash);
     }

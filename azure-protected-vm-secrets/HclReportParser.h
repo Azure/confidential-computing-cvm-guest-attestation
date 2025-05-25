@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-#include "SnpVmReport.h"
-#include <memory>
+#pragma once
 #include <vector>
 
 class HclReportParser {
