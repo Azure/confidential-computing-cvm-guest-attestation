@@ -59,23 +59,54 @@ public:
         const int line,
         const char* fmt,
         ...) {
-    va_list args;
-    va_start(args, fmt);
-    size_t len = std::vsnprintf(NULL, 0, fmt, args);
-    va_end(args);
+        va_list args;
+        va_start(args, fmt);
+        size_t len = std::vsnprintf(NULL, 0, fmt, args);
+        va_end(args);
 
-    std::vector<char> str(len + 1);
+        std::vector<char> str(len + 1);
 
-    va_start(args, fmt);
-    std::vsnprintf(&str[0], len + 1, fmt, args);
-    va_end(args);
+        va_start(args, fmt);
+        std::vsnprintf(&str[0], len + 1, fmt, args);
+        va_end(args);
 
-    if(level <= attest::AttestationLogger::Info)
-    {
-      printf("[Attest][%s][%s]<%s:%d> %s\n", attest::AttestationLogger::LogLevelStrings[level].c_str(), log_tag, function, line, &str[0]);
-      fflush(stdout);
-    }
+        if(level <= attest::AttestationLogger::Info)
+        {
+            std::string escaped_message = escapeJsonString(std::string(&str[0]));
+            // Output in JSON format
+            printf("{\"component\":\"Attest\",\"level\":\"%s\",\"tag\":\"%s\",\"function\":\"%s\",\"line\":%d,\"message\":\"%s\"}\n",
+                attest::AttestationLogger::LogLevelStrings[level].c_str(),
+                log_tag,
+                function,
+                line,
+                escaped_message.c_str());
+            fflush(stdout);
+        }
   }
+private:
+    std::string escapeJsonString(const std::string& input) {
+        std::string escaped;
+        for (char c : input) {
+            switch (c) {
+                case '\"': escaped += "\\\""; break;
+                case '\\': escaped += "\\\\"; break;
+                case '\b': escaped += "\\b"; break;
+                case '\f': escaped += "\\f"; break;
+                case '\n': escaped += "\\n"; break;
+                case '\r': escaped += "\\r"; break;
+                case '\t': escaped += "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[7];
+                        snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        escaped += buf;
+                    } else {
+                        escaped += c;
+                    }
+            }
+        }
+        return escaped;
+    }
 };
 
 int32_t ga_create(void** st) {
