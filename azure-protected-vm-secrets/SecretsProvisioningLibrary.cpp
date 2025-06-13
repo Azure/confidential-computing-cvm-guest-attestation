@@ -24,6 +24,7 @@
 #include "AesWrapper.h"
 #include "HclReportParser.h"
 #include "Tpm.h"
+#include "Tss2LogController.h"
 #include "JsonWebToken.h"
 #include "Policy.h"
 #include "System.h"
@@ -212,6 +213,7 @@ void free_secret(char* secret) {
 __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 bool is_cvm() {
+	Tss2LogController logController = Tss2LogController::SuppressAllLogs();
 	Tpm tpm{};
 	try {
 		std::vector<unsigned char> hclReport = tpm.ReadHclReport();
@@ -231,6 +233,13 @@ bool is_cvm() {
 		}
 	}
 	catch (TpmError err) {
+		ErrorCode lib_rc = err.GetLibRC();
+		if (lib_rc == ErrorCode::TpmError_Handles_handlePresentError)
+		{
+			// If the TPM handle is not present, it is not a CVM
+			LIBSECRETS_LOG(LogLevel::Debug, "TPM Read HCL Report", "TPM handle not present, not a CVM");
+			return false;
+		}
 		LIBSECRETS_LOG(LogLevel::Error, "TPM Read HCL Report", "TPM error 0x%x occurred\n Description %s",
 			err.getReturnCode(), err.getTPMError());
 		return false;

@@ -21,6 +21,14 @@ class PolicyOption(IntFlag):
     # Common combinations
     AllowAny = AllowUnencrypted | AllowUnsigned | AllowLegacy
 
+# Evaluated features directly mirroring the C++ code
+class PayloadFeature(IntFlag):
+    """Policy options controlling security requirements for secret access."""
+    NoSettings = 0b00000000
+    Encrypted  = 0b00000001
+    Signed     = 0b00000010
+    Legacy     = 0b00000100
+
 class SecretException(Exception):
     """Exception raised when a secret operation fails."""
     def __init__(self, code: int, message: str):
@@ -29,7 +37,7 @@ class SecretException(Exception):
         super().__init__(f"Secret operation failed with code {code}: {message}")
 
 def unprotect_secret(jwt: Union[str, bytes], 
-                    policy: Union[int, PolicyOption] = PolicyOption.AllowUnsigned) -> Tuple[bytes, int]:
+                    policy: Union[int, PolicyOption] = PolicyOption.AllowUnsigned) -> Tuple[bytes, PayloadFeature]:
     """
     Unprotect a secret using the JWT token.
     
