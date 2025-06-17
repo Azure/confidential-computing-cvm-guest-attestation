@@ -214,8 +214,8 @@ __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 bool is_cvm() {
 	Tss2LogController logController = Tss2LogController::SuppressAllLogs();
-	Tpm tpm{};
 	try {
+		Tpm tpm{};
 		std::vector<unsigned char> hclReport = tpm.ReadHclReport();
 		if (hclReport.size() == 0) {
 			LIBSECRETS_LOG(LogLevel::Debug, "TPM Read HCL Report", "HCL Report is 0 Length");
@@ -234,14 +234,20 @@ bool is_cvm() {
 	}
 	catch (TpmError err) {
 		ErrorCode lib_rc = err.GetLibRC();
-		if (lib_rc == ErrorCode::TpmError_Handles_handlePresentError)
-		{
-			// If the TPM handle is not present, it is not a CVM
+		if (lib_rc == ErrorCode::TpmError_Handles_handlePresentError
+			|| lib_rc == ErrorCode::TpmError_Context_esysInitError
+			|| lib_rc == ErrorCode::TpmError_Context_tctiInitError) {
+			// If the TPM is not present or the handle is not present, it is not a CVM
 			LIBSECRETS_LOG(LogLevel::Debug, "TPM Read HCL Report", "TPM handle not present, not a CVM");
-			return false;
+		} else {
+			// Other TPM errors indicate a problem with reading the HCL report
+			LIBSECRETS_LOG(LogLevel::Error, "TPM Read HCL Report", "TPM error 0x%x occurred\n Description %s",
+				err.getReturnCode(), err.getTPMError());
 		}
-		LIBSECRETS_LOG(LogLevel::Error, "TPM Read HCL Report", "TPM error 0x%x occurred\n Description %s",
-			err.getReturnCode(), err.getTPMError());
+		return false;
+	}
+	catch (std::exception& e) {
+		LIBSECRETS_LOG(LogLevel::Error, "TPM Read HCL Report", "Exception occurred: %s", e.what());
 		return false;
 	}
 }
