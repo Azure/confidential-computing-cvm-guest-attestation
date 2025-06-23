@@ -32,6 +32,8 @@ set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_TCTI_DEVICE} ${TSS2_RC} ${TSS2_MU} ${TSS2
 
 set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 
+set(ATTESTATION_INCLUDE_DIRS external/attestation/)
+
 # include(FetchContent)
 # FetchContent_Declare(
 #     tss2
@@ -43,7 +45,7 @@ set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 find_package(Boost REQUIRED)
 
 # find_package(Tss2 REQUIRED)
-include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${ATTESTATION_INCLUDE_DIRS})
 
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)

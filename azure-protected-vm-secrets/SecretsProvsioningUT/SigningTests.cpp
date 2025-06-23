@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "gtest/gtest.h"
 #ifdef PLATFORM_UNIX
 #include "Linux/OsslX509.h"

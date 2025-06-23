@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
 #include <tss2/tss2_esys.h>
 

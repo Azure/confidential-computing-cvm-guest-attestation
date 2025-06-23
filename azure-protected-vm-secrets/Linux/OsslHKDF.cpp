@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 // #include "HKDF.h"
 #include "OsslHKDF.h"
 #include <openssl/evp.h>
@@ -8,12 +10,23 @@
 #include <iostream>
 #include "../DebugInfo.h"
 
-
-#define SHA256_HASH_SIZE 32
-
-std::vector<unsigned char> _Hash265(const std::vector<unsigned char>& data) {
+std::vector<unsigned char> OsslSha(const std::vector<unsigned char>& data, const size_t hashSize) {
+    const EVP_MD *md;
+    switch (hashSize) {
+        case SHA256_HASH_SIZE:
+            md = EVP_sha256();
+            break;
+        case SHA384_HASH_SIZE:
+            md = EVP_sha384();
+            break;
+        case SHA512_HASH_SIZE:
+            md = EVP_sha512();
+            break;
+        default:
+            throw std::invalid_argument("Unsupported hash size");
+    }
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
+    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
         throw std::runtime_error("Failed to initialize hash context");
     }
 
@@ -21,7 +34,7 @@ std::vector<unsigned char> _Hash265(const std::vector<unsigned char>& data) {
         throw std::runtime_error("Failed to update hash");
     }
 
-    std::vector<unsigned char> hashValue(EVP_MD_size(EVP_sha256()));
+    std::vector<unsigned char> hashValue(EVP_MD_size(md));
     unsigned int length = 0;
 
     if (EVP_DigestFinal_ex(ctx, hashValue.data(), &length) != 1) {
@@ -33,7 +46,7 @@ std::vector<unsigned char> _Hash265(const std::vector<unsigned char>& data) {
 }
 
 OsslHKDF::OsslHKDF(const std::vector<unsigned char>& secret) {
-    std::vector<unsigned char> hash = _Hash265(secret);
+    std::vector<unsigned char> hash = OsslSha(secret, SHA256_HASH_SIZE);
 	pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
     if (!pctx) {
         throw std::runtime_error("Failed to create HKDF context");

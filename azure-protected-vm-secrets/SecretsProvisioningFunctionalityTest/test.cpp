@@ -1,7 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "../SecretsProvisioningSample/SecretsProvisioningSample.h"
 #include "../SecretsProvisioningLibrary.h"
 #include "../JsonWebToken.h"
+#include "../Policy.h"
 
 
 /**
@@ -64,8 +67,12 @@ TEST_F(FunctionalityTests, SuccessfulEncryptDecrypt) {
 
 	std::string encrypted_data = Encrypt(data);
 	char* output_secret = nullptr;
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
 	long result = unprotect_secret(
-		(char *)encrypted_data.c_str(), encrypted_data.length(), &output_secret
+		(char *)encrypted_data.c_str(), encrypted_data.length(), policy,
+		&output_secret, &eval_policy
 	);
 	ASSERT_EQ(result, strlen(data) + 1);
 	ASSERT_EQ(strcmp(data, output_secret), 0);
@@ -109,9 +116,13 @@ TEST_F(FunctionalityTests, FailureEncryptDecrypt) {
 	);
 	std::string modfied_data = jwt->CreateToken();
 
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
 	char* output_secret = nullptr;
 	long result = unprotect_secret(
-		(char *)modfied_data.c_str(), modfied_data.length(), &output_secret
+		(char *)modfied_data.c_str(), modfied_data.length(), policy,
+		&output_secret, &eval_policy
 	);
 	ASSERT_LE(result, 0);
 	ASSERT_EQ(output_secret, nullptr);
@@ -161,9 +172,13 @@ TEST_F(FunctionalityTests, FailureInvalidEcdhPrivateKey) {
 	);
 	std::string modfied_data = jwt->CreateToken();
 
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
 	char* output_secret = nullptr;
 	long result = unprotect_secret(
-		(char *)modfied_data.c_str(), modfied_data.length(), &output_secret
+		(char *)modfied_data.c_str(), modfied_data.length(), policy,
+		&output_secret, &eval_policy
 	);
 	ASSERT_LE(result, 0);
 	ASSERT_EQ(output_secret, nullptr);
@@ -205,13 +220,45 @@ TEST_F(FunctionalityTests, FailureParseToken) {
 	std::string modfied_data = jwt->CreateToken();
 	
 	// Parse the modified token
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
 	char* output_secret = nullptr;
 	long result = unprotect_secret(
-		(char *)modfied_data.c_str(), modfied_data.length(), &output_secret
+		(char *)modfied_data.c_str(), modfied_data.length(), policy,
+		&output_secret, &eval_policy
 	);
 	ASSERT_LE(result, 0);
 	ASSERT_EQ(output_secret, nullptr);
 	if (output_secret) {
 		free_secret(output_secret);
 	}
+}
+
+/**
+ * @brief Test case to verify a Library failure on an invalid policy.
+ *
+ * This test checks the success case of the unprotect_secret function.
+ * It does the following:
+ * 1. Encrypt a sample secret data.
+ * 2. Decrypt the encrypted data using the unprotect_secret function.
+ * 3. Perform assertions.
+ * 
+ * Assertions:
+ * - The unprotect_secret function returns the length of the secret.
+ * - The original protected data is correctly decrypted.
+ */
+TEST_F(FunctionalityTests, FailPolicyError) {
+	char data[] = "Test Secret info";
+
+	std::string encrypted_data = Encrypt(data);
+	char* output_secret = nullptr;
+	unsigned int policy = 0;
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char *)encrypted_data.c_str(), encrypted_data.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_EQ(result, (long)ErrorCode::PolicyMismatchError);
+	ASSERT_EQ(eval_policy, static_cast<unsigned int>(PayloadFeature::Encrypted));
 }

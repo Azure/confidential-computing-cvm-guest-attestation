@@ -1,8 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
-#ifndef PLATFORM_UNIX
-#include <bcrypt.h>
-#else
-#endif // !PLATFORM_UNIX
 #include <vector>
 
 class HKDF

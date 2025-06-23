@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "..\pch.h"
 #include "..\BaseX509.h"
 #include "Windows.h"

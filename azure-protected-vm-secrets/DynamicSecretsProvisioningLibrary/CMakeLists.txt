@@ -26,11 +26,13 @@ set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} dl ${
 
 set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 
+set(ATTESTATION_INCLUDE_DIRS external/attestation/)
+
 # Find Boost
 find_package(Boost REQUIRED)
 
 #find_package(Tss2 REQUIRED)
-include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${ATTESTATION_INCLUDE_DIRS})
 
 # set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
@@ -87,7 +89,7 @@ if(APT_PROGRAM)
     set(CPACK_GENERATOR "DEB")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft Corp")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "libssl3t64, libtss2-esys-3.0.2-0t64, libtss2-sys1t64, libtss2-mu-4.0.1-0t64, libtss2-tcti-device0t64, libtss2-rc0t64")
-    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "x86_64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 elseif(RPM_PROGRAM)
     set(CPACK_GENERATOR "RPM")
     set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")

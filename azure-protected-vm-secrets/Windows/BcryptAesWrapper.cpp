@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "..\pch.h"
 #ifndef PLATFORM_UNIX
 #define UMDF_USING_NTSTATUS

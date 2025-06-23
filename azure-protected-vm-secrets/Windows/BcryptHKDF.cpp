@@ -1,18 +1,53 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "..\pch.h"
-//#ifndef PLATFORM_UNIX
 #define UMDF_USING_NTSTATUS
 #include <windows.h>
-#include <bcrypt.h>
 #include <iostream>
-//#else
-//#endif // !PLATFORM_UNIX
-#include "..\HKDF.h"
 #include "BcryptHKDF.h"
 #include <stdexcept>
 #include "..\BcryptError.h"
 #include "..\DebugInfo.h"
 
-#define SHA256_HASH_SIZE 32
+
+std::vector<unsigned char> BcryptSha(const std::vector<unsigned char>& data, const size_t hashSize) {
+	NTSTATUS status;
+	BCRYPT_ALG_HANDLE hAlg;
+	LPCWSTR hashAlg;
+    switch (hashSize) {
+        case SHA256_HASH_SIZE:
+            hashAlg = BCRYPT_SHA256_ALGORITHM;
+            break;
+        case SHA384_HASH_SIZE:
+			hashAlg = BCRYPT_SHA384_ALGORITHM;
+            break;
+        case SHA512_HASH_SIZE:
+			hashAlg = BCRYPT_SHA512_ALGORITHM;
+            break;
+        default:
+            throw std::invalid_argument("Unsupported hash size");
+    }
+	status = BCryptOpenAlgorithmProvider(
+		&hAlg, hashAlg,
+		NULL, 0);
+
+	std::vector<unsigned char> outputHash(hashSize);
+
+	status = BCryptHash(
+		hAlg, NULL, NULL,
+		(PUCHAR)data.data(), data.size(),
+		outputHash.data(), hashSize);
+	if (STATUS_SUCCESS != status) {
+		// Handle error
+		// CryptoError, Hash subclass, hashError
+		BCryptCloseAlgorithmProvider(hAlg, 0);
+		throw BcryptError(status, "BCryptHash for HMAC failed.\n",
+			ErrorCode::CryptographyError_HKDF_extractError);
+	}
+	BCryptCloseAlgorithmProvider(hAlg, 0);
+	return outputHash;
+}
+
 
 BcryptHKDF::BcryptHKDF(BCRYPT_SECRET_HANDLE secret) {
 	if (secret == NULL) {
@@ -32,7 +67,6 @@ BcryptHKDF::BcryptHKDF(BCRYPT_SECRET_HANDLE secret) {
 }
 
 BcryptHKDF::~BcryptHKDF() {
-#ifndef PLATFORM_UNIX
 	if (this->secret != NULL) {
 		BCryptDestroySecret(this->secret);
 
@@ -40,8 +74,6 @@ BcryptHKDF::~BcryptHKDF() {
 	if (this->hAlg != NULL) {
 		BCryptCloseAlgorithmProvider(hAlg, 0);
 	}
-#else
-#endif // !PLATFORM_UNIX
 }
 
 // Derive key based on RFC 5869.
@@ -52,11 +84,9 @@ std::vector<unsigned char> BcryptHKDF::DeriveKey(std::vector<unsigned char> &sal
 
 std::vector<unsigned char> BcryptHKDF::Extract(std::vector<unsigned char> &salt) {
 	std::vector<unsigned char> prk;
-#ifndef PLATFORM_UNIX
 	NTSTATUS status;
 	BCryptBufferDesc params;
 	BCryptBuffer buffers[1];
-	//BCRYPT_ALG_HANDLE hAlg;
 	ULONG prkLength = SHA256_HASH_SIZE;
 	ULONG outPrkLength = 0;
 	params.ulVersion = BCRYPTBUFFER_VERSION;
@@ -99,15 +129,12 @@ std::vector<unsigned char> BcryptHKDF::Extract(std::vector<unsigned char> &salt)
 			ErrorCode::CryptographyError_HKDF_extractError);
 	}
 	return prk;
-#else
-#endif // !PLATFORM_UNIX
 }
 
 std::vector<unsigned char> BcryptHKDF::Expand(std::vector<unsigned char> &prk, std::vector<unsigned char> &info, size_t keySize) {
 	BYTE counter = 1;
 	std::vector<unsigned char> t;
 	std::vector<unsigned char> okm = std::vector<unsigned char>(keySize);
-#ifndef PLATFORM_UNIX
 	BCryptBufferDesc params;
 	BCryptBuffer buffers[2];
 	ULONG okmLength = 0;
@@ -184,7 +211,5 @@ std::vector<unsigned char> BcryptHKDF::Expand(std::vector<unsigned char> &prk, s
 		// Handle error
 		throw BcryptError(status, "BCryptHash for HMAC failed.\n");
 	}
-#else
-#endif
 	return okm;
 }

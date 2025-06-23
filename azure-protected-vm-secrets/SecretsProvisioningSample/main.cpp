@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include <iostream>
 #include "SecretsProvisioningSample.h"
 
@@ -43,6 +45,9 @@ int main(int argc, char* argv[])
 	}
 	else if (command == "GetVmid") {
 		GetVmidFromSmbios();
+	}
+	else if (command == "IsCvm") {
+		IsCvm();
 	}
 	else if (command == "Encrypt") {
 		if (argc < 3) {

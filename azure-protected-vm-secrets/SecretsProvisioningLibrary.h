@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
 #include "pch.h"
 
@@ -14,11 +16,15 @@ extern "C" {
 #ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 __declspec( dllexport )
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
-    long unprotect_secret(char* jwt, unsigned int jwtlen, char** output_secret);
+    long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char** output_secret, unsigned int* eval_policy);
 #ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
     void free_secret(char* secret);
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+    bool is_cvm();
 #ifdef __cplusplus
 }
 #endif // __cplusplus

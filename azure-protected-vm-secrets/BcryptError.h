@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
 #define UMDF_USING_NTSTATUS
 #include <windows.h>

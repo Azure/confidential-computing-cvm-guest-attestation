@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
 #ifndef PLATFORM_UNIX
 //#include <windows.h>

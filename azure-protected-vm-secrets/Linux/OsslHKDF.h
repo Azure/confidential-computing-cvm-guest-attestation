@@ -1,7 +1,15 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #pragma once
 #include <openssl/evp.h>
 #include <vector>
 #include "../HKDF.h"
+
+#define SHA256_HASH_SIZE 32
+#define SHA384_HASH_SIZE 48
+#define SHA512_HASH_SIZE 64
+
+std::vector<unsigned char> OsslSha(const std::vector<unsigned char>& data, const size_t hashSize);
 
 class OsslHKDF: public HKDF
 {

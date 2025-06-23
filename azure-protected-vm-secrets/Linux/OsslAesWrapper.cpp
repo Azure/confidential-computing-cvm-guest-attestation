@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <iostream>

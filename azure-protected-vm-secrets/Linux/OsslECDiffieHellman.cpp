@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 //#include "ECDiffieHellman.h"
 #include "../LibraryLogger.h"
 #include "OsslECDiffieHellman.h"

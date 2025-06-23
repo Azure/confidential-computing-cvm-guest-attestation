@@ -29,6 +29,7 @@ add_executable(${CMAKE_PROJECT_TARGET}
    # test.cpp
    JwtTests.cpp
    SigningTests.cpp
+   PolicyTests.cpp
 )
 # Link the test executable with Google Test and our library
 target_link_libraries(${CMAKE_PROJECT_TARGET} 

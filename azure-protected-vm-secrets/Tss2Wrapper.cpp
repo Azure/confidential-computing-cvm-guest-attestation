@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "pch.h"
 #include <fstream>
 #include <string>
@@ -21,7 +23,7 @@
 #define SRKHANDLE 0x81000001
 #define KEYHANDLE SRKHANDLE + 3
 #define RSA_PUBLIC_EXPONENT 0x00010001
-
+#define TPM_PT_NV_INDEX_MAX 1024
 
 
 Tss2Wrapper::Tss2Wrapper()
@@ -310,4 +312,66 @@ std::vector<unsigned char> Tss2Wrapper::Tss2RsaDecrypt(std::vector<unsigned char
     Esys_Free(plain2);
     
     return retval;
+}
+
+std::vector<unsigned char> Tss2Wrapper::Tss2NvRead(TPM2_HANDLE nvIndex) {
+    TSS2_RC r;
+    ESYS_TR nvHandle = ESYS_TR_NONE;
+    TPM2B_NV_PUBLIC* nvPubData = nullptr;
+    TPM2B_MAX_NV_BUFFER* nvData = nullptr;
+    std::unique_ptr<TPM2B_MAX_NV_BUFFER> nvDataUnique;
+    std::vector<unsigned char> data;
+
+    // Get Esys object for handle.
+    r = Esys_TR_FromTPMPublic(
+        this->ctx->Get(), nvIndex,
+        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+        &nvHandle);
+    if (r != TSS2_RC_SUCCESS)
+    {
+        // TpmError, Subclass Handles, handlePresentError
+        throw TpmError(r, "Failed to read tpm object from handle",
+            ErrorCode::TpmError_Handles_handlePresentError);
+    }
+
+    // Get the NV public data for size
+    r = Esys_NV_ReadPublic(this->ctx->Get(), nvHandle,
+        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+        &nvPubData, nullptr);
+    if (r != TSS2_RC_SUCCESS)
+    {
+        // TpmError, Subclass Handles, handlePresentError
+        throw TpmError(r, "Failed to read tpm object from handle",
+            ErrorCode::TpmError_Handles_handlePresentError);
+    }
+
+    size_t size = nvPubData->nvPublic.dataSize;
+    data.reserve(size);
+    size_t offset = 0;
+    data.resize(size); // Pre-allocate the vector to avoid resizing in the loop
+
+    while (size > 0) {
+        uint16_t bytesToRead = size > TPM_PT_NV_INDEX_MAX ? TPM_PT_NV_INDEX_MAX : size;
+
+        r = Esys_NV_Read(this->ctx->Get(),
+            ESYS_TR_RH_OWNER, nvHandle,
+            ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
+            bytesToRead, offset, &nvData);
+        if (r != TSS2_RC_SUCCESS)
+        {
+            // CryptoError, Subclass TpmRsa, decryptError
+            throw TpmError(r, "Failed to read NV data",
+                ErrorCode::TpmError_Handles_esysNvReadError);
+        }
+
+        nvDataUnique.reset(nvData); // Ensure nvData is freed after use
+
+        std::copy(nvData->buffer, nvData->buffer + nvData->size, data.begin() + offset);
+        size -= nvData->size;
+        offset += nvData->size;
+    }
+
+    data.resize(nvPubData->nvPublic.dataSize);
+
+    return data;
 }
