@@ -122,4 +122,12 @@ extern "C" {
      */
     DllExports
     void Uninitialize();
+
+    /**Add commentMore actions
+    * Single shot C function for Rust FFI
+    * To avoid managing the lifetime of the MAA token string, we assume jwt is at least 32k
+    * The actual token length is written to *jwt_len
+    */
+    DllExports
+    int32_t get_attestation_token(const uint8_t* app_data, uint8_t* jwt, size_t* jwt_len);
 }
