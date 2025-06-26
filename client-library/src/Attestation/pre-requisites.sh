@@ -14,10 +14,10 @@ sudo apt-get install -y --fix-missing \
     libtool \
     libgcrypt-dev \
     gnulib \
-    g++ \
+    g++-12 \
     pkg-config \
     libjsoncpp-dev \
-    gcc \
+    gcc-12 \
     attr \
     squashfs-tools \
     cryptsetup-bin \
@@ -67,7 +67,7 @@ cd ${CURRENT_DIR}
 
 sudo mkdir -p /usr/src
 
-export CC=gcc && export CXX=g++ && \
+export CC=gcc-12 && export CXX=g++-12 && \
     sudo mkdir -p /usr/src/tpm2-tss && \
     sudo git config --global --add safe.directory /usr/src/tpm2-tss && \
     sudo git clone https://github.com/tpm2-software/tpm2-tss.git /usr/src/tpm2-tss && \

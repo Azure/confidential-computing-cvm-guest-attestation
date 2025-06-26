@@ -87,6 +87,7 @@ public:
      * @param[in] encryption_metadata_size: The size of encryption metadata
      * @param[in] rsaWrapAlgId: Rsa wrap algorithm id.
      * @param[in] rsaHashAlgId: Rsa hash algorithm id.
+     * @param[in] pcr_bitmask: The PCR bitmask used for creating the ephemeral key.
      * @param[out] decrypted_data: The decrypted data (the memory is allocated by the method and the
      * caller is expected to free this memory by calling Attest::Free() method)
      * @param[out] decrypted_data_size: The size of decrypted data
@@ -101,7 +102,8 @@ public:
                                       unsigned char** decrypted_data,
                                       uint32_t* decrypted_data_size,
                                       const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
-                                      const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
+                                      const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1,
+                                      uint32_t pcr_bitmask = 0) noexcept override;
 
     /*
      * @brief This API deallocates the memory previously allocated by the library
@@ -112,6 +114,7 @@ public:
     /**
      * @brief This function will be used to Decrypt a JWT token received from
      * AAS.
+     * @param[in] pcr_selector Bitfield representing the selected PCRs
      * @param[in] jwt_token_encrypted The encrypted jwt token received from AAS.
      * @param[out] jwt_token_decrypted The decrypted jwt token.
      * @return In case of success, AttestationResult object with error code
@@ -119,7 +122,7 @@ public:
      * In case of failure, an appropriate ErrorCode will be set in the
      * AttestationResult object and error description will be provided.
      */
-    attest::AttestationResult DecryptMaaToken(const std::string& jwt_token_encrypted,
+    attest::AttestationResult DecryptMaaToken(uint32_t pcr_selector, const std::string& jwt_token_encrypted,
                                               std::string& jwt_token_decrypted) noexcept;
 
     /**
@@ -152,6 +155,7 @@ public:
     /**
      * @brief This function will be used to retrieve the Tpm related
      * information from the guest system.
+     * @param[in] pcr_selector Bitfield of PCRs included in quote
      * @param[out] tpm_info The TpmInfo structure that will be filled by the
      * function.
      * @return In case of success, AttestationResult object with error code
@@ -159,7 +163,7 @@ public:
      * In case of failure, an appropriate ErrorCode will be set in the
      * AttestationResult object and error description will be provided.
      */
-    attest::AttestationResult GetTpmInfo(attest::TpmInfo& tpm_info);
+    attest::AttestationResult GetTpmInfo(uint32_t pcr_selector, attest::TpmInfo& tpm_info);
 
     /**
      * @brief This function will be used to retrieve the isolation information
@@ -215,10 +219,16 @@ public:
 
 private:
     /**
+     * @brief Get the list of PCR from the client configuration & platform
+     */
+    attest::PcrList GetAttestationPcrList();
+
+    /**
      * @brief This function will be used to retrieve the attestation parameters
      * needed to send with the attestation request to AAS.
      * @param[in] client_payload The client payload that will be copied over to
      * the params object.
+     * @param[in] pcr_selector Bitfield of PCRs included in the TPM quote
      * @param[out] params The AttestationParameters structure that will be
      * filled by the function.
      * @return In case of success, AttestationResult object with error code
@@ -228,6 +238,7 @@ private:
      */
     attest::AttestationResult getAttestationParameters(const std::unordered_map<std::string,
                                                                                 std::string>& client_payload,
+                                                       uint32_t pcr_selector,
                                                        attest::AttestationParameters& params);
 
     /**

@@ -81,6 +81,7 @@ public:
      * @param[in] rsaHashAlgId: Rsa hash algorithm id. Defaults to SHA1 for backcompat with mHSM.
      * caller is expected to free this memory by calling Attest::Free() method)
      * @param[out] decrypted_data_size: The size of decrypted data
+     * @param[in] pcr_bitmask: The PCR bitmask used to create the ephemeral key.
      * @return In case of success, AttestationResult object with error code ErrorCode::Success
      * will be returned. In case of failure, an appropriate ErrorCode and description will be returned.
      */
@@ -92,7 +93,8 @@ public:
                                               unsigned char** decrypted_data,
                                               uint32_t* decrypted_data_size,
                                               const attest::RsaScheme tpm2RsaAlgId = attest::RsaScheme::RsaEs,
-                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1) noexcept = 0;
+                                              const attest::RsaHashAlg tpm2HashAlgId = attest::RsaHashAlg::RsaSha1,
+                                              uint32_t pcr_bitmask = 0) noexcept = 0;
 
     /**
      * @brief This API deallocates the memory previously allocated by the library
@@ -122,4 +124,54 @@ extern "C" {
      */
     DllExports
     void Uninitialize();
+
+    /**
+    * @brief Single shot C function for Rust FFI
+    * @param[in] app_data: JSON user data quoted by the TPM and reported by MAA in runtime claim
+    * @param[in] pcr: bitfield representing the PCRs used in the TPM quote and reported by MAA
+    * @param[out] jwt: 32k buffer where the MAA token will be written
+    * @param[out] jwt_len: size of the written MAA token
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
+    */
+    DllExports
+    int32_t get_attestation_token(const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len, const char* endpoint_url);
+
+    /**
+    * @brief Start an attestation session
+    * @param[in] st will be set to the 
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
+    */
+    DllExports
+    int32_t ga_create(void **st);
+
+    /**
+    * @brief Free the state of an attestation session
+    * @param[in] st: attestation session
+    */
+    DllExports
+    void ga_free(void *st);
+
+    /**
+    * @brief Get an attestation token from a session
+    * @param[in] app_data: JSON user data quoted by the TPM and reported by MAA in runtime claim
+    * @param[in] pcr: bitfield representing the PCRs used in the TPM quote and reported by MAA
+    * @param[out] jwt: 32k buffer where the MAA token will be written
+    * @param[out] jwt_len: size of the written MAA token
+    * @return NULL on error, attestation object on success
+    */
+    DllExports
+    int32_t ga_get_token(void *st, const uint8_t* app_data, uint32_t pcr, uint8_t* jwt, size_t* jwt_len, const char* endpoint_url);
+
+    /**
+    * @brief decrypt a value encrypted with the ephemeral attested key
+    * This MUST use RSA[2048]-OEAP-SHA256, and decryption is done in-place.
+    * @param[inout] cipher: encrypted value, plaintext will be written in place
+    * @param[inout] len: encrypted value length, plaintext length will be written
+    * @param[in] pcr_bitmask: bitmask representing the PCRs used to decrypt the value.
+    * This value should match the PCRs used during fetching MAA token.
+    * @return 0 on success, error code on failure (see AttestationLibTypes.h for mapping)
+    */
+    DllExports
+    int32_t ga_decrypt(void *st, uint8_t *cipher, size_t* len, uint32_t pcr_bitmask);
+
 }

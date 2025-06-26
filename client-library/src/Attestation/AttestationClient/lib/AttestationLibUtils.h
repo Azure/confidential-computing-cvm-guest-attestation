@@ -19,9 +19,10 @@ const attest::HashAlg attestation_hash_alg = attest::HashAlg::Sha256;
 /**
  * @brief This function will be use the list of PCRs that will be used for attestation.
  * This list is different based on whether the client is running on Windows or Linux.
+ * @param[in] pcr_selector Bitfield representing selected PCRs.
  * @return attest::PcrList that contains the pcr indices to be used for attestation.
  */
-PcrList GetAttestationPcrList();
+PcrList GetAttestationPcrList(uint32_t pcr_selector);
 
 namespace os {
 
