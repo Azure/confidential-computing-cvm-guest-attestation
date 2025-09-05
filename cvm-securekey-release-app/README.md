@@ -4,7 +4,7 @@ The code in this directory demonstrates how to get an asymetric encryption key s
 
 ## Build Instructions for Linux
 
-Create a Linux Confidential or Trusted Launch virtual machine in Azure and clone the application.
+Create a Linux Confidential or Trusted Launch virtual machine in Azure, tested on Ubuntu 22.04 and 24.04 with openssl 3.0.x package.
 
 Use the below command to install the `build-essential` package. This package will install everything required for compiling our sample application written in C++.
 
@@ -18,18 +18,20 @@ Install the below packages
 $ sudo apt-get install -y libssl-dev libcurl4-openssl-dev libjsoncpp-dev libboost-all-dev nlohmann-json3-dev cmake
 ```
 
-Download the attestation package from the following location - https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/
+Download the latest attestation package from the following location - https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/
 
 Use the below command to install the attestation package
 
 ```sh
-$ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.0.5_amd64.deb
-$ sudo dpkg -i azguestattestation1_1.0.5_amd64.deb
+$ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.1.2_amd64.deb
+$ sudo dpkg -i azguestattestation1_1.1.2_amd64.deb
 ```
 
 Once the above packages have been installed, use below steps to build and run the app
 
 ```sh
+$ git clone --recursive https://github.com/Azure/confidential-computing-cvm-guest-attestation
+$ cd confidential-computing-cvm-guest-attestation
 $ cd cvm-securekey-release-app/
 $ mkdir build && cd build
 $ cmake .. -DCMAKE_BUILD_TYPE=Release  # Debug for more tracing output and define TRACE constant in CMakeLists.txt
