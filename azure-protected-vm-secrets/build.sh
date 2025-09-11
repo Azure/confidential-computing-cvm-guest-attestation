@@ -17,7 +17,7 @@ DEBIAN_FRONTEND=noninteractive sudo apt-get install cmake libssl-dev \
     procps \
     iproute2 \
     git \
-    gcc \
+    gcc-12 \
     libtool \
     automake \
     libssl-dev \

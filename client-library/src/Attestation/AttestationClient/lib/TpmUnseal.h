@@ -75,6 +75,7 @@ bool GetEncryptedJwt(const Json::Value& json_obj,
 
 /**
  * @brief The function will be used to decrypt the inner symmetric key that was used to encrypt the jwt.
+ * @param[in] pcr_selector Bitfield representing the selected PCRs
  * @param[in] encrypted_inner_key The encrypted symmetric inner key that was used to encrypt the jwt.
  * @param[out] decrypted_key The Buffer object that will hold the decrypted symmetric key.
  * @param[in] rsaWrapAlgId The Rsa wrap algorithm enum value that represents the RSA scheme used for encryption.
@@ -82,7 +83,8 @@ bool GetEncryptedJwt(const Json::Value& json_obj,
  * @return On success, AttestatitionResult object is returned with error_code set to ErrorCode::SUCCESS. On failure,
  * AttestationResult object is returned with appropriate error code set.
  */
-attest::AttestationResult DecryptInnerKey(const attest::Buffer& encrypted_inner_key,
+attest::AttestationResult DecryptInnerKey(uint32_t pcr_selector,
+                                          const attest::Buffer& encrypted_inner_key,
                                           attest::Buffer& decrypted_key,
                                           const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
                                           const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1);

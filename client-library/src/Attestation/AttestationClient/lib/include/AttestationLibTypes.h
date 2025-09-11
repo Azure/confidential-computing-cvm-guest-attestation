@@ -9,7 +9,9 @@
 #include <string>
 #include <unordered_map>
 
-#define CLIENT_PARAMS_VERSION 1 // V1 contains version, attestation_endpoint_url, client_payload
+// V1 contains version, attestation_endpoint_url, client_payload
+// V2 contains version, attestation_endpoint_url, client_payload, pcr_selector
+#define CLIENT_PARAMS_VERSION 2
 
 namespace attest {
 
@@ -72,7 +74,7 @@ namespace attest {
      */
     struct ClientParameters {
         /**
-         * Struct version
+         * Struct version - version 2 adds the PCR selector feature
          */
         uint32_t version;
 
@@ -88,6 +90,14 @@ namespace attest {
          * Sample client_payload: "{\"key1\":\"value1\",\"key2\":\"value2\"}"
          */
         const unsigned char* client_payload = nullptr;
+
+        /*
+        * A bitfield representing which PCR should be selected for the TPM quote.
+        * The least significant bit maps to PCR0.
+        * Note that PCR banks >= 16 are user resettable.
+        * A value of 0 will use the default PCR set for the platform.
+        */
+        uint32_t pcr_selector = 0;
     };
 
     enum class OsType {
