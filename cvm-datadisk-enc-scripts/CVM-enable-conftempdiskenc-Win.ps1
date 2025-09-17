@@ -50,10 +50,11 @@ if ($keyvault -eq $null)
 # ADE settings:
 $Publisher                   = "Microsoft.Azure.Security"
 $ExtName                     = "AzureDiskEncryption"
-$ExtHandlerVer               = "2.4"
+$ExtHandlerVer               = "2.5"
 $EncryptionOperation         = "EnableEncryption"
 
 # Settings for enabling temp disk encryption only providing Azure Key Vault resource.
+# Note: Key names in PublicSetting are case sensitive. Do not change the case.
 $pubSettings                 = @{};
 $pubSettings.Add("VolumeType", "Data")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)

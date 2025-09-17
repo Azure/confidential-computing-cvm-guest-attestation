@@ -210,7 +210,7 @@ std::string getResourceUrl(const std::string &KEKUrl, bool isIMDS = true)
     // If neither AKV nor MHSM suffix is found, throw an error
     else
     {
-        TRACE_ERROR_EXIT("Invalid resource suffix found in KEKUrl: " + KEKUrl)
+        TRACE_ERROR_EXIT(std::string("Invalid resource suffix found in KEKUrl: " + KEKUrl).c_str())
     }
 }
 
@@ -449,26 +449,6 @@ std::vector<std::string> Util::SplitString(const std::string &str, char delim)
 
     TRACE_OUT("Exiting Util::SplitString()");
     return result;
-}
-
-/// Get the modulus size in bytes of RSA key.
-int RSA_get_size(EVP_PKEY *pkey)
-{
-    int rsaModulusSize = 0;
-#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-    // It is OSSL >= 3.0
-    // TODO: investigate why EVP_PKEY_get_size causes SIGSEGV in OSSL 3.0
-    // rsaModulusSize = EVP_PKEY_get_size(pkey);
-
-    // fallback to deprecated API until above issue is resolved.
-    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
-    rsaModulusSize = RSA_size(rsa);
-#else
-    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
-    rsaModulusSize = RSA_size(rsa);
-#endif
-
-    return rsaModulusSize;
 }
 
 /// handle openssl errors
@@ -878,17 +858,14 @@ int rsa_encrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *enc, size
     if (EVP_PKEY_encrypt_init(ctx) <= 0)
         handleErrors();
 
-#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-        // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
-#else
-    // Set the RSA padding mode to either PKCS #1 OAEP
+    // Set the RSA padding mode to PKCS #1 OAEP
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
         handleErrors();
 
     // Set RSA signature scheme to SHA256
     if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, EVP_sha256()) <= 0)
         handleErrors();
-#endif
+
     // Determine the buffer length for the encrypted data
     if (EVP_PKEY_encrypt(ctx, NULL, &outlen, msg, msglen) <= 0)
         handleErrors();
@@ -931,9 +908,6 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
     if (EVP_PKEY_decrypt_init(ctx) <= 0)
         handleErrors();
 
-#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-        // TODO: investiagate why setting padding and md algorithms causing SIGSEGV in OSSL 3.x
-#else
     // Set the RSA padding mode to PKCS #1 OAEP
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
         handleErrors();
@@ -941,7 +915,6 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
     // Set RSA signature scheme to SHA256
     if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, EVP_sha256()) <= 0) // TODO: can be a parameter
         handleErrors();
-#endif
 
     // Determine the buffer length for the encrypted data
     if (EVP_PKEY_decrypt(ctx, NULL, &outlen, msg, msglen) <= 0)
@@ -992,7 +965,7 @@ std::string Util::WrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    int rsaSize = RSA_get_size(pkey);
+    int rsaSize = EVP_PKEY_get_size(pkey);
     TRACE_OUT("Wrapping: %s", Util::reduct_log(sym_key).c_str());
 
     size_t encrypted_length = 0;
@@ -1042,7 +1015,7 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
         exit(-1);
     }
 
-    int rsaSize = RSA_get_size(pkey);
+    int rsaSize = EVP_PKEY_get_size(pkey);
     TRACE_OUT("Unwrapping: %s\n", wrapped_key_base64.c_str());
     std::vector<BYTE> wrapped_key = Util::base64_to_binary(wrapped_key_base64);
 

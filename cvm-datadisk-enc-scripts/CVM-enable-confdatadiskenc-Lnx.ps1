@@ -3,7 +3,7 @@
  This script can be used to turn on data disk encryption one for an existing Azure Linux confidential VM.
  Usage: Open this script file in "Windows PowerShell ISE", or use CloudShell in Azure portal. Review and update each "Step". Afterwards, highlight the section and hit F8 to run in ISE or copy and paste into cloud shell.
 
- Requirements: 1-) The confidential VM is already created with confidential OS disk encrtyption on.
+ Requirements: 1-) The confidential VM is already created with confidential OS disk encryption on.
                2-) One or more data disks are attached and partitioned. The data volumes are formatted as ext4 or xfs.
                3-) A Customer Managed Key (RSA 3072 bits) is created in AKV or mHSM with the modified SKR policy.
                4-) A user assigned managed identity (UAI) is created and granted Get,Release permissions on the RSA key.
@@ -84,6 +84,7 @@ $EncryptionOperation         = "EnableEncryption"
 $PrivatePreviewFlag_DataDisk = "PrivatePreview.ConfidentialEncryptionDataDisk"
 
 # Settings for enabling temp disk encryption only providing Azure Key Vault resource.
+# Note: Key names in PublicSetting are case sensitive. Do not change the case.
 $pubSettings = @{};
 $pubSettings.Add("KeyVaultURL", $KV_URL)
 $pubSettings.Add("KeyVaultResourceId", $KV_RID)
@@ -92,7 +93,6 @@ $pubSettings.Add("KekVaultResourceId", $KV_RID)
 $pubSettings.Add("KeyEncryptionAlgorithm", "RSA-OAEP")
 $pubSettings.Add($EncryptionManagedIdentity, $KV_UAI_RID)
 $pubSettings.Add("VolumeType", "Data")
-$pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 
 # Settings for enabling temp disk encryption only providing Azure managed HSM (mHSM) resource. For more info, see https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/overview
@@ -105,6 +105,9 @@ $pubSettings.Add("EncryptionOperation", $EncryptionOperation)
 #$pubsettings.Add("KeyStoreType",              "ManagedHSM")
 #$pubsettings.Add("EncryptionOperation",       $EncryptionOperation)
 #$pubSettings.Add("KeyEncryptionAlgorithm",    "RSA-OAEP")
+
+#this feature is in private preview, So to set the below flag to enable data disk encryption feature.
+$pubSettings.Add($PrivatePreviewFlag_DataDisk, "true")
 
 Set-AzVMExtension `
     -ResourceGroupName $resourceGroup `
