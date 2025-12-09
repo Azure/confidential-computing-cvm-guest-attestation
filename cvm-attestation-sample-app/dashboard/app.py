@@ -32,6 +32,30 @@ def get_metadata(path: str) -> str:
         return "N/A"
 
 # ─────────────────────────────────────────────
+# VM Security Type 및 CVM 타입 확인
+# ─────────────────────────────────────────────
+def check_vm_security_type() -> dict:
+    """
+    VM의 Security Type을 확인합니다.
+    Returns:
+        {
+            "security_type": str,  # ConfidentialVM, TrustedLaunch, Standard 등
+            "is_confidential": bool,
+            "vm_size": str
+        }
+    """
+    security_type = get_metadata("compute/securityType")
+    vm_size = get_metadata("compute/vmSize")
+
+    is_confidential = "confidential" in security_type.lower() if security_type != "N/A" else False
+
+    return {
+        "security_type": security_type,
+        "is_confidential": is_confidential,
+        "vm_size": vm_size
+    }
+
+# ─────────────────────────────────────────────
 # LB 기반 Public IP 조회(frontendIpAddress)
 # ─────────────────────────────────────────────
 def get_lb_public_ip() -> str:
@@ -81,8 +105,13 @@ def human_time(ts):
 # ─────────────────────────────────────────────
 def run_attestation():
     if not os.path.exists(CLIENT_PATH):
-        return {"error": f"AttestationClient not found: {CLIENT_PATH}",
-                "header": {}, "payload": {}, "raw_token": None}
+        return {
+            "error": f"AttestationClient not found: {CLIENT_PATH}",
+            "header": {},
+            "payload": {},
+            "raw_token": None,
+            "error_type": "client_not_found",
+        }
 
     try:
         p = subprocess.run(
@@ -92,13 +121,34 @@ def run_attestation():
             text=True,
             timeout=20,
         )
+    except subprocess.TimeoutExpired:
+        # Intel CVM / 기타 환경에서 그냥 응답이 없고 timeout 나는 케이스
+        return {
+            "error": "AttestationClient가 20초 이내에 응답하지 않아 중단되었습니다. "
+                     "이 데모 클라이언트는 AMD SEV-SNP 기반 Confidential VM에서만 정상 동작합니다.",
+            "header": {},
+            "payload": {},
+            "raw_token": None,
+            "error_type": "timeout",
+        }
     except Exception as e:
-        return {"error": f"AttestationClient execution failed: {e}",
-                "header": {}, "payload": {}, "raw_token": None}
+        return {
+            "error": f"AttestationClient execution failed: {e}",
+            "header": {},
+            "payload": {},
+            "raw_token": None,
+            "error_type": "execution_failed",
+        }
 
     if p.returncode != 0:
-        return {"error": f"AttestationClient exited with {p.returncode}\n{p.stdout}\n{p.stderr}",
-                "header": {}, "payload": {}, "raw_token": None}
+        error_output = (p.stdout or "") + "\n" + (p.stderr or "")
+        return {
+            "error": f"AttestationClient exited with {p.returncode}\n{error_output}",
+            "header": {},
+            "payload": {},
+            "raw_token": None,
+            "error_type": "execution_error",
+        }
 
     combined = (p.stdout or "") + "\n" + (p.stderr or "")
     lines = [l.strip() for l in combined.splitlines() if l.strip()]
@@ -110,17 +160,33 @@ def run_attestation():
             break
 
     if not raw:
-        return {"error": "JWT token not found in AttestationClient output.",
-                "header": {}, "payload": {}, "raw_token": None}
+        return {
+            "error": "JWT token not found in AttestationClient output.",
+            "header": {},
+            "payload": {},
+            "raw_token": None,
+            "error_type": "token_not_found",
+        }
 
     try:
         header = jwt.get_unverified_header(raw)
         payload = jwt.decode(raw, options={"verify_signature": False})
     except Exception as e:
-        return {"error": f"JWT decode error: {e}",
-                "header": {}, "payload": {}, "raw_token": raw}
+        return {
+            "error": f"JWT decode error: {e}",
+            "header": {},
+            "payload": {},
+            "raw_token": raw,
+            "error_type": "decode_error",
+        }
 
-    return {"error": None, "header": header, "payload": payload, "raw_token": raw}
+    return {
+        "error": None,
+        "header": header,
+        "payload": payload,
+        "raw_token": raw,
+        "error_type": None,
+    }
 
 # ─────────────────────────────────────────────
 # TEE 정보 추출 (x-ms-isolation-tee 반영)
@@ -128,31 +194,29 @@ def run_attestation():
 def extract_tee_info(payload: dict) -> dict:
     """
     토큰 페이로드에서 TEE 관련 정보를 추출한다.
-    - 바깥 x-ms-tee-type / x-ms-attestation-type
-    - x-ms-isolation-tee 내부의 x-ms-attestation-type (sevsnpvm 등)
-      및 x-ms-compliance-status(azure-compliant-cvm 등)
-    를 기반으로 실질적인 TEE 타입과 CVM 여부를 계산한다.
+    (이 데모는 AMD SEV-SNP 기반 시나리오에 초점을 맞춤)
     """
     outer_tee = payload.get("x-ms-tee-type") or ""
     outer_att = payload.get("x-ms-attestation-type") or ""
 
     isolation = payload.get("x-ms-isolation-tee") or {}
-    inner_tee = isolation.get("x-ms-tee-type") or ""  # 있을 수도 있고 없을 수도 있음
-    inner_att = isolation.get("x-ms-attestation-type") or ""  # sevsnpvm 등
+    inner_tee = isolation.get("x-ms-tee-type") or ""
+    inner_att = isolation.get("x-ms-attestation-type") or ""
     compliance = isolation.get("x-ms-compliance-status") or ""
 
     # UI에 보여줄 "실질적인" TEE / Attestation 타입
-    # 우선순위: outer_tee > inner_tee > inner_att > outer_att
     effective_tee = outer_tee or inner_tee or inner_att or outer_att
-    # Attestation Type은 바깥쪽이 없으면 inner_att 사용
     effective_att = outer_att or inner_att or outer_tee
 
-    # CVM 여부 판정
-    joined = " ".join([outer_tee, outer_att, inner_tee, inner_att, compliance]).lower()
-    is_confidential = any(
-        key in joined
-        for key in ["sevsnp", "tdx", "sgx", "cvm", "confidential"]
-    )
+    # CVM 여부 판정: x-ms-isolation-tee.x-ms-attestation-type = "sevsnpvm" 체크
+    # 또는 compliance-status = "azure-compliant-cvm" 체크
+    is_confidential = False
+    if inner_att.lower() == "sevsnpvm":
+        is_confidential = True
+    elif "azure-compliant-cvm" in compliance.lower():
+        is_confidential = True
+    elif any(k in f"{outer_tee} {outer_att} {inner_tee}".lower() for k in ["sevsnp", "cvm", "confidential"]):
+        is_confidential = True
 
     return {
         "tee_type": effective_tee,
@@ -179,9 +243,13 @@ h1{margin:0;font-size:20px;}
 pre{background:#020617;border:1px solid #1f2937;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;}
 .btn{background:#2563eb;color:#fff;border-radius:999px;padding:8px 16px;text-decoration:none;font-size:14px;border:none;cursor:pointer;}
 .btn:hover{background:#1d4ed8;}
-.btn-container{text-align:right;margin-bottom:20px;}
+.btn-container{text-align:right;margin-top:16px;margin-bottom:20px;}
 .warn{background:#451a03;color:#fed7aa;border:1px solid #f97316;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:13px;}
+.error{background:#450a0a;color:#fecaca;border:1px solid #ef4444;border-radius:8px;padding:12px 16px;margin-top:8px;font-size:14px;line-height:1.6;}
+.error strong{display:block;font-size:16px;margin-bottom:8px;}
 .ok{background:#064e3b;color:#bbf7d0;border:1px solid #16a34a;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:13px;}
+.info{background:#0c4a6e;color:#bae6fd;border:1px solid #0284c7;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.6;}
+.info strong{display:block;font-size:14px;margin-bottom:6px;}
 .badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;}
 .badge-green{background:#022c22;color:#6ee7b7;border:1px solid #16a34a;}
 .badge-amber{background:#451a03;color:#fed7aa;border:1px solid #f59e0b;}
@@ -211,6 +279,11 @@ details[open] summary{margin-bottom:8px;}
 </header>
 
 <div class="container">
+  <div class="info">
+    <strong>ℹ️ 지원 범위</strong>
+    이 대시보드는 AMD SEV-SNP 기반 Confidential VM 에서의 하드웨어 Attestation 데모를 위해 설계되었습니다.<br>
+    Intel TDX 기반 Confidential VM 및 일반 VM에서는 AttestationClient가 정상 동작하지 않을 수 있으며, 이러한 경우 에러가 표시될 수 있습니다.
+  </div>
 
   <div class="btn-container">
     <a href="/" class="btn">Attest Now</a>
@@ -225,6 +298,16 @@ details[open] summary{margin-bottom:8px;}
       <li>
         <span class="label">VM Size</span>:
         <span class="badge badge-blue">{{ vm.vmSize }}</span>
+      </li>
+      <li>
+        <span class="label">Security Type</span>:
+        {% if vm_security.is_confidential %}
+          <span class="badge badge-green">{{ vm_security.security_type }}</span>
+        {% elif vm_security.security_type != "N/A" %}
+          <span class="badge badge-amber">{{ vm_security.security_type }}</span>
+        {% else %}
+          <span class="badge badge-slate">N/A</span>
+        {% endif %}
       </li>
       <li><span class="label">Location</span>: {{ vm.location }}</li>
       <li><span class="label">Resource Group</span>: {{ vm.resourceGroup }}</li>
@@ -272,7 +355,7 @@ details[open] summary{margin-bottom:8px;}
       </li>
       <li>
         <span class="label tooltip">TEE Type
-          <span class="tooltiptext">Trusted Execution Environment의 종류입니다. SEV-SNP(AMD), TDX(Intel), SGX 등 하드웨어 기반 보안 환경을 나타냅니다.</span>
+          <span class="tooltiptext">Trusted Execution Environment의 종류입니다. 이 데모는 SEV-SNP 기반 환경을 대상으로 합니다.</span>
         </span>:
         {% if tee_type_display != "없음" and is_confidential %}
           <span class="badge badge-green">{{ tee_type_display }}</span>
@@ -284,7 +367,7 @@ details[open] summary{margin-bottom:8px;}
       </li>
       <li>
         <span class="label tooltip">Attestation Type
-          <span class="tooltiptext">증명(attestation) 방식의 유형입니다. sevsnpvm, azurevmgs 등 Azure에서 사용하는 증명 프로토콜을 나타냅니다.</span>
+          <span class="tooltiptext">증명(attestation) 방식의 유형입니다. sevsnpvm 등 Azure에서 사용하는 증명 프로토콜을 나타냅니다.</span>
         </span>:
         {% if att_type_display != "없음" %}
           <span class="badge badge-blue">{{ att_type_display }}</span>
@@ -318,7 +401,7 @@ details[open] summary{margin-bottom:8px;}
 
     {% if not is_confidential %}
       <div class="warn">
-        ⚠ 이 VM은 Confidential VM(SEV-SNP/TDX/SGX)으로 감지되지 않았습니다.<br>
+        ⚠ 이 JWT 토큰에서는 SEV-SNP 기반 Confidential VM 환경이 감지되지 않았습니다.<br>
         (TEE Type: {{ tee_type_display or "없음" }}, Attestation Type: {{ att_type_display or "없음" }},
          Compliance: {{ compliance_display or "없음" }})
       </div>
@@ -364,6 +447,7 @@ details[open] summary{margin-bottom:8px;}
 @app.route("/")
 def index():
     vm = get_vm_info()
+    vm_security = check_vm_security_type()
     result = run_attestation()
     payload = result["payload"]
 
@@ -391,7 +475,9 @@ def index():
     return render_template_string(
         TEMPLATE,
         vm=vm,
+        vm_security=vm_security,
         error=result["error"],
+        error_type=result.get("error_type"),
         raw_token=result["raw_token"],
         payload=payload,
         iat=iat,
