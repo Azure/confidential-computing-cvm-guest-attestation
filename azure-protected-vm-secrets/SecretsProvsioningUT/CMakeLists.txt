@@ -6,7 +6,7 @@ add_definitions (-DPLATFORM_UNIX)
 set (CMAKE_PROJECT_TARGET SecretsProvisioningUT)
 project (Linux${CMAKE_PROJECT_TARGET})
 
-include_directories(${TSS2_INCLUDE_DIRS} ../)
+include_directories(${TSS2_INCLUDE_DIRS} ../ ../generated/)
 
 # Find Google Test package
 # find_package(GTest REQUIRED)
@@ -24,12 +24,14 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 # Add the test executable
 add_executable(${CMAKE_PROJECT_TARGET}
+   ErrorMessageTest.cpp
    BcryptTests.cpp
    # TpmMocks.cpp
    # test.cpp
    JwtTests.cpp
    SigningTests.cpp
    PolicyTests.cpp
+   VersionTest.cpp
 )
 # Link the test executable with Google Test and our library
 target_link_libraries(${CMAKE_PROJECT_TARGET} 

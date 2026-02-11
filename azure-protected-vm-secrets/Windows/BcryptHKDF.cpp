@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-#include "..\pch.h"
 #define UMDF_USING_NTSTATUS
 #include <windows.h>
 #include <iostream>
@@ -93,7 +92,7 @@ std::vector<unsigned char> BcryptHKDF::Extract(std::vector<unsigned char> &salt)
 	params.cBuffers = 1;
 	params.pBuffers = buffers;
 	buffers[0].BufferType = KDF_HASH_ALGORITHM;
-	buffers[0].cbBuffer = (ULONG)(wcslen(BCRYPT_SHA256_ALGORITHM) + 1) * sizeof(WCHAR);
+	buffers[0].cbBuffer = (ULONG)(wcsnlen_s(BCRYPT_SHA256_ALGORITHM, ULONG_MAX) + 1) * sizeof(WCHAR);
 	buffers[0].pvBuffer = (PVOID)BCRYPT_SHA256_ALGORITHM;
 
 	prk = std::vector<unsigned char>(prkLength);

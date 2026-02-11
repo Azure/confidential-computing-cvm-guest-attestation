@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include <iomanip>
 #ifndef PLATFORM_UNIX
 #define UMDF_USING_NTSTATUS
 #include <windows.h>
@@ -71,13 +72,11 @@ TEST(AesWrapperTest, AesEncryptDecryptTest)
     }
 #ifndef PLATFORM_UNIX
     catch (BcryptError e) {
-        printf("Bcrypt status 0x%x occurred\n Message %s\t Bcrypt Info%s",
-            e.getStatusCode(), e.what(), e.getErrorInfo());
+        std::cout << "Bcrypt status 0x" << std::hex << e.getStatusCode() << " occurred\n Message " << e.what() << "\t Bcrypt Info" << e.getErrorInfo() << std::endl;
     }
 #else
 	catch (OsslError err) {
-        printf("Openssl Error\n Message %s\t Bcrypt Info%s",
-			err.what(), err.getErrorInfo());
+        std::cout << "Openssl Error\n Message " << err.what() << "\t Bcrypt Info" << err.getErrorInfo() << std::endl;
 	}
 #endif
     catch (std::exception& e)
@@ -98,7 +97,7 @@ TEST(AesWrapperTest, AesEncryptTestFail)
     std::unique_ptr<AesWrapper>  aesWrapper;
     std::unique_ptr<AesCreator>  aesCreator;
     std::unique_ptr<AesChainingInfo>  aesChainingInfo;
-    std::vector<unsigned char> key(16, 0);
+    std::vector<unsigned char> key(32, 0);
 
 #ifdef PLATFORM_UNIX
     aesCreator = std::make_unique<OsslGcmCreator>();
@@ -122,7 +121,7 @@ TEST(AesWrapperTest, AesDecryptTestFail)
     std::unique_ptr<AesWrapper>  aesWrapper;
     std::unique_ptr<AesCreator>  aesCreator;
     std::unique_ptr<AesChainingInfo>  aesChainingInfo;
-    std::vector<unsigned char> key(16, 0);
+    std::vector<unsigned char> key(32, 0);
 
     try {
 #ifdef PLATFORM_UNIX
@@ -137,8 +136,7 @@ TEST(AesWrapperTest, AesDecryptTestFail)
     }
 #ifndef PLATFORM_UNIX
     catch (BcryptError e) {
-        printf("Bcrypt status 0x%x occurred\n Message %s\t Bcrypt Info%s",
-            e.getStatusCode(), e.what(), e.getErrorInfo());
+        std::cout << "Bcrypt status 0x" << std::hex << e.getStatusCode() << " occurred\n Message " << e.what() << "\t Bcrypt Info" << e.getErrorInfo() << std::endl;
     }
 #endif
     catch (std::exception& e)
@@ -161,7 +159,7 @@ TEST(AesWrapperTest, AesDecryptMacFail)
     std::unique_ptr<AesWrapper>  aesWrapper;
     std::unique_ptr<AesCreator>  aesCreator;
     std::unique_ptr<AesChainingInfo>  aesChainingInfo;
-    std::vector<unsigned char> key(16, 0);
+    std::vector<unsigned char> key(32, 0);
 
     try {
 #ifdef PLATFORM_UNIX
@@ -173,13 +171,11 @@ TEST(AesWrapperTest, AesDecryptMacFail)
         aesWrapper->SetKey(key);
         aesChainingInfo = aesWrapper->SetChainingInfo(std::vector<unsigned char>(12, 0));
         encryptedData = aesWrapper->Encrypt(plaintextData, aesChainingInfo.get());
-        // Explicitly delete as we reset the pointer
         delete aesChainingInfo.release();
     }
 #ifndef PLATFORM_UNIX
     catch (BcryptError e) {
-        printf("Bcrypt status 0x%x occurred\n Message %s\t Bcrypt Info%s",
-            e.getStatusCode(), e.what(), e.getErrorInfo());
+        std::cout << "Bcrypt status 0x" << std::hex << e.getStatusCode() << " occurred\n Message " << e.what() << "\t Bcrypt Info" << e.getErrorInfo() << std::endl;
     }
 #endif
     catch (std::exception& e)
@@ -188,7 +184,7 @@ TEST(AesWrapperTest, AesDecryptMacFail)
     }
 
     // Modify the Mac
-    encryptedData[encryptedData.size() - 1] = 0x00;
+    encryptedData[encryptedData.size() - 1] ^= 0xFF;
 
     aesChainingInfo = aesWrapper->SetChainingInfo(std::vector<unsigned char>(12, 0));
 
@@ -328,3 +324,4 @@ TEST(ECDiffieHellmanTest, KeyGenTest)
     ASSERT_EQ(derivedSecretB.size(), 32);
 	ASSERT_EQ(derivedSecretA, derivedSecretB);
 }
+

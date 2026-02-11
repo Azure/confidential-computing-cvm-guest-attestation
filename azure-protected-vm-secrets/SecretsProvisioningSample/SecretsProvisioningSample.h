@@ -10,4 +10,5 @@ bool IsKeyPresent();
 void GetVmidFromSmbios();
 void IsCvm();
 std::string Encrypt(const char* data);
+std::string EncryptWide(const wchar_t* data);
 std::string Decrypt(const char* jwt);

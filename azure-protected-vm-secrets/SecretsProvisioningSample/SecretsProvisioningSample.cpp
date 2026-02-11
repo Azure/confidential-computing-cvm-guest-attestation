@@ -16,6 +16,7 @@
 #include "Linux/OsslHKDF.h"
 #include "Linux/OsslError.h"
 #else
+#include "..\CvmHelper\inc\CvmHelper.h"
 #include "Windows/BcryptAesWrapper.h"
 #include "Windows/BcryptECDiffieHellman.h"
 #include "Windows/BcryptHKDF.h"
@@ -79,12 +80,18 @@ void GetVmidFromSmbios() {
 }
 
 void IsCvm() {
-	if (is_cvm()) {
+#ifdef PLATFORM_UNIX
+	std::cout << "CvmHelper is not supported on Linux platform" << std::endl;
+	return;
+#else
+	if (IsConfidentialVM()) {
 		std::cout << "This is a CVM" << std::endl;
 	}
 	else {
 		std::cout << "This is not a CVM" << std::endl;
 	}
+	std::cout << "Isolation Mode: " << GetIsolationMode() << std::endl;
+#endif
 }
 
 std::string Encrypt(const char* data) {
@@ -165,7 +172,7 @@ std::string Encrypt(const char* data) {
 
 		// Encrypt AES key with EK
 		tss2Wrapper = std::make_unique <Tss2Wrapper>();
-		printf("Generated EK\nPreparing to encrypt\n");
+		std::cout << "Generated EK\nPreparing to encrypt\n";
 		wrappedAesKey = tss2Wrapper->Tss2RsaEncrypt(wrappingKey);
 		if (wrappedAesKey.size() == 0) {
 			std::cout << "Failed to wrap key" << std::endl;
@@ -196,7 +203,8 @@ std::string Encrypt(const char* data) {
 	jwt = std::make_unique<JsonWebToken>();
 	json header = {
 		{"alg", "RS256"},
-		{"typ", "JWT"}
+		{"typ", "JWT"},
+		{"x-az-cvm-purpose", "secrets-provisioning"}
 	};
 	jwt->SetHeader(header);
 	json payload = {
@@ -212,6 +220,16 @@ std::string Encrypt(const char* data) {
 	token = jwt->CreateToken();
 	return token;
 }
+
+std::string EncryptWide(const wchar_t* data) {
+	// Convert wide string to UTF-8 using standard library
+	size_t len = wcslen(data);
+    std::vector<wchar_t> wideVec(data, data + len + 1);  // +1 for null terminator
+    std::vector<unsigned char> utf8Vec = utf8_sanitizer::wide_to_utf8(wideVec);
+    
+
+	return Encrypt(reinterpret_cast<const char*>(utf8Vec.data()));
+}
 #endif
 
 std::string Decrypt(const char* jwt) {
@@ -222,7 +240,8 @@ std::string Decrypt(const char* jwt) {
 	unsigned int eval_policy = 0;
 	long result = unprotect_secret((char*)(jwt), jwtlen, policy, &output_secret, &eval_policy);
 	if (result <= 0) {
-		std::cout << "Failed to unprotect secret" << std::hex << result << std::endl;
+		const char* error_string = get_error_message(result);
+		std::cout << "Failed to unprotect secret: " << error_string << " (0x" << std::hex << result << ")" << std::endl;
 		return secret;
 	}
 	if (output_secret != nullptr) {
@@ -232,4 +251,5 @@ std::string Decrypt(const char* jwt) {
 	}
 	return secret;
 }
+
 

@@ -84,20 +84,6 @@ public:
         _putenv_s("TSS2_LOG", log_spec.c_str());
     #endif
     }
-
-    // Convenience constructors
-    static Tss2LogController SuppressAllLogs() {
-        return Tss2LogController(Tss2LogLevel::None);
-    }
-    
-    static Tss2LogController ErrorsPlus() {
-        return Tss2LogController(Tss2LogLevel::Error);
-    }
-    
-    // Constructor for fine-grained control of different modules
-    static Tss2LogController CustomModuleLevels(const std::string& spec) {
-        return Tss2LogController(spec);
-    }
     
     // Destructor - restore original log level
     ~Tss2LogController() {

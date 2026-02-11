@@ -1,0 +1,10 @@
+{
+  "name": "tpm2-tss",
+  "version": "4.0.1",
+  "description": "TPM2 Software Stack",
+  "license": "BSD-2-Clause",
+  "supports": "windows",
+  "dependencies": [
+    "openssl"
+  ]
+}

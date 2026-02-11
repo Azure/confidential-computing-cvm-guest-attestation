@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 #pragma once
-#include "pch.h"
 
 /*
 * Function to unprotect a secret using the JWT token
@@ -18,13 +17,21 @@ __declspec( dllexport )
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
     long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char** output_secret, unsigned int* eval_policy);
 #ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec( dllexport )
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+    long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int policy, wchar_t** output_secret, unsigned int* eval_policy);
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
     void free_secret(char* secret);
 #ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
-    bool is_cvm();
+    void free_secret_wide(wchar_t* secret);
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+const char* get_error_message(long error_code);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

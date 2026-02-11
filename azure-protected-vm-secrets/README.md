@@ -74,6 +74,22 @@ TODO:
         - The 0-3 least significant octets points to specific Errors. 
 */
 long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char** output_secret, unsigned int* eval_policy);
+/*
+   @description: This function unprotects the secret from a jwt signed 
+      with the provisioned Guest Secret Key and returns it as wide characters (UTF-16).
+   @param jwt: the wide character jwt token to unprotect 
+   @param jwtlen: the length of the jwt token in wide characters
+   @param policy: Flags to designate configuration settings. 0 – allow unsigned & unencrypted, 1 allow unencrypted & require signed, 2 require encrypted & allow unsigned, 3 require signed & require encrypted.
+   @param output_secret: the pointer to the wide character secret extracted from the jwt token. Allocated by the function, must be freed by the caller using delete[]. 
+   @param eval_policy: a pointer to an unsigned integer (size_t) provided by reference by the caller to return the type of protected payload. This is a bitfield where 1 designates the protection is enabled and 0 designates that it lacks that protection. The current fields are encrypted (bit 0) and signed (bit 1).
+   @return: 0 on success. On failure returns a negative value indicating the error code. The error codes are grouped as follows: 
+      - The fourth least significant octet Defines the class of error: 
+         - 0 - General Library error (e.g. time, base64, io, memory) 
+         - 1 - TPM error 
+         - 2 - Cryptography Error 
+         - 3 - Json/JWT error 
+*/
+long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int policy, wchar_t** output_secret, unsigned int* eval_policy);
 /* 
    @description: This function frees the memory used by the protected secret.
    @param secret: the unprotected secret. 
@@ -86,10 +102,6 @@ void free_secret(char* secret);
 bool is_cvm();
 ```
 
-TODO:
-
-- Add policy field as an enum to indicate allowed payload is encrypted, signed, or legacy.
-
 ## Delivery
 
 This drop contains:
@@ -97,7 +109,6 @@ This drop contains:
 - Windows Static Library
 - Linux Static Library
 - Sample App for both Windows and Linux
-- libcrypto-3-x64.dll for Windows(TODO: fix this to static link)
 
 Other dependencies:
 

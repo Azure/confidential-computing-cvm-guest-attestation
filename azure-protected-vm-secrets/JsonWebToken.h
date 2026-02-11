@@ -6,6 +6,14 @@
 #include "ReturnCodes.h"
 using json = nlohmann::json;
 
+#define X509_SUBJECT_NAME_SUFFIX ".SecureCPSProvisioning.cloudapp.net"
+
+namespace utf8_sanitizer
+{
+    std::vector<unsigned char> wide_to_utf8(const std::vector<wchar_t>& wide_vec);
+    std::vector<wchar_t> utf8_to_wide(const std::vector<unsigned char>& utf8_vec);
+}
+
 namespace encoders
 {
     std::string base64_encode(std::vector<unsigned char> value);
@@ -19,12 +27,14 @@ class JsonWebToken
 public:
     JsonWebToken(const char* alg = "RS256");
     ~JsonWebToken();
+    static bool isRealJwtWide(const wchar_t* token, unsigned int tokenLen, const std::vector<std::pair<std::string, std::string>>& requiredFields);
+    static bool isRealJwt(const char* token, unsigned int tokenLen, const std::vector<std::pair<std::string, std::string>>& requiredFields = {});
     void SetHeader(json header);
     void SetPayload(json payload);
     void SetSignature(std::vector<unsigned char> signature);
     std::string CreateToken();
-    json getHeader();
-    void ParseToken(std::string const&token, bool verify);
+    const json& getHeader() const;
+    void ParseToken(std::string const&token, bool verify, const std::string& expectedSubjectSuffix = X509_SUBJECT_NAME_SUFFIX);
     template <class T>
     void addClaim(const char* key, T value) {
         this->jwt[key] = value;

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-#include "pch.h"
+#include <algorithm>
 #include <string>
 #include <sstream>
 #include <iomanip>
@@ -8,7 +8,9 @@
 #ifdef PLATFORM_UNIX
 #include <fstream>
 #else PLATFORM_UNIX
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
 
 
 struct RawSMBIOSData
@@ -139,24 +141,26 @@ std::string formatUUID(char* uuid, int size) {
 
 std::string GetSystemUuid()
 {
+    std::string t_uuid;
+    
 #ifndef PLATFORM_UNIX
     unsigned char* uuid = NULL;
     unsigned int size = GetSystemSmBios(&uuid);
-
-    return formatUUID((char*)uuid, size);
+    t_uuid = formatUUID((char*)uuid, size);
 #else
     std::ifstream file("/sys/class/dmi/id/product_uuid");
-    std::string uuid;
-
     if (file.is_open()) {
-        std::getline(file, uuid);
+        std::getline(file, t_uuid);
         file.close();
     } else {
         throw std::runtime_error("Unable to open /sys/class/dmi/id/product_uuid");
     }
-
-    return uuid;
 #endif
+
+    // Convert to lowercase - unified for both platforms
+    std::transform(t_uuid.begin(), t_uuid.end(), t_uuid.begin(), ::tolower);
+    
+    return t_uuid;
 }
 
 unsigned int GetVmid()
@@ -173,9 +177,9 @@ unsigned int GetVmid()
 
     for (int i = 0; i < 16; i++)
     {
-        printf("%02X", uuid[i]);
+        std::cout << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << (int)uuid[i];
     }
-    printf("\n");
+    std::cout << std::endl;
 
     return vmid;
 }

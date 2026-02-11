@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <VersionString Condition="Exists('$(MSBuildThisFileDirectory)\..\version.txt')">$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)\..\version.txt').Trim())</VersionString>
+    <VersionString Condition="!Exists('$(MSBuildThisFileDirectory)\..\version.txt')">0.0.0</VersionString>
+    <SECRETS_LIB_VERSION_MAJOR>$([System.Text.RegularExpressions.Regex]::Match('$(VersionString)', '^(\d+)\.').Groups[1].Value)</SECRETS_LIB_VERSION_MAJOR>
+    <SECRETS_LIB_VERSION_MINOR>$([System.Text.RegularExpressions.Regex]::Match('$(VersionString)', '^\d+\.(\d+)\.').Groups[1].Value)</SECRETS_LIB_VERSION_MINOR>
+    <SECRETS_LIB_VERSION_PATCH>$([System.Text.RegularExpressions.Regex]::Match('$(VersionString)', '^\d+\.\d+\.(\d+)').Groups[1].Value)</SECRETS_LIB_VERSION_PATCH>
+    <SECRETS_LIB_VERSION_STRING>$(SECRETS_LIB_VERSION_MAJOR).$(SECRETS_LIB_VERSION_MINOR).$(SECRETS_LIB_VERSION_PATCH)</SECRETS_LIB_VERSION_STRING>
+  </PropertyGroup>
+
+<ItemDefinitionGroup>
+  <ClCompile>
+    <PreprocessorDefinitions>
+      SECRETS_LIB_VERSION_MAJOR=$(SECRETS_LIB_VERSION_MAJOR);
+      SECRETS_LIB_VERSION_MINOR=$(SECRETS_LIB_VERSION_MINOR);
+      SECRETS_LIB_VERSION_PATCH=$(SECRETS_LIB_VERSION_PATCH);
+      SECRETS_LIB_VERSION_STRING="$(SECRETS_LIB_VERSION_STRING)";
+      %(PreprocessorDefinitions)
+    </PreprocessorDefinitions>
+  </ClCompile>
+</ItemDefinitionGroup>
+</Project>

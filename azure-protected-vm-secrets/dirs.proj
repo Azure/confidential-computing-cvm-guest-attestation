@@ -5,6 +5,7 @@
     <ProjectFile Include=".\SecretsProvsioningUT\dirs.proj" />
     <ProjectFile Include=".\DynamicSecretsProvisioningLibrary\dirs.proj" />
     <ProjectFile Include=".\DynamicSecretsProvisioningSample\dirs.proj" />
+    <ProjectFile Include=".\CvmHelper\dirs.proj" />
   </ItemGroup>
 </Project>
 

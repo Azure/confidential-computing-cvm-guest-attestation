@@ -13,7 +13,7 @@ private:
     TSS2_RC rc;
     ErrorCode lib_rc;
 public:
-    TpmError(TSS2_RC rc, const std::string& description, ErrorCode librc = ErrorCode::Success)
+    TpmError(TSS2_RC rc, const std::string& description, ErrorCode librc = ErrorCode::GeneralError)
         : std::runtime_error(description), rc(rc) {
         this->lib_rc = librc;
     }

@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-#include "..\pch.h"
 #include "..\BaseX509.h"
 #include "Windows.h"
 #include "wincrypt.h"
@@ -12,8 +11,10 @@
 #include <iostream>
 #include <vector>
 #include <string.h>
+#include <algorithm>
 #include "..\LibraryLogger.h"
 #include "..\ReturnCodes.h"
+#include "..\DebugInfo.h"
 #include "WincryptX509.h"
 
 using namespace SecretsLogger;
@@ -22,6 +23,54 @@ using namespace SecretsLogger;
 #define TEMPBUF_SIZE 1024
 #define SELFSIGNEDCERTNAME L"CN=SelfSignedCert"
 #define KEY_CONTAINER_NAME L"SelfSignedCertKeyContainer"
+#define DEBUG_SEPARATOR ", "
+
+// For WinX509CertStore.cpp - Windows equivalent to printCertInfo()
+std::string printCertInfo(PCCERT_CONTEXT pCertContext, const std::string& label) {
+    std::ostringstream ss;
+    
+    // 1. Get thumbprint (SHA-256)
+    BYTE hashBytes[32] = {0};  // SHA-256 is 32 bytes
+    DWORD hashSize = sizeof(hashBytes);
+    if (CertGetCertificateContextProperty(pCertContext, CERT_SHA256_HASH_PROP_ID, 
+                                         hashBytes, &hashSize)) {
+        ss << "Thumbprint (SHA256): " << formatHexBuffer(hashBytes, hashSize) << DEBUG_SEPARATOR;
+    }
+    
+    // 2. Subject name
+    char szSubjectName[256] = {0};
+    if (CertGetNameStringA(pCertContext, CERT_NAME_RDN_TYPE, 0, nullptr, 
+                         szSubjectName, sizeof(szSubjectName))) {
+        ss << label << " Certificate Details: ";
+        ss << "Subject: " << szSubjectName << DEBUG_SEPARATOR;
+    }
+    
+    // 3. Issuer name
+    char szIssuerName[256] = {0};
+    if (CertGetNameStringA(pCertContext, CERT_NAME_RDN_TYPE, 
+                         CERT_NAME_ISSUER_FLAG, nullptr, szIssuerName, sizeof(szIssuerName))) {
+        ss << "Issuer:  " << szIssuerName << DEBUG_SEPARATOR;
+    }
+    
+    // 4. Validity period
+    SYSTEMTIME stNotBefore, stNotAfter;
+    FileTimeToSystemTime(&pCertContext->pCertInfo->NotBefore, &stNotBefore);
+    FileTimeToSystemTime(&pCertContext->pCertInfo->NotAfter, &stNotAfter);
+    
+    char szNotBefore[64] = {0};
+    char szNotAfter[64] = {0};
+    sprintf_s(szNotBefore, sizeof(szNotBefore), "%04d-%02d-%02d %02d:%02d:%02d",
+             stNotBefore.wYear, stNotBefore.wMonth, stNotBefore.wDay,
+             stNotBefore.wHour, stNotBefore.wMinute, stNotBefore.wSecond);
+    sprintf_s(szNotAfter, sizeof(szNotAfter), "%04d-%02d-%02d %02d:%02d:%02d",
+             stNotAfter.wYear, stNotAfter.wMonth, stNotAfter.wDay,
+             stNotAfter.wHour, stNotAfter.wMinute, stNotAfter.wSecond);
+    
+    ss << "Valid from: " << szNotBefore << DEBUG_SEPARATOR;
+    ss << "Valid until: " << szNotAfter << DEBUG_SEPARATOR;
+    
+    return ss.str();
+}
 
 std::string generate_root_cert() {
     std::string encoded_cert;
@@ -171,12 +220,17 @@ WincryptX509::WincryptX509(const char *rootCert)
         throw WinCryptError("CertOpenStore failed.", GetLastError(),
             ErrorCode::LibraryError_WinCrypt_certStoreError);
     }
-    PCCERT_CONTEXT pRootCertContext = LoadCertificate(encoders::base64_decode(rootCert));
+    pRootCertContext = LoadCertificate(encoders::base64_decode(rootCert));
     if (!CertAddCertificateContextToStore(this->hStore, pRootCertContext, CERT_STORE_ADD_ALWAYS, NULL)) {
         // LibraryError, WinCrypt subclass, certStoreError
         throw WinCryptError("CertAddCertificateContextToStore - Root Cert - failed.", GetLastError(),
             ErrorCode::LibraryError_WinCrypt_certStoreError);
     }
+    LIBSECRETS_LOG(
+            LogLevel::Info,
+            "Certificate chain verification.",
+            "Certificate chain verification with cert %s",
+            printCertInfo(pRootCertContext, "Root").c_str());
 }
 
 WincryptX509::~WincryptX509()
@@ -274,6 +328,11 @@ PCCERT_CONTEXT WincryptX509::LoadCertificate(const std::vector<unsigned char>& c
 void WincryptX509::LoadLeafCertificate(const char* cert)
 {
     this->pLeafCertContext = LoadCertificate(encoders::base64_decode(cert));
+    LIBSECRETS_LOG(
+            LogLevel::Info,
+            "Certificate chain verification.",
+            "Certificate chain verification with cert %s",
+            printCertInfo(this->pLeafCertContext, "Leaf").c_str());
     this->chainPara = { sizeof(chainPara) };
     this->chainContext = nullptr;
     if (!CertGetCertificateChain(NULL, this->pLeafCertContext, NULL, this->hStore, &(this->chainPara), 0, NULL, &(this->chainContext))) {
@@ -286,6 +345,11 @@ void WincryptX509::LoadLeafCertificate(const char* cert)
 void WincryptX509::LoadIntermediateCertificate(const char* cert)
 {
     PCCERT_CONTEXT pInterCertContext = LoadCertificate(encoders::base64_decode(cert));
+    LIBSECRETS_LOG(
+            LogLevel::Info,
+            "Certificate chain verification.",
+            "Certificate chain verification with cert %s",
+            printCertInfo(pInterCertContext, "Intermediate CA").c_str());
     if (!CertAddCertificateContextToStore(this->hStore, pInterCertContext, CERT_STORE_ADD_ALWAYS, NULL)) {
 		// LibraryError, WinCrypt subclass, certStoreError
         throw WinCryptError("CertAddCertificateContextToStore - Intermediate - failed.", GetLastError(),
@@ -293,38 +357,218 @@ void WincryptX509::LoadIntermediateCertificate(const char* cert)
     }
 }
 
-bool WincryptX509::VerifyCertChain()
+bool WincryptX509::VerifyCertChain(const std::string& expectedSubjectSuffix)
 {
     bool ret = false;
     if (this->chainContext == nullptr) {
-        std::cerr << "Certificate chain is not loaded." << std::endl;
+        LIBSECRETS_LOG(LogLevel::Error, "Certificate chain verification failed.",
+                       "Certificate chain is not loaded.");
         return ret;
     }
+    
+    // Debug: Log what suffix we're actually using
+    LIBSECRETS_LOG(LogLevel::Debug, "VerifyCertChain Debug", 
+                  "Using expectedSubjectSuffix: '%s'", expectedSubjectSuffix.c_str());
 
     CERT_CHAIN_POLICY_PARA policyPara = { sizeof(policyPara) };
     CERT_CHAIN_POLICY_STATUS policyStatus = { sizeof(policyStatus) };
-    policyPara.dwFlags = CERT_CHAIN_POLICY_ALLOW_UNKNOWN_CA_FLAG;
+    
+ 
+    policyPara.dwFlags = CERT_CHAIN_POLICY_ALLOW_UNKNOWN_CA_FLAG; 
+    
+    // Optional: Add additional validation flags
+    // policyPara.dwFlags |= CERT_CHAIN_POLICY_IGNORE_NOT_TIME_VALID_FLAG; // if you want to ignore time validity
 
     if (!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_BASE, this->chainContext, &policyPara, &policyStatus)) {
-		// CryptographyError, Signing subclass, certChainError
         throw WinCryptError("CertVerifyCertificateChainPolicy failed.", GetLastError(),
             ErrorCode::CryptographyError_Signing_certChainError);
     }
 
+    // Additional check: Verify the chain actually reaches a trusted root
     if (policyStatus.dwError != 0) {
         LIBSECRETS_LOG(
             LogLevel::Error,
             "Certificate chain failed to verify.",
-            "Certificate chain verification failed with error code %p",
+            "Certificate chain verification failed with error code 0x%08X",
             policyStatus.dwError);
+        
+        // Log specific error details
+        if (policyStatus.dwError == CERT_E_UNTRUSTEDROOT) {
+            LIBSECRETS_LOG(LogLevel::Error, "Chain does not terminate at trusted root", "");
+        }
         ret = false;
     }
     else {
-        LIBSECRETS_LOG(
-            LogLevel::Debug,
-            "Certificate chain verified successfully.",
-            "");
-        ret = true;
+        // Additional verification: Check if chain actually terminates at root
+        ret = VerifyChainTerminatesAtRoot();
+        if (ret && !VerifySubjectSuffix(expectedSubjectSuffix)) {
+            LIBSECRETS_LOG(LogLevel::Error, "Security Subject Chain Verification Failed",
+                          "Certificate chain valid but subject suffix validation failed");
+            ret = false;
+        } else if (ret) {
+            LIBSECRETS_LOG(LogLevel::Debug, "Security Subject Chain Verification Success",
+                          "Certificate chain and subject suffix validation successful");
+        }
     }
     return ret;
+}
+
+// Helper method to verify chain terminates at trusted root
+bool WincryptX509::VerifyChainTerminatesAtRoot()
+{
+    if (!this->chainContext || this->chainContext->cChain == 0) {
+        LIBSECRETS_LOG(LogLevel::Error, "Invalid Cert Chain Context", "");
+        return false;
+    }
+    
+    // Get the first (and typically only) simple chain
+    PCERT_SIMPLE_CHAIN pSimpleChain = this->chainContext->rgpChain[0];
+    if (!pSimpleChain || pSimpleChain->cElement == 0) {
+        LIBSECRETS_LOG(LogLevel::Error, "Unable to reach SimpleChain", "");
+        return false;
+    }
+    
+    // Get the root certificate (last element in the chain)
+    PCERT_CHAIN_ELEMENT pRootElement = pSimpleChain->rgpElement[pSimpleChain->cElement - 1];
+    if (!pRootElement) {
+        LIBSECRETS_LOG(LogLevel::Error, "Missing Root element in SimpleChain", "");
+        return false;
+    }
+    
+    // Check if the root certificate is trusted
+    DWORD dwFlags = pRootElement->TrustStatus.dwErrorStatus;
+    
+    if (dwFlags & CERT_TRUST_IS_PARTIAL_CHAIN) {
+        LIBSECRETS_LOG(LogLevel::Error, "Chain is incomplete", "");
+        return false;
+    }
+    
+    // Verify the root is self-signed (characteristic of root CAs)
+    PCCERT_CONTEXT pRootCert = pRootElement->pCertContext;
+    if (CertCompareCertificateName(pRootCert->dwCertEncodingType,
+                                   &pRootCert->pCertInfo->Subject,
+                                   &pRootCert->pCertInfo->Issuer)) {
+        LIBSECRETS_LOG(LogLevel::Debug, "Chain terminates at self-signed root certificate", "");
+    }
+    else
+    { 
+        LIBSECRETS_LOG(LogLevel::Warning, "Root certificate is not self-signed", "");
+		return false;
+    }
+
+    // Get the last certificate in the chain
+    PCCERT_CONTEXT actualRoot = pSimpleChain->rgpElement[pSimpleChain->cElement - 1]->pCertContext;
+    if (!actualRoot) {
+        return false;
+    }
+
+	if (actualRoot->dwCertEncodingType != pRootCertContext->dwCertEncodingType ||
+        !CertComparePublicKeyInfo(actualRoot->dwCertEncodingType,
+                                   &actualRoot->pCertInfo->SubjectPublicKeyInfo,
+                                   &pRootCertContext->pCertInfo->SubjectPublicKeyInfo) ||
+        !CertCompareCertificate(actualRoot->dwCertEncodingType,
+                                 actualRoot->pCertInfo,
+                                 pRootCertContext->pCertInfo))
+    {
+		// Root certificate does not match the expected root certificate
+        LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match expected root certificate", 
+                      "Expected encoding type: %d, Actual encoding type: %d,\nActual Root Cert: %s", 
+                      pRootCertContext->dwCertEncodingType, actualRoot->dwCertEncodingType,
+                      printCertInfo(actualRoot, "Actual Root").c_str());
+
+        return false;
+    }
+
+    return true;
+}
+
+// Verify the certificate subject ends with expected suffix
+bool WincryptX509::VerifySubjectSuffix(const std::string& expectedSuffix) const {
+    std::string commonName = GetCommonName();
+    if (commonName.empty()) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Subject Suffix Verification", 
+                      "Could not retrieve certificate common name");
+        return false;
+    }
+
+    // Case-insensitive suffix check
+    std::string lowerCommonName = commonName;
+    std::string lowerSuffix = expectedSuffix;
+    std::transform(lowerCommonName.begin(), lowerCommonName.end(), lowerCommonName.begin(), ::tolower);
+    std::transform(lowerSuffix.begin(), lowerSuffix.end(), lowerSuffix.begin(), ::tolower);
+
+    bool matches = (lowerCommonName.length() >= lowerSuffix.length() &&
+                   lowerCommonName.substr(lowerCommonName.length() - lowerSuffix.length()) == lowerSuffix);
+    
+    if (matches) {
+        LIBSECRETS_LOG(LogLevel::Debug, "Security Subject Suffix Verification Success", 
+                      "Subject '%s' ends with expected suffix '%s'", commonName.c_str(), expectedSuffix.c_str());
+    } else {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Subject Suffix Verification Failed", 
+                      "Subject '%s' does not end with expected suffix '%s'", commonName.c_str(), expectedSuffix.c_str());
+    }
+    
+    return matches;
+}
+
+// Get the certificate subject name (who the certificate was issued to)
+std::string WincryptX509::GetSubjectName() const {
+    if (!pLeafCertContext) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Access", 
+                      "Certificate context is null");
+        return "";
+    }
+
+    DWORD dwSize = CertNameToStrA(pLeafCertContext->dwCertEncodingType,
+                                &pLeafCertContext->pCertInfo->Subject,
+                                CERT_X500_NAME_STR, NULL, 0);
+    
+    if (dwSize <= 1) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Parse", 
+                      "Failed to get subject name size");
+        return "";
+    }
+
+    // Use a vector<char> or unique_ptr<char[]> instead of std::wstring for the buffer
+    std::vector<char> subjectBuffer(dwSize);
+    CertNameToStrA(pLeafCertContext->dwCertEncodingType,
+                  &pLeafCertContext->pCertInfo->Subject,
+                  CERT_X500_NAME_STR, subjectBuffer.data(), dwSize);
+
+    // Convert to std::string, excluding the null terminator
+    std::string subjectName(subjectBuffer.data(), dwSize - 1);
+
+    LIBSECRETS_LOG(LogLevel::Debug, "Security Certificate Subject Retrieved", 
+                  "Subject: %s", subjectName.c_str());
+    return subjectName;
+}
+
+// Extract a specific field from Distinguished Name (DN)
+std::string WincryptX509::ExtractFieldFromDN(const std::string& dn, const std::string& field) const {
+    std::string searchField = field + "=";
+    size_t fieldPos = dn.find(searchField);
+    if (fieldPos == std::string::npos) {
+        return "";
+    }
+    
+    size_t startPos = fieldPos + searchField.length();
+    size_t endPos = dn.find(',', startPos);
+    if (endPos == std::string::npos) {
+        endPos = dn.length();
+    }
+    
+    return dn.substr(startPos, endPos - startPos);
+}
+
+// Get the Common Name (CN) from the certificate subject
+std::string WincryptX509::GetCommonName() const {
+    std::string subjectName = GetSubjectName();
+    if (subjectName.empty()) {
+        return "";
+    }
+    
+    std::string commonName = ExtractFieldFromDN(subjectName, "CN");
+    LIBSECRETS_LOG(LogLevel::Debug, "Security Certificate Common Name", 
+                  "CN: %s", commonName.c_str());
+    return commonName;
 }

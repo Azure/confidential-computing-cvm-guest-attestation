@@ -17,19 +17,23 @@ public:
     PCCERT_CONTEXT LoadCertificate(const std::vector<unsigned char>& cert);
     void LoadLeafCertificate(const char* cert);
     void LoadIntermediateCertificate(const char* cert);
-    bool VerifyCertChain();
+    bool VerifyCertChain(const std::string& expectedSubjectSuffix);
     bool VerifySignature(std::vector<unsigned char> const&signedData, std::vector<unsigned char> const&signature);
 
+protected:
+    // Subject/Signer verification methods
+    std::string GetSubjectName() const;
+    std::string GetCommonName() const;
+    bool VerifySubjectSuffix(const std::string& expectedSuffix) const;
+
 private:
-#ifndef PLATFORM_UNIX
+    bool VerifyChainTerminatesAtRoot();
+    std::string ExtractFieldFromDN(const std::string& dn, const std::string& field) const;
     PCCERT_CONTEXT pLeafCertContext;
+    PCCERT_CONTEXT pRootCertContext;
     BCRYPT_KEY_HANDLE hKey;
     HCERTSTORE hStore;
     CERT_CHAIN_PARA chainPara;
     PCCERT_CHAIN_CONTEXT chainContext;
-#else
-    X509_STORE* store;
     std::vector<unsigned char> leaf_cert_buffer;
-    std::unique_ptr<X509, decltype(&X509_free)> leaf_cert;
-#endif
 };

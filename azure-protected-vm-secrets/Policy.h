@@ -58,12 +58,14 @@ constexpr PolicyOption operator&(PolicyOption a, PolicyOption b) {
 class PolicyEvaluator
 {
 public:
-    PolicyEvaluator(const PolicyOption policy, const std::string& input);
+    PolicyEvaluator(const PolicyOption policy, const char* input, unsigned int inputlen);
+    PolicyEvaluator(const PolicyOption policy, const wchar_t* input, unsigned int inputlen);
     ~PolicyEvaluator();
 
     virtual PayloadFeature GetEvaluatedPolicy();
     virtual bool IsLegacy();
-    std::vector<unsigned char> GetLegacyString();
+    const char* GetLegacyString();
+    const wchar_t* GetLegacyWideString();
     bool IsCompliant();
     json GetClaims();
 
@@ -73,6 +75,9 @@ protected:
 
 private:
     PolicyOption policy;
-    std::string input;
+	bool isLegacy = false;
+    const char* input;
+    const wchar_t* wideInput;
+    unsigned int inputLength;
     std::unique_ptr<JsonWebToken> jwt;
 };

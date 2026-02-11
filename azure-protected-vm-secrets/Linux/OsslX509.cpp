@@ -48,8 +48,8 @@ std::string printCertInfo(X509* cert, const std::string& label) {
     X509_NAME* issuer = X509_get_issuer_name(cert);
     unsigned char md[EVP_MAX_MD_SIZE];
     unsigned int n;
-    if (X509_digest(cert, EVP_sha1(), md, &n)) {
-        ss << "Thumbprint (SHA1): " << formatHexBuffer(md, n) << DEBUG_SEPARATOR;
+    if (X509_digest(cert, EVP_sha256(), md, &n)) {
+        ss << "Thumbprint (SHA256): " << formatHexBuffer(md, n) << DEBUG_SEPARATOR;
     }
     
     char* subjectStr = X509_NAME_oneline(subject, nullptr, 0);
@@ -257,7 +257,7 @@ std::unique_ptr<OsslX509> generateCertChain() {
             printCertInfo(intermediateCert.get(), "Inter CA").c_str());
     // Generate leaf certificate
     std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> leafKey = generateKey();
-    std::unique_ptr<X509_REQ, decltype(&X509_REQ_free)> leafReq = generateCSR(leafKey.get(), "example.com");
+    std::unique_ptr<X509_REQ, decltype(&X509_REQ_free)> leafReq = generateCSR(leafKey.get(), "eastus" + std::string(X509_SUBJECT_NAME_SUFFIX));
     std::unique_ptr<X509, decltype(&X509_free)> leafCert = signCertificate(leafReq.get(), intermediateKey.get(), intermediateCert.get(), 3, 365, 0);
     LIBSECRETS_LOG(
             LogLevel::Info,
@@ -279,7 +279,10 @@ std::unique_ptr<OsslX509> generateCertChain() {
 }
 
 OsslX509::OsslX509(const char *rootCert)
-    : leaf_cert(nullptr, &X509_free), intermediate_certs(sk_X509_new_null()), leaf_key(nullptr, &EVP_PKEY_free)
+    : leaf_cert(nullptr, &X509_free),
+      intermediate_certs(sk_X509_new_null()),
+      leaf_key(nullptr, &EVP_PKEY_free),
+      pRootCertContext(nullptr, &X509_free)
 {
     // Linux-specific code for loading the root certificate using OpenSSL
     this->store = X509_STORE_new();
@@ -300,6 +303,12 @@ OsslX509::OsslX509(const char *rootCert)
             "Certificate chain verification.",
             "Certificate chain verification with cert %s",
             printCertInfo(root_cert.get(), "Root").c_str());
+
+    // Store a copy of the root cert for VerifyChainTerminatesAtRoot
+    this->pRootCertContext.reset(X509_dup(root_cert.get()));
+    if (!this->pRootCertContext) {
+        throw std::runtime_error("Failed to duplicate root certificate");
+    }
 
     X509_STORE_set_flags(this->store, X509_V_FLAG_X509_STRICT);
 }
@@ -427,7 +436,7 @@ void OsslX509::LoadIntermediateCertificate(const char* cert)
     }
 }
 
-bool OsslX509::VerifyCertChain()
+bool OsslX509::VerifyCertChain(const std::string& expectedSubjectSuffix)
 {
     bool ret = false;
     auto ctx = std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>(X509_STORE_CTX_new(), &X509_STORE_CTX_free);
@@ -448,6 +457,22 @@ bool OsslX509::VerifyCertChain()
             "Certificate chain verified successfully.",
             "");
         ret = true;
+        // Add subject suffix verification (like Windows implementation)
+        if (ret && !VerifySubjectSuffix(expectedSubjectSuffix)) {
+            LIBSECRETS_LOG(LogLevel::Error, "Security Subject Chain Verification Failed",
+                          "Certificate chain valid but subject suffix validation failed");
+            ret = false;
+        } else if (ret && !VerifyChainTerminatesAtRoot(ctx.get())) {
+            LIBSECRETS_LOG(
+                LogLevel::Error,
+                "Certificate chain does not terminate at root.",
+                "Certificate chain verification failed to terminate at root."
+            );
+            ret = false;
+        } else {
+            LIBSECRETS_LOG(LogLevel::Debug, "Security Subject Chain Verification Success",
+                          "Certificate chain and subject suffix validation successful");
+        }
     } else {
         int error = X509_STORE_CTX_get_error(ctx.get());
         int depth = X509_STORE_CTX_get_error_depth(ctx.get());
@@ -462,4 +487,175 @@ bool OsslX509::VerifyCertChain()
         ret = false;
     }
     return ret;
+}
+
+// Add subject suffix verification method
+bool OsslX509::VerifySubjectSuffix(const std::string& expectedSuffix) const {
+    if (expectedSuffix.empty()) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Subject Suffix Verification", 
+                      "Expected suffix is empty");
+        return false;
+    }
+
+    std::string commonName = GetCommonName();
+    if (commonName.empty()) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Subject Suffix Verification", 
+                      "Could not retrieve certificate common name");
+        return false;
+    }
+
+    // Case-insensitive suffix check (same logic as Windows)
+    std::string lowerCommonName = commonName;
+    std::string lowerSuffix = expectedSuffix;
+    std::transform(lowerCommonName.begin(), lowerCommonName.end(), lowerCommonName.begin(), ::tolower);
+    std::transform(lowerSuffix.begin(), lowerSuffix.end(), lowerSuffix.begin(), ::tolower);
+
+    bool matches = (lowerCommonName.length() >= lowerSuffix.length() &&
+                   lowerCommonName.substr(lowerCommonName.length() - lowerSuffix.length()) == lowerSuffix);
+    
+    if (matches) {
+        LIBSECRETS_LOG(LogLevel::Debug, "Security Subject Suffix Verification Success", 
+                      "Subject '%s' ends with expected suffix '%s'", commonName.c_str(), expectedSuffix.c_str());
+    } else {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Subject Suffix Verification Failed", 
+                      "Subject '%s' does not end with expected suffix '%s'", commonName.c_str(), expectedSuffix.c_str());
+    }
+    
+    return matches;
+}
+
+// Add subject name extraction
+std::string OsslX509::GetSubjectName() const {
+    if (!leaf_cert) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Access", 
+                      "Certificate context is null");
+        return "";
+    }
+
+    X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
+    if (!subject) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Parse", 
+                      "Failed to get subject name");
+        return "";
+    }
+
+    // Convert to string representation
+    BIO* bio = BIO_new(BIO_s_mem());
+    if (!bio) {
+        LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Parse", 
+                      "Failed to create BIO for subject name");
+        return "";
+    }
+
+    X509_NAME_print_ex(bio, subject, 0, XN_FLAG_ONELINE);
+    
+    char* data;
+    long length = BIO_get_mem_data(bio, &data);
+    std::string subjectName(data, length);
+    
+    BIO_free(bio);
+
+    LIBSECRETS_LOG(LogLevel::Debug, "Security Certificate Subject Retrieved", 
+                  "Subject: %s", subjectName.c_str());
+    return subjectName;
+}
+
+// Add common name extraction
+std::string OsslX509::GetCommonName() const {
+    if (!leaf_cert) {
+        return "";
+    }
+
+    X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
+    if (!subject) {
+        return "";
+    }
+
+    // Extract CN field directly using OpenSSL
+    int pos = X509_NAME_get_index_by_NID(subject, NID_commonName, -1);
+    if (pos < 0) {
+        return "";
+    }
+
+    X509_NAME_ENTRY* entry = X509_NAME_get_entry(subject, pos);
+    if (!entry) {
+        return "";
+    }
+
+    ASN1_STRING* asn1_str = X509_NAME_ENTRY_get_data(entry);
+    if (!asn1_str) {
+        return "";
+    }
+
+    const unsigned char* data = ASN1_STRING_get0_data(asn1_str);
+    int length = ASN1_STRING_length(asn1_str);
+    
+    std::string commonName(reinterpret_cast<const char*>(data), length);
+    
+    LIBSECRETS_LOG(LogLevel::Debug, "Security Certificate Common Name", 
+                  "CN: %s", commonName.c_str());
+    return commonName;
+}
+
+bool OsslX509::VerifyChainTerminatesAtRoot(X509_STORE_CTX *ctx)
+{
+    // // We need to get the actual chain after verification
+    // auto ctx = std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>(X509_STORE_CTX_new(), &X509_STORE_CTX_free);
+    // if (!ctx) {
+    //     throw std::runtime_error("Failed to create X509_STORE_CTX");
+    // }
+
+    // if (X509_STORE_CTX_init(ctx.get(), this->store, this->leaf_cert.get(), this->intermediate_certs) != 1) {
+    //     throw std::runtime_error("Failed to initialize X509_STORE_CTX");
+    // }
+
+    // X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_CHECK_SS_SIGNATURE);
+
+    // int result = X509_verify_cert(ctx.get());
+    // if (result != 1) {
+    //     return false; // Chain validation failed
+    // }
+
+    // Get the constructed chain after validation
+    STACK_OF(X509)* chain = X509_STORE_CTX_get0_chain(ctx);
+    if (!chain || sk_X509_num(chain) == 0) {
+        LIBSECRETS_LOG(LogLevel::Error, "No certificate chain available", "");
+        return false;
+    }
+
+    // Get the last certificate in the chain (should be root)
+    int chainLength = sk_X509_num(chain);
+    X509* actualRoot = sk_X509_value(chain, chainLength - 1);
+    if (!actualRoot) {
+        LIBSECRETS_LOG(LogLevel::Error, "Missing root certificate in chain", "");
+        return false;
+    }
+
+    // Check if self-signed
+    X509_NAME* subject = X509_get_subject_name(actualRoot);
+    X509_NAME* issuer = X509_get_issuer_name(actualRoot);
+    if (!subject || !issuer || X509_NAME_cmp(subject, issuer) != 0) {
+        LIBSECRETS_LOG(LogLevel::Error, "Root certificate is not self-signed", "");
+        return false;
+    }
+
+    // Compare with expected root certificate
+    if (X509_cmp(actualRoot, pRootCertContext.get()) != 0) {
+        // Log detailed certificate information for debugging
+        char* actual_subject = X509_NAME_oneline(X509_get_subject_name(actualRoot), NULL, 0);
+        char* expected_subject = X509_NAME_oneline(X509_get_subject_name(pRootCertContext.get()), NULL, 0);
+
+        LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match expected root certificate", "");
+        LIBSECRETS_LOG(LogLevel::Error, "Actual root subject", actual_subject ? actual_subject : "Unknown");
+        LIBSECRETS_LOG(LogLevel::Error, "Expected root subject", expected_subject ? expected_subject : "Unknown");
+        
+        // Free the allocated strings
+        if (actual_subject) OPENSSL_free(actual_subject);
+        if (expected_subject) OPENSSL_free(expected_subject);
+        
+        return false;
+    }
+
+    LIBSECRETS_LOG(LogLevel::Debug, "Chain terminates at expected root certificate", "");
+    return true;
 }

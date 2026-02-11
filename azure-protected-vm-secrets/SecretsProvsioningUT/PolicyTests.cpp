@@ -11,7 +11,7 @@
 // Mock class for testing - allows us to set specific features
 class MockPolicyEvaluator : public PolicyEvaluator {
 public:
-    MockPolicyEvaluator(PolicyOption policy) : PolicyEvaluator(policy, MOCK_JWT) {}
+    MockPolicyEvaluator(PolicyOption policy) : PolicyEvaluator(policy, MOCK_JWT, sizeof(MOCK_JWT)) {}
 
     // Allow test to set specific features for evaluation
     void SetFeatures(PayloadFeature features) {
@@ -140,4 +140,189 @@ TEST_F(PolicyEvaluatorTest, EdgeCases) {
     MockPolicyEvaluator eval3(PolicyOption::AllowLegacy | PolicyOption::AllowUnencrypted | PolicyOption::AllowUnsigned);
     eval3.SetFeatures(PayloadFeature::None);
     EXPECT_TRUE(eval3.IsCompliant());
+}
+
+TEST_F(PolicyEvaluatorTest, SanitizationDifference) {
+    // Create data with invalid UTF-8 sequences
+    std::vector<char> invalidData = {'J', 'W', 'T', '.', (char)0xFF, '.', 'x'};
+    
+    // Create equivalent wide data
+    std::vector<wchar_t> wideData(invalidData.begin(), invalidData.end());
+    
+    // Test both paths - both should treat invalid UTF-8 as legacy
+    PolicyEvaluator standardEval(PolicyOption::RequireAll, invalidData.data(), invalidData.size());
+    PolicyEvaluator wideEval(PolicyOption::RequireAll, wideData.data(), wideData.size());
+    
+    // Both should be treated as legacy (not valid JWTs)
+    EXPECT_TRUE(standardEval.IsLegacy());
+    EXPECT_TRUE(wideEval.IsLegacy());
+}
+
+TEST_F(PolicyEvaluatorTest, LegacyUnicodeCharacters) {
+    // Test various Unicode characters in legacy payloads
+    
+    // UTF-8 encoded Unicode characters
+    const char* utf8Legacy = "Legacy payload with émojis 🔐 and spëcial chars ñ";
+    PolicyEvaluator utf8Eval(PolicyOption::AllowLegacy, utf8Legacy, strlen(utf8Legacy));
+    EXPECT_TRUE(utf8Eval.IsLegacy());
+    EXPECT_TRUE(utf8Eval.IsCompliant());
+    EXPECT_STREQ(utf8Eval.GetLegacyString(), utf8Legacy);
+    
+    // Wide character Unicode string
+    const wchar_t* wideUnicode = L"Legacy payload with émojis 🔐 and spëcial chars ñ 中文";
+    PolicyEvaluator wideUnicodeEval(PolicyOption::AllowLegacy, wideUnicode, wcslen(wideUnicode));
+    EXPECT_TRUE(wideUnicodeEval.IsLegacy());
+    EXPECT_TRUE(wideUnicodeEval.IsCompliant());
+    EXPECT_STREQ(wideUnicodeEval.GetLegacyWideString(), wideUnicode);
+    
+    // Test with policy that doesn't allow legacy
+    PolicyEvaluator restrictiveEval(PolicyOption::RequireAll, wideUnicode, wcslen(wideUnicode));
+    EXPECT_TRUE(restrictiveEval.IsLegacy());
+    EXPECT_FALSE(restrictiveEval.IsCompliant());
+    
+    // Test with mixed ASCII and Unicode
+    const wchar_t* mixedContent = L"API_KEY=abc123_тест_test_🔑";
+    PolicyEvaluator mixedEval(PolicyOption::AllowLegacy, mixedContent, wcslen(mixedContent));
+    EXPECT_TRUE(mixedEval.IsLegacy());
+    EXPECT_TRUE(mixedEval.IsCompliant());
+    
+    // Test with surrogate pairs (high Unicode codepoints)
+    const wchar_t* surrogatePairs = L"Secret with emoji: 𝟙𝟚𝟛 and 𝕏𝕐𝕫";
+    PolicyEvaluator surrogateEval(PolicyOption::AllowLegacy, surrogatePairs, wcslen(surrogatePairs));
+    EXPECT_TRUE(surrogateEval.IsLegacy());
+    EXPECT_TRUE(surrogateEval.IsCompliant());
+    
+    // Test with control characters and Unicode
+    const wchar_t* controlChars = L"Secret\u0001with\u0002control\u0003chars\u2603";
+    PolicyEvaluator controlEval(PolicyOption::AllowLegacy, controlChars, wcslen(controlChars));
+    EXPECT_TRUE(controlEval.IsLegacy());
+    EXPECT_TRUE(controlEval.IsCompliant());
+}
+
+TEST_F(PolicyEvaluatorTest, InvalidUnicodeHandling) {
+    // Test handling of invalid Unicode sequences
+    
+    // Invalid UTF-8 sequence (char* constructor should work - no conversion needed)
+    std::vector<char> invalidUtf8 = {'S', 'e', 'c', 'r', 'e', 't', (char)0xFF, (char)0xFE, 'e', 'n', 'd'};
+    PolicyEvaluator invalidUtf8Eval(PolicyOption::AllowLegacy, invalidUtf8.data(), invalidUtf8.size());
+    EXPECT_TRUE(invalidUtf8Eval.IsLegacy());
+    EXPECT_TRUE(invalidUtf8Eval.IsCompliant());
+    
+    // Invalid wide character sequence (lone surrogate) - now handles gracefully on both platforms
+    std::vector<wchar_t> invalidWide = {L'S', L'e', L'c', 0xD800, L'e', L't'}; // Lone high surrogate
+    PolicyEvaluator invalidWideEval(PolicyOption::AllowLegacy, invalidWide.data(), invalidWide.size());
+    EXPECT_TRUE(invalidWideEval.IsLegacy());
+    EXPECT_TRUE(invalidWideEval.IsCompliant());
+    
+    // Test with null terminators in the middle - should work (null is valid Unicode)
+    std::vector<wchar_t> nullInMiddle = {L'S', L'e', L'c', L'\0', L'r', L'e', L't'};
+    PolicyEvaluator nullEval(PolicyOption::AllowLegacy, nullInMiddle.data(), nullInMiddle.size());
+    EXPECT_TRUE(nullEval.IsLegacy());
+    EXPECT_TRUE(nullEval.IsCompliant());
+}
+
+TEST_F(PolicyEvaluatorTest, UnicodeNormalization) {
+    // Test different Unicode normalization forms
+    
+    // Composed form (NFC) - single character
+    const wchar_t* composedForm = L"café";
+    PolicyEvaluator composedEval(PolicyOption::AllowLegacy, composedForm, wcslen(composedForm));
+    EXPECT_TRUE(composedEval.IsLegacy());
+    EXPECT_TRUE(composedEval.IsCompliant());
+    
+    // Decomposed form (NFD) - base character + combining mark
+    const wchar_t* decomposedForm = L"cafe\u0301"; // 'e' + combining acute accent
+    PolicyEvaluator decomposedEval(PolicyOption::AllowLegacy, decomposedForm, wcslen(decomposedForm));
+    EXPECT_TRUE(decomposedEval.IsLegacy());
+    EXPECT_TRUE(decomposedEval.IsCompliant());
+    
+    // Both should be treated as legacy regardless of normalization
+    EXPECT_TRUE(composedEval.IsLegacy());
+    EXPECT_TRUE(decomposedEval.IsLegacy());
+}
+
+TEST_F(PolicyEvaluatorTest, BidirectionalUnicodeText) {
+    // Test with bidirectional Unicode text (RTL/LTR)
+    
+    // Hebrew text (RTL)
+    const wchar_t* hebrewText = L"סוד חשוב";
+    PolicyEvaluator hebrewEval(PolicyOption::AllowLegacy, hebrewText, wcslen(hebrewText));
+    EXPECT_TRUE(hebrewEval.IsLegacy());
+    EXPECT_TRUE(hebrewEval.IsCompliant());
+    
+    // Arabic text (RTL)
+    const wchar_t* arabicText = L"سر مهم";
+    PolicyEvaluator arabicEval(PolicyOption::AllowLegacy, arabicText, wcslen(arabicText));
+    EXPECT_TRUE(arabicEval.IsLegacy());
+    EXPECT_TRUE(arabicEval.IsCompliant());
+    
+    // Mixed LTR and RTL
+    const wchar_t* mixedText = L"Secret: סוד and more text";
+    PolicyEvaluator mixedEval(PolicyOption::AllowLegacy, mixedText, wcslen(mixedText));
+    EXPECT_TRUE(mixedEval.IsLegacy());
+    EXPECT_TRUE(mixedEval.IsCompliant());
+    
+    // Test with bidirectional control characters
+    const wchar_t* bidiControl = L"Secret\u202Eדוס\u202D"; // RLE + text + PDF
+    PolicyEvaluator bidiEval(PolicyOption::AllowLegacy, bidiControl, wcslen(bidiControl));
+    EXPECT_TRUE(bidiEval.IsLegacy());
+    EXPECT_TRUE(bidiEval.IsCompliant());
+}
+
+TEST_F(PolicyEvaluatorTest, UnicodeEdgeCases) {
+    // Test edge cases with Unicode characters
+    
+    // Empty Unicode string
+    const wchar_t* emptyUnicode = L"";
+    PolicyEvaluator emptyEval(PolicyOption::AllowLegacy, emptyUnicode, wcslen(emptyUnicode));
+    EXPECT_TRUE(emptyEval.IsLegacy());
+    EXPECT_TRUE(emptyEval.IsCompliant());
+    
+    // Single Unicode character
+    const wchar_t* singleChar = L"🔐";
+    PolicyEvaluator singleEval(PolicyOption::AllowLegacy, singleChar, wcslen(singleChar));
+    EXPECT_TRUE(singleEval.IsLegacy());
+    EXPECT_TRUE(singleEval.IsCompliant());
+    
+    // Very long Unicode string
+    std::wstring longUnicode = L"Secret";
+    for (int i = 0; i < 1000; ++i) {
+        longUnicode += L"🔐";
+    }
+    PolicyEvaluator longEval(PolicyOption::AllowLegacy, longUnicode.c_str(), longUnicode.length());
+    EXPECT_TRUE(longEval.IsLegacy());
+    EXPECT_TRUE(longEval.IsCompliant());
+    
+    // Unicode with zero-width characters
+    const wchar_t* zeroWidthChars = L"Sec\u200Bret\u200C\u200DKey";
+    PolicyEvaluator zeroWidthEval(PolicyOption::AllowLegacy, zeroWidthChars, wcslen(zeroWidthChars));
+    EXPECT_TRUE(zeroWidthEval.IsLegacy());
+    EXPECT_TRUE(zeroWidthEval.IsCompliant());
+}
+
+TEST_F(PolicyEvaluatorTest, LegacyVsJWTWithUnicode) {
+    // Test that Unicode content is properly distinguished from JWT
+    
+    // Unicode that might look like JWT structure but isn't
+    const wchar_t* fakeJwt = L"header.payload🔐.signature";
+    PolicyEvaluator fakeJwtEval(PolicyOption::AllowLegacy, fakeJwt, wcslen(fakeJwt));
+    EXPECT_TRUE(fakeJwtEval.IsLegacy());
+    EXPECT_TRUE(fakeJwtEval.IsCompliant());
+    
+    // Base64-like Unicode string
+    const wchar_t* base64Like = L"SGVsbG8gV29ybGQ🔐=";
+    PolicyEvaluator base64Eval(PolicyOption::AllowLegacy, base64Like, wcslen(base64Like));
+    EXPECT_TRUE(base64Eval.IsLegacy());
+    EXPECT_TRUE(base64Eval.IsCompliant());
+    
+    // JSON-like Unicode string
+    const wchar_t* jsonLike = L"{\"key\": \"value🔐\", \"secret\": \"тест\"}";
+    PolicyEvaluator jsonEval(PolicyOption::AllowLegacy, jsonLike, wcslen(jsonLike));
+    EXPECT_TRUE(jsonEval.IsLegacy());
+    EXPECT_TRUE(jsonEval.IsCompliant());
+    
+    // Test with restrictive policy
+    PolicyEvaluator restrictiveJsonEval(PolicyOption::RequireAll, jsonLike, wcslen(jsonLike));
+    EXPECT_TRUE(restrictiveJsonEval.IsLegacy());
+    EXPECT_FALSE(restrictiveJsonEval.IsCompliant());
 }

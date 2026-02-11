@@ -1,0 +1,8 @@
+{
+  "name": "secrets-provisioning-library",
+  "version": "1.0.0",
+  "dependencies": [
+    "tpm2-tss",
+    "openssl"
+  ]
+}

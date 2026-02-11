@@ -4,18 +4,69 @@
 #include "Policy.h"
 #include "JsonWebToken.h"
 #include "LibraryLogger.h"
+#include "ReturnCodes.h"
 
 using namespace SecretsLogger;
 
-PolicyEvaluator::PolicyEvaluator(const PolicyOption policy, const std::string& input) {
+PolicyEvaluator::PolicyEvaluator(const PolicyOption policy, const char* input, unsigned int inputlen) {
     this->policy = policy;
     this->input = input;
+    std::vector<std::pair<std::string, std::string>> requiredFields = {
+    {"x-az-cvm-purpose", "secrets-provisioning"},
+    //{"x-version", "1.0"}
+    };
+    this->isLegacy = !JsonWebToken::isRealJwt(this->input, inputlen, requiredFields);
+    
+    this->wideInput = nullptr; // No wide input in this constructor
+    this->inputLength = inputlen;
     if (this->IsLegacy()) {
         this->jwt = nullptr;
     }
     else {
         this->jwt = std::make_unique<JsonWebToken>();
-        this->jwt->ParseToken(input, true);
+        std::string inputStr(this->input, inputlen);
+        this->jwt->ParseToken(inputStr, true);
+    }
+}
+
+PolicyEvaluator::PolicyEvaluator(const PolicyOption policy, const wchar_t* input, unsigned int inputlen) {
+    this->policy = policy;
+    this->wideInput = input;
+    this->input = nullptr; // No char input in this constructor
+    this->inputLength = inputlen;
+
+    // Check if it's a legacy format using the wide string version
+    std::vector<std::pair<std::string, std::string>> requiredFields = {
+        {"x-az-cvm-purpose", "secrets-provisioning"}
+    };
+
+    // Convert wide input to UTF-8 first - fail fast if conversion fails
+    std::vector<wchar_t> inputWVec(this->wideInput, this->wideInput + inputlen);
+    std::vector<unsigned char> inputVec = utf8_sanitizer::wide_to_utf8(inputWVec);
+    
+    // Check for conversion failure
+    if (inputVec.empty() && inputlen > 0) {
+        LIBSECRETS_LOG(LogLevel::Warning, "Policy Evaluation", 
+                       "Failed to convert wide character input to UTF-8, treating as legacy data");
+        this->isLegacy = true;
+        this->jwt = nullptr;
+        return;
+    }
+    
+    // Convert to string for JWT validation
+    std::string inputStr(inputVec.begin(), inputVec.end());
+    
+    // Use the regular JWT validation (remove isRealJwtWide)
+    this->isLegacy = !JsonWebToken::isRealJwt(inputStr.c_str(), 
+                                              static_cast<unsigned int>(inputStr.length()), 
+                                              requiredFields);
+
+    if (this->IsLegacy()) {
+        this->jwt = nullptr;
+    }
+    else {
+        this->jwt = std::make_unique<JsonWebToken>();
+        this->jwt->ParseToken(inputStr, true);
     }
 }
 
@@ -68,17 +119,15 @@ bool PolicyEvaluator::isSigned() {
 }
 
 bool PolicyEvaluator::IsLegacy() {
-    // Check if the policy is legacy
-    // This is a placeholder implementation
-    // Until the legacy header is defined
-    return false;
+    return isLegacy;
 }
 
-std::vector<unsigned char> PolicyEvaluator::GetLegacyString(){
-    // Get the legacy string
-    // This is a placeholder implementation
-    // Until the legacy header is defined
-    return std::vector<unsigned char>();
+const char* PolicyEvaluator::GetLegacyString(){
+    return this->input;
+}
+
+const wchar_t* PolicyEvaluator::GetLegacyWideString(){
+    return this->wideInput;
 }
 
 bool PolicyEvaluator::IsCompliant() {

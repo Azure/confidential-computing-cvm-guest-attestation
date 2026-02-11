@@ -30,10 +30,10 @@ bool HclReportParser::IsValidHclReport(const std::vector<unsigned char>& hclRepo
             rpt_data = std::vector<unsigned char>(rpt_data_ptr, rpt_data_ptr + sizeof(attestation_report->HwReport.Report.SnpReport.SnpReportData));
             break;
         default:
-            LIBSECRETS_LOG(
+            LIBSECRETS_LOG_MODERN(
                 LogLevel::Error,
                 "HCL Report Parser",
-                "HCL Report hash type is not supported: %d",
+                "HCL Report type is not supported: {}",
                 attestation_report->HclData.ReportType
             );
             return false;
@@ -42,11 +42,11 @@ bool HclReportParser::IsValidHclReport(const std::vector<unsigned char>& hclRepo
         auto const variable_data_ptr = reinterpret_cast<unsigned char*>(&attestation_report->HclData.VariableData);
         std::vector<unsigned char> variable_data(variable_data_ptr, variable_data_ptr + static_cast<size_t>(attestation_report->HclData.VariableDataSize));
         // Check if the report data is the equivalent of the hash of the HCL data
-        LIBSECRETS_LOG(
+        LIBSECRETS_LOG_MODERN(
             LogLevel::Debug,
             "HCL Report Parser",
-            "HCL Report comparing hash of HCL data with report data: %s, size: %d",
-            formatHexBuffer(rpt_data.data(), rpt_data.size()).c_str(),
+            "HCL Report comparing hash of HCL data with report data: {}, size: {}",
+            formatHexBuffer(rpt_data.data(), rpt_data.size()),
             rpt_data.size()
         );
         size_t hash_size = 0;
@@ -61,10 +61,10 @@ bool HclReportParser::IsValidHclReport(const std::vector<unsigned char>& hclRepo
                 hash_size = SHA512_HASH_SIZE;
                 break;
             default:
-                LIBSECRETS_LOG(
+                LIBSECRETS_LOG_MODERN(
                     LogLevel::Error,
                     "HCL Report Parser",
-                    "HCL Report hash type is not supported: %d",
+                    "HCL Report hash type is not supported: {}",
                     attestation_report->HclData.ReportDataHashType
                 );
                 return false;

@@ -1,10 +1,30 @@
 cmake_minimum_required(VERSION 3.5)
 project (SecretsProvisioningLibrary)
+set(CMAKE_CXX_STANDARD 17)
 
 add_definitions (-DPLATFORM_UNIX)
 
 set (CMAKE_PROJECT_TARGET SecretsProvisioningLibrary)
 project (Linux${CMAKE_PROJECT_TARGET})
+
+# 1. Read version from file 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" VERSION_CONTENT)
+string(STRIP "${VERSION_CONTENT}" VERSION_CONTENT)
+string(REPLACE "." ";" VERSION_PARTS ${VERSION_CONTENT})
+
+list(GET VERSION_PARTS 0 SECRETS_LIB_VERSION_MAJOR)
+list(GET VERSION_PARTS 1 SECRETS_LIB_VERSION_MINOR)
+list(GET VERSION_PARTS 2 SECRETS_LIB_VERSION_PATCH)
+
+set(SECRETS_LIB_VERSION "${SECRETS_LIB_VERSION_MAJOR}.${SECRETS_LIB_VERSION_MINOR}.${SECRETS_LIB_VERSION_PATCH}")
+
+# 2. Generate version header
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/Linux/Version.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h
+  @ONLY
+)
+
 
 # Try to find Tss2
 find_path(TSS2_INCLUDE_DIR NAMES tss2 PATHS ${SYSTEM_LIBRARY_PREFIX}/usr/local/include ${SYSTEM_LIBRARY_PREFIX}/usr/include NO_DEFAULT_PATH)
@@ -45,8 +65,14 @@ set(ATTESTATION_INCLUDE_DIRS external/attestation/)
 find_package(Boost REQUIRED)
 
 # find_package(Tss2 REQUIRED)
-include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${ATTESTATION_INCLUDE_DIRS})
-
+# 3. *** CRITICAL CHANGE: Add this line FIRST before any other includes ***
+include_directories(
+  ${CMAKE_CURRENT_BINARY_DIR}/generated  # Generated headers first
+  ${CMAKE_CURRENT_SOURCE_DIR}            # Source directory for other headers
+  ${TSS2_INCLUDE_DIRS} 
+  ${Boost_INCLUDE_DIRS} 
+  ${ATTESTATION_INCLUDE_DIRS}
+)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
@@ -91,6 +117,12 @@ target_link_libraries(${CMAKE_PROJECT_TARGET} dl)
 target_link_libraries(${CMAKE_PROJECT_TARGET} nlohmann_json::nlohmann_json)
 target_link_libraries(${CMAKE_PROJECT_TARGET} Boost::boost)
 set_property(TARGET ${CMAKE_PROJECT_TARGET} PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+# Shared lib SONAME (only meaningful for SHARED)
+set_target_properties(SecretsProvisioningLibrary PROPERTIES
+  VERSION   ${SECRETS_LIB_VERSION}
+  SOVERSION ${SECRETS_LIB_VERSION_MAJOR}
+)
 
 add_subdirectory(SecretsProvisioningSample)
 add_subdirectory(SecretsProvsioningUT)

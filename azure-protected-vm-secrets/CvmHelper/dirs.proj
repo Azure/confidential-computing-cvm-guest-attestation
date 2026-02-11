@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.Build.Traversal">
+  <ItemGroup>
+    <ProjectFile Include=".\CvmHelperStatic\dirs.proj" />
+    <ProjectFile Include=".\CvmHelperTest\dirs.proj" />
+  </ItemGroup>
+</Project>
+
