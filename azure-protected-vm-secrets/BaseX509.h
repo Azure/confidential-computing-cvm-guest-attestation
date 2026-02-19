@@ -10,8 +10,8 @@
 #include <vector>
 #include <string>
 
-constexpr const char* CCME_ROOTCERT_PEM = // CodeQL [SM05344] This is CCME, not AME root cert. We are working on alternative solutions (custom PKI-R) to deliver the cert.
-"MIIFhDCCA2ygAwIBAgIQTCbDKjrVHLNOviLgKTAe8DANBgkqhkiG9w0BAQwFADBT"
+constexpr const char* CCME_ROOTCERT_PEM =
+"MIIFhDCCA2ygAwIBAgIQTCbDKjrVHLNOviLgKTAe8DANBgkqhkiG9w0BAQwFADBT" // CodeQL [SM05344] This is CCME, not AME root cert. We are working on alternative solutions (custom PKI-R) to deliver the cert.
 "MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSQw"
 "IgYDVQQDExtDb21tZXJjaWFsIENsb3VkIFJvb3QgQ0EgUjEwHhcNMjQwMjAxMTk1"
 "OTI1WhcNNDkwMjAxMjAwMzE2WjBTMQswCQYDVQQGEwJVUzEeMBwGA1UEChMVTWlj"
