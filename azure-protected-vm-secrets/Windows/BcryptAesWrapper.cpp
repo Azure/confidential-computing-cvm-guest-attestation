@@ -117,7 +117,7 @@ GcmWrapper::GcmWrapper()
     this->authTagLengths = { 0 };
     this->authInfo = { 0 };
 
-    bcryptResult = BCryptSetProperty(
+    bcryptResult = BCryptSetProperty( // CodeQL [SM02741] GCM was approved for use by crypto board as keys use fresh randomness and the nonce is unique per encryption call.
         this->hAesHandle,
         BCRYPT_CHAINING_MODE,
         (PUCHAR)BCRYPT_CHAIN_MODE_GCM,
