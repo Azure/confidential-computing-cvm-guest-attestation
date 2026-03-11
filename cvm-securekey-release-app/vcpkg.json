@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "azure-attest-skr",
+  "version-string": "1.0.0",
+  "description": "Azure CVM Secure Key Release tool",
+  "dependencies": [
+    "curl",
+    "nlohmann-json",
+    "openssl",
+    "zlib",
+    "boost-algorithm",
+    "boost-serialization"
+  ]
+}
