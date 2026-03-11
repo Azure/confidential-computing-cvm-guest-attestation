@@ -355,6 +355,25 @@ const char* get_error_message(long error_code) {
 	}
 }
 
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+int is_secrets_provisioning_enabled() {
+    try {
+        std::unique_ptr<Tss2Wrapper> tss2 = std::make_unique<Tss2Wrapper>();
+        return tss2->IsKeyPresent() ? 1 : 0;
+    }
+    catch (TpmError& err) {
+        LIBSECRETS_LOG(LogLevel::Error, "IsSecretsProvisioningEnabled\n",
+            "TPM error 0x%x: %s\n", err.getReturnCode(), err.getTPMError());
+        return -1;
+    }
+    catch (...) {
+        LIBSECRETS_LOG(LogLevel::Error, "IsSecretsProvisioningEnabled\n", "Unknown error\n");
+        return -1;
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

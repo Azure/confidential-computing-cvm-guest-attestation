@@ -1,0 +1,23 @@
+# CMake build directories
+build_ci/
+build/
+build_*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+generated/
+
+# Test artifacts
+debug_results.xml
+*.xml
+
+# Local dev notes (never commit)
+notes.md
+
+# Old scratch/test scripts
+azure-protected-secrets-tool/test-on-cvm.cmd
+azure-protected-secrets-tool/test-on-cvm-remote.sh
+azure-protected-secrets-tool/x64/Debug/test_restore.bat

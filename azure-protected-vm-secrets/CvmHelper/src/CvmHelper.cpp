@@ -1,14 +1,44 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+// Platform-portable CvmHelper: detects Hyper-V isolation type via CPUID.
+// Windows uses MSVC intrinsics; Linux uses GCC/Clang __cpuid_count.
+
+#ifdef PLATFORM_UNIX
+#include <cstdint>
+#include <cstring>
+#else
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <intrin.h>
+#endif
 
 #include "../inc/CvmHelper.h"
 
+// --- CPUID abstraction ---------------------------------------------------
 #ifdef UNIT_TEST
     extern "C" void test_cpuid(int cpuInfo[4], int leaf);
     #define CPUID(info, leaf) test_cpuid(info, leaf)
+#elif defined(PLATFORM_UNIX)
+    #include <cpuid.h>
+    static inline void linux_cpuid(int cpuInfo[4], int leaf)
+    {
+        unsigned int eax, ebx, ecx, edx;
+        __cpuid_count(leaf, 0, eax, ebx, ecx, edx);
+        cpuInfo[0] = static_cast<int>(eax);
+        cpuInfo[1] = static_cast<int>(ebx);
+        cpuInfo[2] = static_cast<int>(ecx);
+        cpuInfo[3] = static_cast<int>(edx);
+    }
+    #define CPUID(info, leaf) linux_cpuid(info, leaf)
 #else
     #define CPUID(info, leaf) __cpuid(info, leaf)
+#endif
+
+// --- Portable integer types ----------------------------------------------
+#ifdef PLATFORM_UNIX
+typedef uint32_t UINT32;
+typedef uint64_t UINT64;
 #endif
 
 #define CPUID_LEAF_FEATURE_INFO 0x1
@@ -19,6 +49,12 @@
 #define HV_CPUID_LEAF_HYPERVISOR_FEATURES 0x40000003
 
 #define HV_CPUID_LEAF_HYPERVISOR_ISOLATION_CONFIG 0x4000000C // Needs documentation
+
+// Multi-char literal values (same encoding on x86 little-endian)
+#define VENDOR_MICR 0x7263694D  // "Micr"
+#define VENDOR_OSOF 0x666F736F  // "osof"
+#define VENDOR_T_HV 0x76482074  // "t Hv"
+#define INTERFACE_HV1 0x31237648 // "Hv#1"
 
 #pragma pack(push, 1)
 
@@ -134,7 +170,12 @@ bool IsConfidentialVM(void)
 IsolationModeResult GetIsolationMode(void)
 {
 	// Check for Hypervisor presence
-	HV_CPUID_RESULT cpuidResult = { 0 };
+	HV_CPUID_RESULT cpuidResult;
+#ifdef PLATFORM_UNIX
+	std::memset(&cpuidResult, 0, sizeof(cpuidResult));
+#else
+	cpuidResult = { 0 };
+#endif
 	UINT32 HvMaxFunction = 0;
 	CPUID((int*)cpuidResult.AsUINT32, CPUID_LEAF_FEATURE_INFO);
     if (!cpuidResult.CpuFeatureDiscovery.Hypervisor)
@@ -143,9 +184,9 @@ IsolationModeResult GetIsolationMode(void)
 	}
 
 	CPUID((int*)cpuidResult.AsUINT32, HV_CPUID_LEAF_HYPERVISOR_PRESENT);
-    if (cpuidResult.HvVendorAndMaxFunction.VendorId[0] != 'rciM' ||  // "Micr"
-        cpuidResult.HvVendorAndMaxFunction.VendorId[1] != 'foso' ||  // "osof"
-        cpuidResult.HvVendorAndMaxFunction.VendorId[2] != 'vH t')    // "t Hv"
+    if (cpuidResult.HvVendorAndMaxFunction.VendorId[0] != VENDOR_MICR ||
+        cpuidResult.HvVendorAndMaxFunction.VendorId[1] != VENDOR_OSOF ||
+        cpuidResult.HvVendorAndMaxFunction.VendorId[2] != VENDOR_T_HV)
     {
         return IM_RESULT_NO_HYPERV;
     }
@@ -153,7 +194,7 @@ IsolationModeResult GetIsolationMode(void)
 	HvMaxFunction = cpuidResult.HvVendorAndMaxFunction.MaxFunction;
 
     CPUID((int*)cpuidResult.AsUINT32, HV_CPUID_LEAF_HYPERVISOR_INTERFACE);
-    if (cpuidResult.HvVendorInterface.VendorId != 0x31237648)  // "Hv#1"
+    if (cpuidResult.HvVendorInterface.VendorId != INTERFACE_HV1)
     {
         return IM_RESULT_NO_HYPERV;
     }

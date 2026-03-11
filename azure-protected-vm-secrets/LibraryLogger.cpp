@@ -130,7 +130,13 @@ void __internal_logger(const char* file,
     std::string consoleMessage = consoleStream.str();
     
     // Console output
+    // Use stderr for CLI (DYNAMIC_SAMPLE) to keep stdout clean for piping.
+    // Use stdout for static sample dev/debug builds.
+#ifdef DYNAMIC_SAMPLE
+    std::cerr << consoleMessage;
+#else
     std::cout << consoleMessage;
+#endif
 
 #ifdef PLATFORM_UNIX
     // Log to systemd journal with structured data

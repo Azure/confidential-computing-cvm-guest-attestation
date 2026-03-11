@@ -42,7 +42,10 @@ foreach(dir ${dirs})
   message(STATUS "dir='${dir}'")
 endforeach()
 
-file(GLOB SOURCES "*.cpp")
+set(SOURCES
+    SecretsProvisioningSample.cpp
+    main.cpp
+)
 
 
 add_executable(${CMAKE_PROJECT_TARGET} ${SOURCES})

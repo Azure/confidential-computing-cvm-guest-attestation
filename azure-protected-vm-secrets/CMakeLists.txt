@@ -76,7 +76,7 @@ include_directories(
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
-file(GLOB SOURCES "*.cpp" "Linux/*.cpp")
+file(GLOB SOURCES "*.cpp" "Linux/*.cpp" "CvmHelper/src/*.cpp")
 
 # Add nlohmann/json.hpp using FetchContent
 include(FetchContent)
@@ -124,8 +124,8 @@ set_target_properties(SecretsProvisioningLibrary PROPERTIES
   SOVERSION ${SECRETS_LIB_VERSION_MAJOR}
 )
 
-add_subdirectory(SecretsProvisioningSample)
 add_subdirectory(SecretsProvsioningUT)
 add_subdirectory(SecretsProvisioningFunctionalityTest)
 add_subdirectory(DynamicSecretsProvisioningLibrary)
-add_subdirectory(DynamicSecretsProvisioningSample)
+add_subdirectory(SecretsProvisioningSample)
+add_subdirectory(azure-protected-secrets-tool)

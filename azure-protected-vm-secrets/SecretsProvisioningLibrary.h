@@ -32,6 +32,18 @@ __declspec(dllexport)
 __declspec(dllexport)
 #endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
 const char* get_error_message(long error_code);
+
+/*
+* Check if secrets provisioning is enabled on this VM.
+* @return 1 if a guest key is present in the TPM (secrets provisioning enabled),
+*         0 if no key is found,
+*        -1 if the TPM could not be accessed.
+*/
+#ifdef DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+__declspec(dllexport)
+#endif // DYNAMICSECRETSPROVISIONINGLIBRARY_EXPORTS
+    int is_secrets_provisioning_enabled();
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

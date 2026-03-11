@@ -48,8 +48,6 @@ The JWT will be signed with the signature in the JWS signature field. The Leaf c
 
 TODO:
 
-- JWT will be appended with a magic string to indicate just looking at the blob that it is a secret provisioned by Azure. This will help quickly return plain text passwords back. This will be unpeeled before making unprotect secret call.
-
 - Add protocol version like `"version": "1" // Protocol version`
 
 ### Guest side API
@@ -79,9 +77,9 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
       with the provisioned Guest Secret Key and returns it as wide characters (UTF-16).
    @param jwt: the wide character jwt token to unprotect 
    @param jwtlen: the length of the jwt token in wide characters
-   @param policy: Flags to designate configuration settings. 0 – allow unsigned & unencrypted, 1 allow unencrypted & require signed, 2 require encrypted & allow unsigned, 3 require signed & require encrypted.
+   @param policy: Bitmask of PolicyOption flags - same values as unprotect_secret above.
    @param output_secret: the pointer to the wide character secret extracted from the jwt token. Allocated by the function, must be freed by the caller using delete[]. 
-   @param eval_policy: a pointer to an unsigned integer (size_t) provided by reference by the caller to return the type of protected payload. This is a bitfield where 1 designates the protection is enabled and 0 designates that it lacks that protection. The current fields are encrypted (bit 0) and signed (bit 1).
+   @param eval_policy: a pointer to an unsigned integer (size_t) provided by reference by the caller to return the type of protected payload. This is a bitfield where 1 designates the protection is enabled and 0 designates that it lacks that protection. The current fields are encrypted (bit 0), signed (bit 1) and legacy (bit 2).
    @return: 0 on success. On failure returns a negative value indicating the error code. The error codes are grouped as follows: 
       - The fourth least significant octet Defines the class of error: 
          - 0 - General Library error (e.g. time, base64, io, memory) 
@@ -106,46 +104,54 @@ bool is_cvm();
 
 This drop contains:
 
-- Windows Static Library
-- Linux Static Library
+- Windows Static Library (`SecretsProvisioningLibrary.lib`)
+- Linux Static Library (`libSecretsProvisioningLibrary.a`)
+- Windows Dynamic Library (`DynamicSecretsProvisioningLibrary.dll`)
+- Linux Dynamic Library (`libDynamicSecretsProvisioningLibrary.so`)
+- CLI tool (`azure-protected-secrets-tool`) for Windows and Linux
 - Sample App for both Windows and Linux
 
 Other dependencies:
 
 - Visual C++ Redistributable
-
-_Note_: Signature verification is not implemented in Linux in this drop.
+- tpm2-tss (Linux)
 
 ## Project Structure
 
 The Azure Protected VM Secrets project is organized into several directories and files. Here is an overview of the key components:
 
-- **azure-protected-vm-secrets**: Contains the main library source code.
-  - **CMakeLists.txt**: CMake configuration file for building the library.
-  - **SecretsProvisioningLibrary.vcxproj**: Visual Studio project file for building the library on Windows.
+- **SecretsProvisioningLibrary**: Root directory containing the main library source code.
+  - **CMakeLists.txt**: CMake configuration file for building all targets.
+  - **SecretsProvisioningLibrary.vcxproj**: Visual Studio project file for building the static library on Windows.
   - **Linux**: Contains Linux-specific implementations.
-    - **OsslAesWrapper.cpp/h**: Implementation of AES encryption/decryption using OpenSSL.
-    - **OsslHKDF.cpp/h**: Implementation of HKDF (HMAC-based Extract-and-Expand Key Derivation Function) using OpenSSL.
-    - **OsslECDiffieHellman.cpp/h**: Implementation of ECDH (Elliptic Curve Diffie-Hellman) using OpenSSL.
+    - **OsslAesWrapper.cpp/h**: AES encryption/decryption using OpenSSL.
+    - **OsslHKDF.cpp/h**: HKDF using OpenSSL.
+    - **OsslECDiffieHellman.cpp/h**: ECDH using OpenSSL.
   - **Windows**: Contains Windows-specific implementations.
-    - **BcryptAesWrapper.cpp/h**: Implementation of AES encryption/decryption using BCrypt.
-    - **BcryptHKDF.cpp/h**: Implementation of HKDF using BCrypt.
-    - **BcryptECDiffieHellman.cpp/h**: Implementation of ECDH using BCrypt.
-  - **SecretsProvisioningLibrary.nuspec**: NuGet package specification for the library.
+    - **BcryptAesWrapper.cpp/h**: AES encryption/decryption using BCrypt.
+    - **BcryptHKDF.cpp/h**: HKDF using BCrypt.
+    - **BcryptECDiffieHellman.cpp/h**: ECDH using BCrypt.
 
-- **azure-protected-vm-secrets/SecretsProvisioningSample**: Contains sample code demonstrating how to use the library.
-  - **CMakeLists.txt**: CMake configuration file for building the sample.
-  - **SecretsProvisioningSample.vcxproj**: Visual Studio project file for building the sample on Windows.
-  - **main.cpp**: Entry point for the sample application.
+- **SecretsProvisioningLibrary/SecretsProvisioningSample**: Static sample app and CLI source files.
+  - **main.cpp**: Entry point — static sample mode or CLI mode (`DYNAMIC_SAMPLE`).
+  - **cli_common.h/.cpp**: `CliArgs` struct and `parse_args()` — shared by all CLI commands.
+  - **cmd_is_cvm.h/.cpp**: `is-cvm` command — detects SNP/TDX/VBS isolation via CvmHelper.
+  - **cmd_is_secrets_enabled.h/.cpp**: `is-secrets-provisioning-enabled` command — checks TPM key presence.
+  - **cmd_unprotect_secret.h/.cpp**: `unprotect-secret` command — accepts JWT as inline argument or from stdin, writes decrypted secret to stdout.
+  - **cmd_validate_imds.h/.cpp**: `validate-imds-metadata` command — two-level IMDS blob verification.
 
-- **azure-protected-vm-secrets/SecretsProvsioningUT**: Contains unit tests for the library.
-  - **CMakeLists.txt**: CMake configuration file for building the unit tests.
-  - **SecretsProvsioningUT.vcxproj**: Visual Studio project file for building the unit tests on Windows.
-  - **BcryptTests.cpp**: Unit tests for the library.
+- **SecretsProvisioningLibrary/azure-protected-secrets-tool**: Build configs for the CLI binary.
+  - **azure-protected-secrets-tool.vcxproj**: Windows project — builds CLI exe linking `DynamicSecretsProvisioningLibrary.dll`.
+  - **CMakeLists.txt**: Linux CMake — builds CLI exe linking `libDynamicSecretsProvisioningLibrary.so`.
+  - **tests/**: Unit tests for CLI commands (GTest, no TPM required).
 
-- **azure-protected-vm-secrets/SecretsProvisioningFunctionalityTest**: Contains functionality tests for the library.
-  - **SecretsProvisioningFunctionalityTest.vcxproj**: Visual Studio project file for building the functionality tests on Windows.
-  - **test.cpp**: Functionality tests for the library.
+- **SecretsProvisioningLibrary/SecretsProvsioningUT**: Unit tests for the library.
+  - **CMakeLists.txt**: CMake configuration for building unit tests.
+  - **SecretsProvsioningUT.vcxproj**: Visual Studio project file.
+
+- **SecretsProvisioningLibrary/SecretsProvisioningFunctionalityTest**: Functionality tests requiring a real TPM.
+  - **SecretsProvisioningFunctionalityTest.vcxproj**: Visual Studio project file.
+  - **test.cpp**: End-to-end encrypt/decrypt tests against a real vTPM.
 
 ## Building the Project
 
@@ -266,23 +272,50 @@ int main(int argc, char* argv[]) {
 
 ## Sample App
 
-The sample App can be used to test the usage of the library on TVM/CVM that has or has not be provisioned with the third blob. It has 6 commands:
+The static `SecretsProvisioningSample` binary can be used to test the library on a CVM/TVM. It exposes the following commands:
 
-- GenerateKey: Generates and evicts a key to the handle for Secure Secrets Provisioning Platform.
-- IsCvm: Checks if the sample app is running inside a CVM.
-- IsKeyPresent: Checks if a key is present at the mandated index (0x81000004)
-- RemoveKey: Removes the key present on the mandated index.
-- GetVmid: Fetches the vmid from the SMBIOS
-- Encrypt: Takes in a string and performs the equivalent of one invocation of the protect API. This is only intended for small integration testing. Please use the service otherwise.
-- Decrypt: Takes in a jwt and decrypts the secret.
+- **GenerateKey**: Generates and persists a key to TPM handle `0x81000004`.
+- **IsKeyPresent**: Checks if a key is present at handle `0x81000004`.
+- **RemoveKey**: Removes the key at handle `0x81000004`.
+- **GetVmid**: Fetches the VM UUID from SMBIOS.
+- **IsCvm**: Checks if running inside a CVM (Windows only).
+- **Encrypt `<string>`**: Simulates the CPS protect API — produces a real JWT with TPM-wrapped keys. For integration testing only.
+- **Decrypt `<jwt>`**: Decrypts a JWT and prints the secret.
 
-A test flow for a new application that uses the library could use the sample app to set up a test using the following steps:
+A test flow for a new application using the library:
 
 1. Deploy CVM/TVM.
-2. Copy Sample app to VM.
-3. Run `GenerateKey` to generate a key in the vTPM.
-4. Run `Encrypt testData` to create the JWT (currently this will not sign).
-5. Take the JWT from step 5, and pass to the new application that is being tested.
+2. Copy `SecretsProvisioningSample` to the VM.
+3. Run `GenerateKey` to create a key in the vTPM.
+4. Run `Encrypt testData` to produce a JWT.
+5. Pass the JWT to the application under test.
+
+## CLI Tool
+
+`azure-protected-secrets-tool` is a standalone CLI that links `DynamicSecretsProvisioningLibrary` and exposes the guest-side API as shell commands. It supports `--json` output for machine-readable results.
+
+| Command | Description | `--json` |
+|---|---|---|
+| `is-cvm` | Detect CVM isolation type (SNP/TDX/VBS) | `{"isolation_type":"SNP","hypervisor":"Microsoft Hv"}` |
+| `is-secrets-provisioning-enabled` | Check if TPM guest key is present | `{"enabled":true,"version":"1.0.3"}` |
+| `unprotect-secret [TOKEN]` | Decrypt a protected secret. TOKEN may be passed as an inline argument or piped via stdin. | `{"secret":"..."}` with `--json`, raw bytes otherwise |
+| `validate-imds-metadata` | Validate IMDS blob SignatureInfo | `{"validated":true,"fields":{...}}` |
+
+Options: `--policy N`, `--json`, `--help`, `--version`
+
+```sh
+# Example: decrypt a protected secret (inline argument)
+azure-protected-secrets-tool unprotect-secret "$JWT" --policy 2
+
+# Example: decrypt via pipe
+printf '%s' "$JWT" | azure-protected-secrets-tool unprotect-secret --policy 2
+
+# Example: JSON output
+azure-protected-secrets-tool unprotect-secret "$JWT" --policy 2 --json
+
+# Example: check CVM status as JSON
+azure-protected-secrets-tool is-cvm --json
+```
 
 ## Extending the Library
 

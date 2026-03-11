@@ -23,7 +23,7 @@ typedef enum {
 	IM_RESULT_NO_ISOLATION_CONFIG = 0x12
 } IsolationModeResult;
 
-#ifndef _M_X64
+#if !defined(_M_X64) && !defined(__x86_64__)
 inline IsolationModeResult GetIsolationMode(void)
 {
     return IM_RESULT_NO_ISOLATION;
@@ -43,7 +43,7 @@ IsolationModeResult GetIsolationMode(void);
  * @note This function is exposed as a C interface for compatibility across different
  *       programming languages and can be called from both C and C++ code.
  */
-#ifndef _M_X64
+#if !defined(_M_X64) && !defined(__x86_64__)
 inline bool IsConfidentialVM(void)
 {
     return false;

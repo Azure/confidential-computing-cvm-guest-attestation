@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project (DynamicSecretsProvisioningLibrary)
 
-add_definitions (-DPLATFORM_UNIX)
+add_definitions (-DPLATFORM_UNIX -DDYNAMIC_SAMPLE)
 
 set (CMAKE_PROJECT_TARGET DynamicSecretsProvisioningLibrary)
 project (Linux${CMAKE_PROJECT_TARGET})
@@ -37,7 +37,7 @@ include_directories(${TSS2_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${ATTESTATION_INC
 # set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
-file(GLOB SOURCES "../*.cpp" "../Linux/*.cpp")
+file(GLOB SOURCES "../*.cpp" "../Linux/*.cpp" "../CvmHelper/src/*.cpp")
 
 # Add nlohmann/json.hpp using FetchContent
 include(FetchContent)
@@ -97,13 +97,14 @@ endif()
 set(CPACK_PACKAGE_VERSION "0.1.0")
 set(CPACK_PACKAGE_CONTACT "")
 set(CPACK_PACKAGE_NAME "azure-protected-vm-secrets")
-set(CPACK_PACKAGE_DESCRIPTION "Dynamic Library for the Azure Protected VM Secrets feature for CVMs")
+set(CPACK_PACKAGE_DESCRIPTION "Dynamic Library and CLI tool for the Azure Protected VM Secrets feature for CVMs")
 set(CPACK_PACKAGE_VENDOR "Microsoft Corp")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
 
 # Include additional files in the package
 install(TARGETS ${CMAKE_PROJECT_TARGET} DESTINATION lib)
 install(FILES ${CMAKE_SOURCE_DIR}/SecretsProvisioningLibrary.h DESTINATION include)
+install(PROGRAMS ${CMAKE_BINARY_DIR}/azure-protected-secrets-tool/azure-protected-secrets-tool DESTINATION bin)
 
 # Exclude gtest and gmock files from the package
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include

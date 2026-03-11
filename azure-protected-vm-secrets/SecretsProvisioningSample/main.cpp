@@ -1,6 +1,75 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 #include <iostream>
+
+#ifdef DYNAMIC_SAMPLE
+// CLI mode: dynamic linking to SecretsProvisioningLibrary
+#include "cli_common.h"
+#include "cmd_is_cvm.h"
+#include "cmd_is_secrets_enabled.h"
+#include "cmd_unprotect_secret.h"
+#include "cmd_validate_imds.h"
+#include "SecretsProvisioningLibrary.h"
+#include "Version.h"
+
+static void print_usage(std::ostream& out)
+{
+    out << "Usage: azure-protected-secrets-tool <command> [options]\n"
+        << "\n"
+        << "Commands:\n"
+        << "  is-cvm                             Check if VM is a Confidential VM\n"
+        << "  is-secrets-provisioning-enabled    Check if secrets provisioning is enabled\n"
+        << "  unprotect-secret [TOKEN]           Decrypt a protected secret.\n"
+        << "                                     TOKEN may be passed as an inline argument\n"
+        << "                                     or piped via stdin.\n"
+        << "  validate-imds-metadata             Validate IMDS metadata signature\n"
+        << "\n"
+        << "Options:\n"
+        << "  --policy N   Set policy for unprotect-secret (0=RequireAll, 2=AllowUnsigned, 4=AllowLegacy)\n"
+        << "  --json       Output in JSON format\n"
+        << "  --help, -h   Print this help message\n"
+        << "  --version    Print tool and library version\n";
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc < 2) {
+        print_usage(std::cerr);
+        return 1;
+    }
+
+    CliArgs args = parse_args(argc, argv);
+
+    if (args.help) {
+        print_usage(std::cout);
+        return 0;
+    }
+
+    if (args.version) {
+        std::cout << secrets_library_version() << "\n";
+        return 0;
+    }
+
+    if (args.command == "is-cvm") {
+        return cmd_is_cvm(args);
+    } else if (args.command == "is-secrets-provisioning-enabled") {
+        return cmd_is_secrets_enabled(args);
+    } else if (args.command == "unprotect-secret") {
+        return cmd_unprotect_secret(args);
+    } else if (args.command == "validate-imds-metadata") {
+        return cmd_validate_imds(args);
+    } else if (!args.command.empty()) {
+        std::cerr << "Unknown command: " << args.command << "\n";
+        print_usage(std::cerr);
+        return 1;
+    } else {
+        print_usage(std::cerr);
+        return 1;
+    }
+}
+
+#else
+// Static sample mode: direct linking to library internals
 #include "SecretsProvisioningSample.h"
 
 /*
@@ -28,7 +97,6 @@ int main(int argc, char* argv[])
 		}
 		Decrypt(argv[2]);
 	}
-#ifndef DYNAMIC_SAMPLE
 	else if (command == "GenerateKey") {
 		GenerateKey();
 	}
@@ -57,7 +125,6 @@ int main(int argc, char* argv[])
 		std::string token = Encrypt(argv[2]);
 		std::cout << "Token: " << token << std::endl;
 	}
-#endif
 	else {
 		std::cout << "Unknown command." << std::endl;
 		return 1;
@@ -65,3 +132,4 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+#endif

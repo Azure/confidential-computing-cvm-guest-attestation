@@ -34,7 +34,7 @@ class FunctionalityTests: public ::testing::Test
 protected:
 	bool testGenerateKey = false;
 	void SetUp() override {
-		if (!IsKeyPresent()) {
+		if (is_secrets_provisioning_enabled() <= 0) {
 		    GenerateKey();
 			testGenerateKey = true;
 		}
