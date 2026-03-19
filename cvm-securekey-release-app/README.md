@@ -26,6 +26,15 @@ Use the below command to install the attestation package
 $ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.1.2_amd64.deb
 $ sudo dpkg -i azguestattestation1_1.1.2_amd64.deb
 ```
+Note for Azure Local the attestation package must be built from source with Azure Local support enabled.
+Use the following script from the repo root to build and install:
+
+```sh
+$ cd cvm-attestation-sample-app/
+$ sudo ./ClientLibBuildAndInstallAzureLocal.sh -p  # -p to install pre-requisites (first time only)
+```
+
+See client-library/src/Readme.md for more details.
 
 Once the above packages have been installed, use below steps to build and run the app
 
@@ -41,7 +50,7 @@ $ make
 # Execution instructions.
 
 1- Create or use an existing Azure KeyVault in your subscription.
-2- Create an RSA key with below sample confidentiality policy.
+2- Create an RSA key with below sample confidentiality policy for Azure.
 
 ```json
 {
@@ -64,7 +73,36 @@ $ make
 }
 ```
 
+For Azure Local, use the following SKR sample policy:
+
+```json
+{
+  "version": "1.0.0",
+  "anyOf": [
+    {
+      "authority": "https://sharedweu.weu.attest.azure.net",
+      "allOf": [
+        {
+          "claim": "x-ms-isolation-tee.x-ms-sevsnpvm-is-debuggable",
+          "equals": "false"
+        },
+        {
+          "claim": "x-ms-isolation-tee.x-ms-attestation-type",
+          "equals": "sevsnpvm"
+        },
+        {
+          "claim": "x-ms-policy.edge-compliant-cvm",
+          "equals": "true"
+        }
+      ]
+    }
+  ]
+}
+```
+
 3- Create or use an existing Managed Identity (user-assigned).
+
+> **⚠️ Azure Local Note:** Managed Identities are not supported on Azure Local CVMs. Use a Service Principal (`-c sp`) instead. See the `-c` option below for details.
 4- Assign the managed identity to the confidential VM.
 4- Grant 'Get' and 'Release' permissions to the managed identity in the Azure Keyvault access policies.
 5- Copy the built sample application to your target confidential VM.
@@ -103,3 +141,15 @@ sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -n "<some-iden
   ```sh
   sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "sp" -s "<copy_base64_from_previous_run>" -u
   ```
+
+## Debugging
+
+To enable debug trace output, set the `SKR_TRACE_ON` environment variable at runtime. Use `-E` with `sudo` to preserve the environment variable (if using Service Principle environment vars).
+
+```sh
+# Level 1: full trace output
+sudo SKR_TRACE_ON=1 ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -s mysecretkey123 -w
+
+# Level 2: trace with redacted sensitive values
+sudo  SKR_TRACE_ON=2 ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -s mysecretkey123 -w
+```

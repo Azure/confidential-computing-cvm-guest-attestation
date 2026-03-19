@@ -17,7 +17,7 @@ Guest attestation is the process of cryptographically appraising a VM’s report
 ![image](https://user-images.githubusercontent.com/32008026/170388502-17e56492-8604-400f-ae04-b6548baac22d.png)
 
 
-## Build Instructions for Linux (Using Pre-built attestation lib package)
+## Build Instructions for Linux (Using Pre-built attestation lib package  (Azure version only))
 
 Create a Linux Confidential or Trusted Launch virtual machine in Azure, clone the application and make sure the apt-get database is up to date (`sudo apt-get update`).
 
@@ -56,11 +56,26 @@ $ sudo ./AttestationClient -o token
 **Note**
 The build instructions using self-contained attestation lib have been created using Debian based distribution (Ubuntu) and verified on Ubuntu 20, 22 and 24 based Confidential VM images.
 
-Use the below command to build and install the Attestation lib.
+Use the below command to build and install the Attestation lib for Azure based CVM's.
 ```sh
 cd cvm-attestation-sample-app/
 sudo ./ClientLibBuildAndInstall.sh
 ```
+
+For Azure local. This command will rebuild the Attestation lib with azure local support.
+Alternatively you can use ../client-library/src/Attestation/build.sh -l.
+Note - you must install both the "azguestattestation1" and "edge-cc-base-attestation-sdk" on your target machine.
+
+```sh
+cd cvm-attestation-sample-app/
+
+# Build only (pre-requisites already installed)
+sudo ./ClientLibBuildAndInstallAzureLocal.sh
+
+# Build and install pre-requisites (includes libtss2-dev and edge-cc-base-attestation-sdk)
+sudo ./ClientLibBuildAndInstallAzureLocal.sh -p
+```
+
 
 Once the attestation lib is installed, use the below steps to build and run the app
 
