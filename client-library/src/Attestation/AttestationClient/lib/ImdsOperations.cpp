@@ -29,14 +29,14 @@
 #include <hw_evidence_manager.h>
 #endif
 
+#ifndef AZURE_LOCAL
+
 // IMDS endpoint for getting the VCek certificate
 constexpr char imds_endpoint[] = "http://169.254.169.254/metadata";
 constexpr char vcek_cert_path[] = "/THIM/amd/certification";
 
 attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
-
-#ifndef AZURE_LOCAL
 
     std::string http_response;
     std::string url = std::string(imds_endpoint) +
@@ -76,7 +76,13 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     std::string cert_chain = cert + chain;
     vcek_cert = attest::base64::base64_encode(cert_chain);
 
-#else
+    return result;
+}
+
+#else // AZURE_LOCAL
+
+attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
     uint32_t endorsements_size = 0;
     endorsement_options options{ false };
@@ -118,6 +124,7 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
     vcek_cert = attest::base64::base64_encode(endorsements_str);
 
-#endif //Azure Local
     return result;
 }
+
+#endif // AZURE_LOCAL
