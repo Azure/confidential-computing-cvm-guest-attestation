@@ -25,7 +25,9 @@ Header:
   "alg": "string" // JWS algorithm descriptor per JWA1. I.e. "RS256"
   "x5c": "array" // Leaf certificate 
   "x5t": "string" // Thumbprint of leaf 
-} 
+  "x-az-cvm-purpose": "string" // Required: "secrets-provisioning"
+  "x-az-rsa-padding": "string" // Optional: RSA padding for transport key. "rsaes" (default) or "rsaes-oaep"
+}
 ```
 
 Payload
@@ -297,7 +299,7 @@ A test flow for a new application using the library:
 | Command | Description | `--json` |
 |---|---|---|
 | `is-cvm` | Detect CVM isolation type (SNP/TDX/VBS) | `{"isolation_type":"SNP","hypervisor":"Microsoft Hv"}` |
-| `is-secrets-provisioning-enabled` | Check if TPM guest key is present | `{"enabled":true,"version":"1.0.3"}` |
+| `is-secrets-provisioning-enabled` | Check if TPM guest key is present | `{"enabled":true,"version":"1.0.4"}` |
 | `unprotect-secret [TOKEN]` | Decrypt a protected secret. TOKEN may be passed as an inline argument or piped via stdin. | `{"secret":"..."}` with `--json`, raw bytes otherwise |
 | `validate-imds-metadata` | Validate IMDS blob SignatureInfo | `{"validated":true,"fields":{...}}` |
 

@@ -324,7 +324,69 @@ TEST(JwtTests, InvalidBase64InPayload) {
     }, JwtError);
 }
 
-// Test round trip with mixed ASCII and non-ASCII characters
+// Tests for x-az-rsa-padding header field round-trip
+TEST(JwtTests, RsaPaddingHeader_RoundTrip) {
+    std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+    json header = {
+        {"alg", "RS256"},
+        {"typ", "JWT"},
+        {"x-az-cvm-purpose", "secrets-provisioning"},
+        {"x-az-rsa-padding", "rsaes-oaep"}
+    };
+    jwt->SetHeader(header);
+    jwt->addClaim("sub", "test");
+
+    std::string token = jwt->CreateToken();
+
+    std::unique_ptr<JsonWebToken> parsed = std::make_unique<JsonWebToken>();
+    parsed->ParseToken(token, false);
+
+    json parsedHeader = parsed->getHeader();
+    ASSERT_TRUE(parsedHeader.contains("x-az-rsa-padding"));
+    EXPECT_EQ(parsedHeader["x-az-rsa-padding"], "rsaes-oaep");
+}
+
+TEST(JwtTests, RsaPaddingHeader_Absent) {
+    // Token without x-az-rsa-padding should still parse fine
+    std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+    json header = {
+        {"alg", "RS256"},
+        {"typ", "JWT"},
+        {"x-az-cvm-purpose", "secrets-provisioning"}
+    };
+    jwt->SetHeader(header);
+    jwt->addClaim("sub", "test");
+
+    std::string token = jwt->CreateToken();
+
+    std::unique_ptr<JsonWebToken> parsed = std::make_unique<JsonWebToken>();
+    parsed->ParseToken(token, false);
+
+    json parsedHeader = parsed->getHeader();
+    EXPECT_FALSE(parsedHeader.contains("x-az-rsa-padding"));
+}
+
+TEST(JwtTests, RsaPaddingHeader_Rsaes) {
+    std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+    json header = {
+        {"alg", "RS256"},
+        {"typ", "JWT"},
+        {"x-az-cvm-purpose", "secrets-provisioning"},
+        {"x-az-rsa-padding", "rsaes"}
+    };
+    jwt->SetHeader(header);
+    jwt->addClaim("sub", "test");
+
+    std::string token = jwt->CreateToken();
+
+    std::unique_ptr<JsonWebToken> parsed = std::make_unique<JsonWebToken>();
+    parsed->ParseToken(token, false);
+
+    json parsedHeader = parsed->getHeader();
+    ASSERT_TRUE(parsedHeader.contains("x-az-rsa-padding"));
+    EXPECT_EQ(parsedHeader["x-az-rsa-padding"], "rsaes");
+}
+
 TEST(JwtRoundTripTest, MixedCharacters) {
     std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
     

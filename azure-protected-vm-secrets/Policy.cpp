@@ -160,3 +160,11 @@ json PolicyEvaluator::GetClaims(){
     }
     return this->jwt->getClaims();
 }
+
+const json& PolicyEvaluator::GetHeader(){
+    static const json empty;
+    if (this->IsLegacy()) {
+        return empty;
+    }
+    return this->jwt->getHeader();
+}

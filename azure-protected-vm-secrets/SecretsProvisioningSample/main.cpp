@@ -125,6 +125,14 @@ int main(int argc, char* argv[])
 		std::string token = Encrypt(argv[2]);
 		std::cout << "Token: " << token << std::endl;
 	}
+	else if (command == "EncryptOaep") {
+		if (argc < 3) {
+			std::cout << "Please provide a string to encrypt." << std::endl;
+			return 1;
+		}
+		std::string token = EncryptWithPadding(argv[2], RsaPaddingScheme::RsaesOaep);
+		std::cout << "Token: " << token << std::endl;
+	}
 	else {
 		std::cout << "Unknown command." << std::endl;
 		return 1;

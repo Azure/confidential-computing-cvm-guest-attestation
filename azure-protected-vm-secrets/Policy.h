@@ -68,6 +68,7 @@ public:
     const wchar_t* GetLegacyWideString();
     bool IsCompliant();
     json GetClaims();
+    const json& GetHeader();
 
 protected:
     virtual bool isEncrypted();

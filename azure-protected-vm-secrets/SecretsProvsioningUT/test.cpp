@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-#include "Tpm.h"
+#include "CommonTypes.h"
 #include "Tss2Wrapper.h"
 #include "TpmMocks.h"
 
@@ -55,6 +55,40 @@ TEST_F(Tss2WrapperTest, Tss2RsaDecryptTest) {
         .WillOnce(Return(TSS2_RC_SUCCESS));
     // Test the Tss2RsaDecrypt method
     std::vector<unsigned char> encryptedData = { 0x01, 0x02, 0x03, 0x04 };
-    std::vector<unsigned char> decryptedData = tss2Wrapper->Tss2RsaDecrypt(encryptedData);
+    std::vector<unsigned char> decryptedData = tss2Wrapper->Tss2RsaDecrypt(encryptedData, RsaPaddingScheme::Rsaes);
 
+}
+
+// Verify that RSAES padding passes TPM2_ALG_RSAES to Esys_RSA_Decrypt
+TEST_F(Tss2WrapperTest, Tss2RsaDecrypt_RsaesPadding_PassesCorrectAlg) {
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_SetAuth(_, _, _))
+        .WillRepeatedly(Return(TSS2_RC_SUCCESS));
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
+        .WillOnce(Return(TSS2_RC_SUCCESS));
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, _, _, _, _, _,
+        ::testing::Pointee(::testing::Field(&TPMT_RSA_DECRYPT::scheme,
+            TPM2_ALG_RSAES)),
+        _, _))
+        .Times(1)
+        .WillOnce(Return(TSS2_RC_SUCCESS));
+
+    std::vector<unsigned char> data = { 0x01, 0x02, 0x03, 0x04 };
+    tss2Wrapper->Tss2RsaDecrypt(data, RsaPaddingScheme::Rsaes);
+}
+
+// Verify that OAEP padding passes TPM2_ALG_OAEP to Esys_RSA_Decrypt
+TEST_F(Tss2WrapperTest, Tss2RsaDecrypt_OaepPadding_PassesCorrectAlg) {
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_SetAuth(_, _, _))
+        .WillRepeatedly(Return(TSS2_RC_SUCCESS));
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
+        .WillOnce(Return(TSS2_RC_SUCCESS));
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, _, _, _, _, _,
+        ::testing::Pointee(::testing::Field(&TPMT_RSA_DECRYPT::scheme,
+            TPM2_ALG_OAEP)),
+        _, _))
+        .Times(1)
+        .WillOnce(Return(TSS2_RC_SUCCESS));
+
+    std::vector<unsigned char> data = { 0x01, 0x02, 0x03, 0x04 };
+    tss2Wrapper->Tss2RsaDecrypt(data, RsaPaddingScheme::RsaesOaep);
 }

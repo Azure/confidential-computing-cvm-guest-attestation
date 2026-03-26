@@ -5,6 +5,7 @@
 #include "../SecretsProvisioningLibrary.h"
 #include "../JsonWebToken.h"
 #include "../Policy.h"
+#include "../CommonTypes.h"
 
 
 /**
@@ -1118,4 +1119,277 @@ TEST_F(FunctionalityTests, UnicodeEquivalenceExplicitCodePoints) {
     // Clean up
     if (regular_output) free_secret(regular_output);
     if (wide_output) free_secret_wide(wide_output);
+}
+
+// ============================================================================
+// RSA Padding Scheme Functionality Tests
+// ============================================================================
+
+/**
+ * @brief End-to-end encrypt/decrypt with explicit "rsaes" (PKCS1 v1.5) padding.
+ *
+ * Verifies that specifying RsaPaddingScheme::Rsaes in the header produces a
+ * token that decrypts successfully, matching the original plaintext.
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_ExplicitRsaesPadding) {
+	char data[] = "Secret with explicit RSAES padding";
+
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::Rsaes);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Verify header contains the padding field
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	ASSERT_TRUE(header.contains("x-az-rsa-padding"));
+	ASSERT_EQ(header["x-az-rsa-padding"], "rsaes");
+
+	// Decrypt
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)encrypted_data.c_str(), encrypted_data.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_EQ(result, strlen(data) + 1);
+	ASSERT_EQ(strcmp(data, output_secret), 0);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief End-to-end encrypt/decrypt with OAEP (SHA-256) padding.
+ *
+ * Verifies that specifying RsaPaddingScheme::RsaesOaep produces a token that
+ * decrypts successfully. This exercises the TPM2_ALG_OAEP code path.
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_OaepPadding) {
+	char data[] = "Secret with OAEP padding";
+
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::RsaesOaep);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Verify header contains the OAEP padding field
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	ASSERT_TRUE(header.contains("x-az-rsa-padding"));
+	ASSERT_EQ(header["x-az-rsa-padding"], "rsaes-oaep");
+
+	// Decrypt
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)encrypted_data.c_str(), encrypted_data.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_EQ(result, strlen(data) + 1);
+	ASSERT_EQ(strcmp(data, output_secret), 0);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief Backward compatibility: token without x-az-rsa-padding header
+ * defaults to RSAES and decrypts correctly.
+ *
+ * Simulates a legacy token by encrypting with RSAES and then stripping the
+ * padding header field before decrypting.
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_AbsentPaddingDefaultsToRsaes) {
+	char data[] = "Secret without padding header";
+
+	// Encrypt normally with RSAES
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::Rsaes);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Strip the x-az-rsa-padding field from the header
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	header.erase("x-az-rsa-padding");
+	jwt->SetHeader(header);
+	std::string modified_token = jwt->CreateToken();
+
+	// Verify header no longer has padding field
+	std::unique_ptr<JsonWebToken> verify = std::make_unique<JsonWebToken>();
+	verify->ParseToken(modified_token, false);
+	ASSERT_FALSE(verify->getHeader().contains("x-az-rsa-padding"));
+
+	// Decrypt should still succeed (defaults to RSAES)
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)modified_token.c_str(), modified_token.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_EQ(result, strlen(data) + 1);
+	ASSERT_EQ(strcmp(data, output_secret), 0);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief Invalid padding value in JWT header returns an error.
+ *
+ * Sets x-az-rsa-padding to an unrecognized value and verifies that
+ * unprotect_secret fails with the expected error code.
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_InvalidPaddingValueFails) {
+	char data[] = "Secret with bad padding value";
+
+	// Encrypt normally
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::Rsaes);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Inject an invalid padding value into the header
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	header["x-az-rsa-padding"] = "invalid-scheme";
+	jwt->SetHeader(header);
+	std::string modified_token = jwt->CreateToken();
+
+	// Decrypt should fail
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)modified_token.c_str(), modified_token.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_LE(result, 0);
+	ASSERT_STREQ(get_error_message(result), "ParsingError_Jwt_invalidFieldError");
+	ASSERT_EQ(output_secret, nullptr);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief Padding mismatch: token encrypted with RSAES but header says OAEP.
+ *
+ * Verifies that mismatched padding between the actual encryption and the
+ * header field causes a decryption failure (TPM will reject the ciphertext).
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_PaddingMismatchFails) {
+	char data[] = "Secret with mismatched padding";
+
+	// Encrypt with RSAES
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::Rsaes);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Change the header to claim OAEP (mismatch)
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	header["x-az-rsa-padding"] = "rsaes-oaep";
+	jwt->SetHeader(header);
+	std::string modified_token = jwt->CreateToken();
+
+	// Decrypt should fail because TPM will try OAEP on RSAES ciphertext
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)modified_token.c_str(), modified_token.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_LE(result, 0);
+	ASSERT_EQ(output_secret, nullptr);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief Rollback attack: OAEP-encrypted token with padding header stripped.
+ *
+ * Simulates an attacker stripping x-az-rsa-padding from an OAEP token.
+ * The library defaults to RSAES, but the transport key was wrapped with OAEP,
+ * so TPM decryption fails (wrong padding on ciphertext).
+ */
+TEST_F(FunctionalityTests, EncryptDecrypt_OaepStrippedToDefaultRsaesFails) {
+	char data[] = "Secret encrypted with OAEP then stripped";
+
+	// Encrypt with OAEP
+	std::string encrypted_data = EncryptWithPadding(data, RsaPaddingScheme::RsaesOaep);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Strip x-az-rsa-padding from the header
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	ASSERT_TRUE(header.contains("x-az-rsa-padding"));
+	header.erase("x-az-rsa-padding");
+	jwt->SetHeader(header);
+	std::string modified_token = jwt->CreateToken();
+
+	// Verify header no longer has padding field
+	std::unique_ptr<JsonWebToken> verify = std::make_unique<JsonWebToken>();
+	verify->ParseToken(modified_token, false);
+	ASSERT_FALSE(verify->getHeader().contains("x-az-rsa-padding"));
+
+	// Decrypt should fail: library defaults to RSAES but ciphertext is OAEP
+	char* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret(
+		(char*)modified_token.c_str(), modified_token.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_LE(result, 0);
+	ASSERT_EQ(output_secret, nullptr);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
+ * @brief Wide string encrypt/decrypt with OAEP padding.
+ *
+ * Verifies that unprotect_secret_wide correctly reads x-az-rsa-padding
+ * from the JWT header and decrypts an OAEP-wrapped token.
+ */
+TEST_F(FunctionalityTests, EncryptDecryptWide_OaepPadding) {
+	const wchar_t* data = L"Wide secret with OAEP";
+
+	std::string encrypted_data = EncryptWideWithPadding(data, RsaPaddingScheme::RsaesOaep);
+	ASSERT_FALSE(encrypted_data.empty());
+
+	// Verify header
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+	json header = jwt->getHeader();
+	ASSERT_TRUE(header.contains("x-az-rsa-padding"));
+	ASSERT_EQ(header["x-az-rsa-padding"], "rsaes-oaep");
+
+	// Convert to wide for unprotect_secret_wide
+	std::vector<unsigned char> encrypted_utf8(encrypted_data.begin(), encrypted_data.end());
+	std::vector<wchar_t> wide_encrypted = utf8_sanitizer::utf8_to_wide(encrypted_utf8);
+
+	wchar_t* output_secret = nullptr;
+	unsigned int policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	long result = unprotect_secret_wide(
+		wide_encrypted.data(),
+		static_cast<unsigned int>(wide_encrypted.size()),
+		policy,
+		&output_secret,
+		&eval_policy
+	);
+	ASSERT_GT(result, 0);
+	ASSERT_TRUE(output_secret != nullptr);
+
+	if (output_secret) {
+		// Compare as wide string
+		ASSERT_EQ(wcscmp(data, output_secret), 0);
+		free_secret_wide(output_secret);
+	}
 }

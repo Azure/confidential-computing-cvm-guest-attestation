@@ -5,9 +5,11 @@
 
 #define UMDF_USING_NTSTATUS
 #include <iostream>
+#include <nlohmann/json.hpp>
+
 #include "SecretsProvisioningLibrary.h"
 #ifndef DYNAMIC_SAMPLE
-#include "Tss2Wrapper.h"
+#include "Tpm.h"
 #include "TpmError.h"
 #include "AesWrapper.h"
 #ifdef PLATFORM_UNIX
@@ -25,7 +27,6 @@
 #include "JsonWebToken.h"
 #include "System.h"
 #include "Policy.h"
-#include <nlohmann/json.hpp>
 
 std::vector<BYTE> MakeRandomBytes(size_t a_Length)
 {
@@ -94,7 +95,7 @@ void IsCvm() {
 #endif
 }
 
-std::string Encrypt(const char* data) {
+std::string EncryptWithPadding(const char* data, RsaPaddingScheme paddingScheme) {
     std::vector<unsigned char> secretData(data, data + strlen(data) + 1);
     std::vector<unsigned char> ciphertextData;
     std::vector<unsigned char> wrappedAesKey;
@@ -170,10 +171,9 @@ std::string Encrypt(const char* data) {
 			return token;
 		}
 
-		// Encrypt AES key with EK
 		tss2Wrapper = std::make_unique <Tss2Wrapper>();
 		std::cout << "Generated EK\nPreparing to encrypt\n";
-		wrappedAesKey = tss2Wrapper->Tss2RsaEncrypt(wrappingKey);
+		wrappedAesKey = tss2Wrapper->Tss2RsaEncrypt(wrappingKey, paddingScheme);
 		if (wrappedAesKey.size() == 0) {
 			std::cout << "Failed to wrap key" << std::endl;
 			return token;
@@ -199,12 +199,14 @@ std::string Encrypt(const char* data) {
 		std::cout << "Failed to encrypt data" << e.what() << std::endl;
 		return token;
 	}
-	// Prepare jwt
+	// Prepare jwt with padding scheme in header
 	jwt = std::make_unique<JsonWebToken>();
+	const char* paddingName = RsaPaddingSchemeToString(paddingScheme);
 	json header = {
 		{"alg", "RS256"},
 		{"typ", "JWT"},
-		{"x-az-cvm-purpose", "secrets-provisioning"}
+		{"x-az-cvm-purpose", "secrets-provisioning"},
+		{"x-az-rsa-padding", paddingName}
 	};
 	jwt->SetHeader(header);
 	json payload = {
@@ -221,6 +223,10 @@ std::string Encrypt(const char* data) {
 	return token;
 }
 
+std::string Encrypt(const char* data) {
+	return EncryptWithPadding(data, RsaPaddingScheme::Rsaes);
+}
+
 std::string EncryptWide(const wchar_t* data) {
 	// Convert wide string to UTF-8 using standard library
 	size_t len = wcslen(data);
@@ -229,6 +235,13 @@ std::string EncryptWide(const wchar_t* data) {
     
 
 	return Encrypt(reinterpret_cast<const char*>(utf8Vec.data()));
+}
+
+std::string EncryptWideWithPadding(const wchar_t* data, RsaPaddingScheme paddingScheme) {
+	size_t len = wcslen(data);
+	std::vector<wchar_t> wideVec(data, data + len + 1);
+	std::vector<unsigned char> utf8Vec = utf8_sanitizer::wide_to_utf8(wideVec);
+	return EncryptWithPadding(reinterpret_cast<const char*>(utf8Vec.data()), paddingScheme);
 }
 #endif
 

@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+#include <string>
+
 #include "gtest/gtest.h"
 #include "../Policy.h"
-#include <string>
+#include "../CommonTypes.h"
 
 #define MOCK_JWT \
 "ew0KICAiYWxnIjogIkhTMjU2IiwNCiAgInR5cCI6ICJKV1QiDQp9.ew0KICAgICJwYXlsb2FkIiA6ICJkdW1teSINCn0=."
@@ -325,4 +327,61 @@ TEST_F(PolicyEvaluatorTest, LegacyVsJWTWithUnicode) {
     PolicyEvaluator restrictiveJsonEval(PolicyOption::RequireAll, jsonLike, wcslen(jsonLike));
     EXPECT_TRUE(restrictiveJsonEval.IsLegacy());
     EXPECT_FALSE(restrictiveJsonEval.IsCompliant());
+}
+
+// Tests for RsaPaddingScheme enum
+TEST(RsaPaddingSchemeTest, EnumValues) {
+    EXPECT_NE(static_cast<int>(RsaPaddingScheme::Rsaes),
+              static_cast<int>(RsaPaddingScheme::RsaesOaep));
+}
+
+// Tests for PolicyEvaluator::GetHeader
+TEST_F(PolicyEvaluatorTest, GetHeader_ReturnsHeaderWithPadding) {
+    // Build a JWT with x-az-rsa-padding in the header
+    std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+    json header = {
+        {"alg", "RS256"},
+        {"typ", "JWT"},
+        {"x-az-cvm-purpose", "secrets-provisioning"},
+        {"x-az-rsa-padding", "rsaes-oaep"}
+    };
+    jwt->SetHeader(header);
+    jwt->addClaim("encryptedSecret", "dummy");
+    std::string token = jwt->CreateToken();
+
+    PolicyEvaluator pe(PolicyOption::AllowUnsigned, token.c_str(),
+                       static_cast<unsigned int>(token.length()));
+    ASSERT_FALSE(pe.IsLegacy());
+
+    json h = pe.GetHeader();
+    ASSERT_TRUE(h.contains("x-az-rsa-padding"));
+    EXPECT_EQ(h["x-az-rsa-padding"], "rsaes-oaep");
+}
+
+TEST_F(PolicyEvaluatorTest, GetHeader_AbsentPadding) {
+    // JWT without x-az-rsa-padding
+    std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+    json header = {
+        {"alg", "RS256"},
+        {"typ", "JWT"},
+        {"x-az-cvm-purpose", "secrets-provisioning"}
+    };
+    jwt->SetHeader(header);
+    jwt->addClaim("encryptedSecret", "dummy");
+    std::string token = jwt->CreateToken();
+
+    PolicyEvaluator pe(PolicyOption::AllowUnsigned, token.c_str(),
+                       static_cast<unsigned int>(token.length()));
+    ASSERT_FALSE(pe.IsLegacy());
+
+    json h = pe.GetHeader();
+    EXPECT_FALSE(h.contains("x-az-rsa-padding"));
+}
+
+TEST_F(PolicyEvaluatorTest, GetHeader_LegacyReturnsEmpty) {
+    const char* legacy = "not a jwt";
+    PolicyEvaluator pe(PolicyOption::AllowLegacy, legacy,
+                       static_cast<unsigned int>(strlen(legacy)));
+    EXPECT_TRUE(pe.IsLegacy());
+    EXPECT_TRUE(pe.GetHeader().empty());
 }

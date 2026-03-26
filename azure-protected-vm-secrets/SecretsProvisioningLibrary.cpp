@@ -33,7 +33,15 @@
 
 using namespace SecretsLogger;
 
-static long decrypt_secret(const json& claims, std::vector<unsigned char>& plaintextData) {
+static RsaPaddingScheme GetPaddingScheme(PolicyEvaluator& pe) {
+    const json& header = pe.GetHeader();
+    if (header.contains("x-az-rsa-padding")) {
+        return ParseRsaPaddingScheme(header.at("x-az-rsa-padding").get<std::string>());
+    }
+    return RsaPaddingScheme::Rsaes;
+}
+
+static long decrypt_secret(const json& claims, RsaPaddingScheme paddingScheme, std::vector<unsigned char>& plaintextData) {
     std::unique_ptr<AesWrapper> aesWrapper;
     std::unique_ptr<AesCreator> aesCreator;
     std::unique_ptr<AesChainingInfo>  aesChainingInfo;
@@ -65,8 +73,9 @@ static long decrypt_secret(const json& claims, std::vector<unsigned char>& plain
 		encryptedSecret = encoders::base64_decode(claims.at("encryptedSecret"));
 		encryptedEcdhPrivate = encoders::base64_decode(claims.at("encryptedGuestEcdhPrivateKey"));
 		exportedPublicKeyData = encoders::base64_decode(claims.at("ephemeralEcdhPublicKey"));
+
 		Tpm tpm{};
-		std::vector<unsigned char> aesKey = tpm.RsaDecrypt(wrappedAesKey);
+		std::vector<unsigned char> aesKey = tpm.RsaDecrypt(wrappedAesKey, paddingScheme);
 		if (aesKey.size() == 0) {
 			LIBSECRETS_LOG(LogLevel::Error, "TPM Decrypt\n",
                 "JWT claims\n%s\nptext len %d\n",
@@ -237,9 +246,8 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
 			// Direct copy of input for legacy data
 			data.assign(jwt, jwt + jwtlen);
 		} else {
-			// Decrypt JWT data
 			json claims = pe.GetClaims();
-			long result = decrypt_secret(claims, data);
+			long result = decrypt_secret(claims, GetPaddingScheme(pe), data);
 			if (result != 0) {
 				return result;
 			}
@@ -250,6 +258,11 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
 		LIBSECRETS_LOG(LogLevel::Error, "Policy Evaluation", 
 					   "Policy evaluation failed: %s\n", err.what());
 		return (long)err.GetLibRC();
+	}
+	catch (std::invalid_argument& err) {
+		LIBSECRETS_LOG(LogLevel::Error, "JWT Header Field",
+		               "Invalid header field value: %s\n", err.what());
+		return (long)ErrorCode::ParsingError_Jwt_invalidFieldError;
 	}
 	catch (std::exception& e) {
 		LIBSECRETS_LOG(LogLevel::Error, "Exception", 
@@ -288,11 +301,10 @@ long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int polic
             // Direct copy of input for legacy data
             wide_data.assign(jwt, jwt + jwtlen);
         } else {
-            // Decrypt and convert to wide characters
             json claims = pe.GetClaims();
             std::vector<unsigned char> plaintextData;
             
-            long result = decrypt_secret(claims, plaintextData);
+            long result = decrypt_secret(claims, GetPaddingScheme(pe), plaintextData);
             if (result != 0) {
                 return result;
             }
@@ -313,6 +325,10 @@ long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int polic
         LIBSECRETS_LOG(LogLevel::Error, "Wide API Policy Evaluation", 
                        "Policy evaluation failed: %s", err.what());
         return (long)err.GetLibRC();
+    } catch (std::invalid_argument& err) {
+        LIBSECRETS_LOG(LogLevel::Error, "JWT Header Field",
+                       "Invalid header field value: %s", err.what());
+        return (long)ErrorCode::ParsingError_Jwt_invalidFieldError;
     } catch (std::exception& e) {
         LIBSECRETS_LOG(LogLevel::Error, "Wide API Exception", 
                        "Unexpected exception: %s", e.what());

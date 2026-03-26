@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <vector>
-#include <iostream>
-#include "DebugInfo.h"
-
 #include <tss2/tss2_esys.h>
+
+#include "CommonTypes.h"
+#include "DebugInfo.h"
+#include "LibraryLogger.h"
+#include "ReturnCodes.h"
 #include "TpmError.h"
 #include "TssCtx.h"
 #include "Tss2Wrapper.h"
-#include "LibraryLogger.h"
-#include "ReturnCodes.h"
 
 #ifndef PLATFORM_UNIX
 #include <windows.h>
@@ -171,9 +172,25 @@ bool Tss2Wrapper::IsKeyPresent() {
     return true;
 }
 
+static TPMT_RSA_DECRYPT MakeRsaScheme(RsaPaddingScheme paddingScheme) {
+    TPMT_RSA_DECRYPT scheme = { 0 };
+    switch (paddingScheme) {
+        case RsaPaddingScheme::RsaesOaep:
+            scheme.scheme = TPM2_ALG_OAEP;
+            scheme.details.oaep.hashAlg = TPM2_ALG_SHA256;
+            break;
+        case RsaPaddingScheme::Rsaes:
+        default:
+            scheme.scheme = TPM2_ALG_RSAES;
+            break;
+    }
+    return scheme;
+}
+
 #define RSA_KEY_SIZE 2048
 
-std::vector<unsigned char> Tss2Wrapper::Tss2RsaEncrypt(std::vector<unsigned char> const&plaintextData) {
+std::vector<unsigned char> Tss2Wrapper::Tss2RsaEncrypt(std::vector<unsigned char> const&plaintextData,
+                                                      RsaPaddingScheme paddingScheme) {
     TSS2_RC r;
     ESYS_TR primaryHandle = ESYS_TR_NONE;
     ESYS_TR persistObjHandle = ESYS_TR_NONE;
@@ -218,8 +235,7 @@ std::vector<unsigned char> Tss2Wrapper::Tss2RsaEncrypt(std::vector<unsigned char
     std::copy(plaintextData.begin(), plaintextData.end(), plain.buffer);
     plain.size = plaintextData.size();
 
-    TPMT_RSA_DECRYPT scheme;
-    scheme.scheme = TPM2_ALG_RSAES;
+    TPMT_RSA_DECRYPT scheme = MakeRsaScheme(paddingScheme);
     r = Esys_RSA_Encrypt(this->ctx->Get(), primaryHandle, ESYS_TR_NONE,
         ESYS_TR_NONE, ESYS_TR_NONE, &plain, &scheme,
         null_data, &cipher);
@@ -234,7 +250,8 @@ std::vector<unsigned char> Tss2Wrapper::Tss2RsaEncrypt(std::vector<unsigned char
     return retval;
 }
 
-std::vector<unsigned char> Tss2Wrapper::Tss2RsaDecrypt(std::vector<unsigned char> const&encryptedData) {
+std::vector<unsigned char> Tss2Wrapper::Tss2RsaDecrypt(std::vector<unsigned char> const&encryptedData,
+                                                      RsaPaddingScheme paddingScheme) {
 
     TPM2B_PUBLIC* out_public = 0;
     ESYS_TR ephemeral_handle = ESYS_TR_NONE;
@@ -291,10 +308,9 @@ std::vector<unsigned char> Tss2Wrapper::Tss2RsaDecrypt(std::vector<unsigned char
     std::copy(encryptedData.begin(), encryptedData.end(), cipher.buffer);
     cipher.size = encryptedData.size();
     
-    // Set scheme
-    TPMT_RSA_DECRYPT scheme;
-    scheme.scheme = TPM2_ALG_RSAES;
- 
+    // Set scheme based on padding
+    TPMT_RSA_DECRYPT scheme = MakeRsaScheme(paddingScheme);
+
     // Execute decrypt
     r = Esys_RSA_Decrypt(this->ctx->Get(), primaryHandle,
         ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
