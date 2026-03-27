@@ -23,13 +23,38 @@ typedef unsigned long DWORD;
 #endif
 
 #include <openssl/opensslv.h>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/pkcs7.h>
 #include <openssl/pem.h>
 
+#include <stdexcept>
+
+#ifndef _MSC_VER
+// On Windows, BYTE and PBYTE are already defined by <windows.h>
 typedef unsigned char BYTE;
 typedef unsigned char *PBYTE;
+#endif
+
+// Structured exit codes for programmatic callers (e.g. Rust process::Command).
+constexpr int EXIT_OK           = 0; // Success
+constexpr int EXIT_USAGE        = 1; // Bad CLI arguments
+constexpr int EXIT_ATTEST_FAIL  = 2; // MAA attestation failed
+constexpr int EXIT_AUTH_FAIL    = 3; // IMDS / AAD token acquisition failed
+constexpr int EXIT_SKR_FAIL     = 4; // AKV/MHSM SKR HTTP error (policy, 403, key not found)
+constexpr int EXIT_CRYPTO_FAIL  = 5; // OpenSSL error (decrypt, parse, unwrap)
+constexpr int EXIT_NETWORK_FAIL = 6; // curl/WinHTTP transport failure
+
+/// Exception that carries a structured exit code + human-readable message.
+/// Thrown instead of calling exit()/abort() so main() can return the code.
+class skr_error : public std::runtime_error
+{
+public:
+    int exit_code;
+    skr_error(int code, const std::string &msg)
+        : std::runtime_error(msg), exit_code(code) {}
+};
 
 #define CHECK_HR(hr)                                     \
     do                                                   \
@@ -41,18 +66,27 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
 {
     if (FAILED(hr))
     {
-        DWORD gle = GetLastError();
-        fprintf(stderr, "Failed in %s:%s() on line %d. HR=0x%0x", fileName.c_str(), funcName.c_str(), lineNo, hr);
-        exit(gle);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Failed in %s:%s() on line %d. HR=0x%0x",
+                 fileName.c_str(), funcName.c_str(), lineNo, hr);
+        fprintf(stderr, "%s\n", buf);
+        throw skr_error(EXIT_NETWORK_FAIL, buf);
     }
 }
 
-#define TRACE_ERROR_EXIT(msg)                                                                            \
+/// Legacy macro — kept for backward-compat but now defaults to EXIT_NETWORK_FAIL.
+/// Prefer THROW_SKR_ERROR(code, msg) for new code.
+#define TRACE_ERROR_EXIT(msg) THROW_SKR_ERROR(EXIT_NETWORK_FAIL, msg)
+
+/// Throw a skr_error with a specific exit code.  Prints the message to stderr
+/// with file/function/line context, then throws instead of calling exit().
+#define THROW_SKR_ERROR(code, msg)                                                                       \
     do                                                                                                   \
     {                                                                                                    \
-        DWORD gle = GetLastError();                                                                      \
-        fprintf(stderr, "Error occured in %s:%s on line %d. Msg=%s", __FILE__, __func__, __LINE__, msg); \
-        exit(gle);                                                                                       \
+        std::string _skr_msg(msg);                                                                       \
+        fprintf(stderr, "Error occured in %s:%s on line %d. Msg=%s\n",                                  \
+                __FILE__, __func__, __LINE__, _skr_msg.c_str());                                         \
+        throw skr_error((code), _skr_msg);                                                               \
     } while (0);
 
 #define TRACE_OUT Util::trace_out
@@ -287,12 +321,35 @@ public:
     /// <param name="cipherText">Wrapped symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
     /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
+    /// <param name="oaep_hash_alg">OAEP hash algorithm: sha1, sha256, sha384, sha512 (default: sha256)</param>
+    /// <param name="mgf1_hash_alg">MGF1 hash algorithm (default: same as oaep_hash_alg)</param>
     /// <returns>Plain text symmetric key</returns>
     static std::string UnwrapKey(const std::string &attestation_url,
                                  const std::string &nonce,
                                  const std::string &cipherText,
                                  const std::string &key_enc_key,
-                                 const Util::AkvCredentialSource &akv_credential_source);
+                                 const Util::AkvCredentialSource &akv_credential_source,
+                                 const std::string &oaep_hash_alg = "sha256",
+                                 const std::string &mgf1_hash_alg = "");
+
+    /// <summary>
+    /// Batch-unwrap multiple wrapped keys in a single SKR call.
+    /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">unique nonce per attestation request.</param>
+    /// <param name="batch_json">JSON string: {"keys":[{"id":"label","wrapped":"base64"},...]}</param>
+    /// <param name="key_enc_key">KEK URL</param>
+    /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
+    /// <param name="oaep_hash_alg">OAEP hash algorithm (default: sha256)</param>
+    /// <param name="mgf1_hash_alg">MGF1 hash algorithm (default: same as oaep_hash_alg)</param>
+    /// <returns>JSON string: {"results":[{"id":"label","unwrapped":"plaintext"} or {"id":"label","error":"msg"},...]}</returns>
+    static std::string UnwrapKeyBatch(const std::string &attestation_url,
+                                      const std::string &nonce,
+                                      const std::string &batch_json,
+                                      const std::string &key_enc_key,
+                                      const Util::AkvCredentialSource &akv_credential_source,
+                                      const std::string &oaep_hash_alg = "sha256",
+                                      const std::string &mgf1_hash_alg = "");
 
     /// <summary>
     /// Release the RSA or EC private key from KMS.
@@ -306,4 +363,5 @@ public:
                            const std::string &nonce,
                            const std::string &key_enc_key,
                            const Util::AkvCredentialSource &akv_credential_source);
+
 };
