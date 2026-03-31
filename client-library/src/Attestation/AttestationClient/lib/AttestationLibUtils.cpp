@@ -65,7 +65,14 @@ namespace attest {
 
 PcrList GetAttestationPcrList() {
     #ifdef PLATFORM_UNIX
-        attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7};
+        #ifdef AZURE_LOCAL
+            // Include pcr 11 for azure local, note that if the system is incorrectly configured
+            // pcr 11 will fail to attest. However, Azure local gives stict guidence in image generation.
+            attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7, 11};
+        #else
+            attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7};
+        #endif
+
     #else
         attest::PcrList list{0, 1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14};
     #endif
