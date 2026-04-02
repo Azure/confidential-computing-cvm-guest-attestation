@@ -73,7 +73,7 @@ echo "=== Gathering artifacts into ${OUTPUT_DIR} ==="
 rm -rf "${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 
-# 1. Attestation library deb package
+# Attestation library deb package
 ATTEST_DEB="${SCRIPT_DIR}/client-library/src/Attestation/_build/x86_64/packages/attestationlibrary/deb/azguestattestation1_1.0.5_amd64.deb"
 if [ ! -f "${ATTEST_DEB}" ]; then
     echo "Building attestation library (Azure Local)..."
@@ -88,16 +88,7 @@ else
     echo "[MISSING] ${ATTEST_DEB}"
 fi
 
-# 2. Edge CC base attestation SDK deb package
-EDGE_DEB="${SCRIPT_DIR}/client-library/src/external/edge-cc-base-attestation-sdk/edge-cc-base-attestation-sdk-1.0.20251020.1-Linux.deb"
-if [ -f "${EDGE_DEB}" ]; then
-    cp "${EDGE_DEB}" "${OUTPUT_DIR}/"
-    echo "[OK] edge-cc-base-attestation-sdk-1.0.20251020.1-Linux.deb"
-else
-    echo "[MISSING] ${EDGE_DEB}"
-fi
-
-# 3. AttestationClient sample app
+# AttestationClient sample app
 ATTEST_APP="${SCRIPT_DIR}/cvm-attestation-sample-app/build/AttestationClient"
 if [ ! -f "${ATTEST_APP}" ]; then
     echo "Building AttestationClient..."
@@ -114,7 +105,7 @@ else
     echo "[MISSING] ${ATTEST_APP}"
 fi
 
-# 4. AzureAttestSKR (Secure Key Release app)
+# AzureAttestSKR (Secure Key Release app)
 SKR_APP="${SCRIPT_DIR}/cvm-securekey-release-app/build/AzureAttestSKR"
 if [ ! -f "${SKR_APP}" ]; then
     echo "Building AzureAttestSKR..."
@@ -131,7 +122,7 @@ else
     echo "[MISSING] ${SKR_APP}"
 fi
 
-# 5. Certs bundle
+# Certs bundle
 CERTS_BUNDLE="${SCRIPT_DIR}/cvm-attestation-sample-app/certs/curl-ca-bundle.crt"
 if [ -f "${CERTS_BUNDLE}" ]; then
     cp "${CERTS_BUNDLE}" "${OUTPUT_DIR}/"
@@ -140,7 +131,7 @@ else
     echo "[MISSING] ${CERTS_BUNDLE}"
 fi
 
-# 6. Deploy script (bundle into artifacts folder)
+# Deploy script (bundle into artifacts folder)
 DEPLOY_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Deploy-Artifacts.ps1"
 if [ -f "${DEPLOY_SCRIPT}" ]; then
     cp "${DEPLOY_SCRIPT}" "${OUTPUT_DIR}/"
@@ -149,7 +140,7 @@ else
     echo "[MISSING] ${DEPLOY_SCRIPT}"
 fi
 
-# 7. Install script (bundle into artifacts folder)
+# Install script (bundle into artifacts folder)
 INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Install-Artifacts.sh"
 if [ -f "${INSTALL_SCRIPT}" ]; then
     cp "${INSTALL_SCRIPT}" "${OUTPUT_DIR}/"
