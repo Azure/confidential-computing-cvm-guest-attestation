@@ -10,7 +10,7 @@
 class OsslX509: public BaseX509<std::unique_ptr<X509, decltype(&X509_free)>>
 {
 public:
-    OsslX509(const char *rootCert = ROOTCERT);
+    OsslX509(const std::vector<const char*>& rootCerts = GetTrustedRoots());
     ~OsslX509();
     std::unique_ptr<X509, decltype(&X509_free)> LoadCertificate(const std::vector<unsigned char>& cert_buffer);
     void LoadLeafCertificate(const char* cert);
@@ -28,7 +28,7 @@ protected:
 private:
     bool VerifyChainTerminatesAtRoot(X509_STORE_CTX *ctx);
     X509_STORE* store;
-    std::unique_ptr<X509, decltype(&X509_free)> pRootCertContext;
+    std::vector<std::unique_ptr<X509, decltype(&X509_free)>> rootCertContexts;
     STACK_OF(X509) *intermediate_certs;
     std::unique_ptr<X509, decltype(&X509_free)> leaf_cert;
     std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> leaf_key;

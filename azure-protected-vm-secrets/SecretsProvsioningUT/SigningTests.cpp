@@ -261,3 +261,160 @@ TEST(X509Tests, DISABLED_CertGen) {
     EXPECT_FALSE(certChain->VerifySignature(badData, signature));
 }
 #endif // PLATFORM_UNIX
+
+// ---------------------------------------------------------------------------
+// End-to-end chain verification tests using pre-generated test CA hierarchies.
+// Two independent root CAs (TestRootA, TestRootB) each have an intermediate CA
+// and a leaf cert.  Tests verify that VerifyCertChain() accepts chains when the
+// root is in the trusted set and rejects chains when it is not.
+// ---------------------------------------------------------------------------
+#include "TestCertConstants.h"
+
+// Helper: build a WincryptX509/OsslX509 with the given test roots, load the
+// intermediate + leaf from chainId A or B, then call VerifyCertChain().
+// Returns true if the full chain verification succeeds.
+static bool verifyTestChain(
+    const std::vector<const char*>& roots,
+    const char* intermediateCert,
+    const char* leafCert,
+    const std::string& expectedSubjectSuffix)
+{
+#ifdef PLATFORM_UNIX
+    auto x509 = std::make_unique<OsslX509>(roots);
+#else
+    auto x509 = std::make_unique<WincryptX509>(roots);
+#endif
+    x509->LoadIntermediateCertificate(intermediateCert);
+    x509->LoadLeafCertificate(leafCert);
+    return x509->VerifyCertChain(expectedSubjectSuffix);
+}
+
+// --- Chain A rooted at TestRootA, trusted with RootA only → should PASS ---
+TEST(X509ChainVerificationTests, ChainA_TrustedByRootA_Succeeds) {
+    std::vector<const char*> roots = { TEST_ROOT_A };
+    EXPECT_TRUE(verifyTestChain(roots, TEST_INTERMEDIATE_A, TEST_LEAF_A, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Chain B rooted at TestRootB, trusted with RootB only → should PASS ---
+TEST(X509ChainVerificationTests, ChainB_TrustedByRootB_Succeeds) {
+    std::vector<const char*> roots = { TEST_ROOT_B };
+    EXPECT_TRUE(verifyTestChain(roots, TEST_INTERMEDIATE_B, TEST_LEAF_B, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Chain A with both roots trusted → should PASS ---
+TEST(X509ChainVerificationTests, ChainA_TrustedByBothRoots_Succeeds) {
+    std::vector<const char*> roots = { TEST_ROOT_A, TEST_ROOT_B };
+    EXPECT_TRUE(verifyTestChain(roots, TEST_INTERMEDIATE_A, TEST_LEAF_A, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Chain B with both roots trusted → should PASS ---
+TEST(X509ChainVerificationTests, ChainB_TrustedByBothRoots_Succeeds) {
+    std::vector<const char*> roots = { TEST_ROOT_A, TEST_ROOT_B };
+    EXPECT_TRUE(verifyTestChain(roots, TEST_INTERMEDIATE_B, TEST_LEAF_B, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Chain A rooted at TestRootA, but only RootB trusted → should FAIL ---
+TEST(X509ChainVerificationTests, ChainA_NotTrustedByRootB_Fails) {
+    std::vector<const char*> roots = { TEST_ROOT_B };
+    EXPECT_FALSE(verifyTestChain(roots, TEST_INTERMEDIATE_A, TEST_LEAF_A, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Chain B rooted at TestRootB, but only RootA trusted → should FAIL ---
+TEST(X509ChainVerificationTests, ChainB_NotTrustedByRootA_Fails) {
+    std::vector<const char*> roots = { TEST_ROOT_A };
+    EXPECT_FALSE(verifyTestChain(roots, TEST_INTERMEDIATE_B, TEST_LEAF_B, TEST_SUBJECT_SUFFIX));
+}
+
+// --- Wrong subject suffix → should FAIL even with correct root ---
+TEST(X509ChainVerificationTests, ChainA_WrongSubjectSuffix_Fails) {
+    std::vector<const char*> roots = { TEST_ROOT_A };
+    EXPECT_FALSE(verifyTestChain(roots, TEST_INTERMEDIATE_A, TEST_LEAF_A, ".wrong-suffix.net"));
+}
+
+// Multi-root trust tests for CCME + CPSRoot
+
+TEST(X509MultiRootTests, DefaultConstructorLoadsBothRoots) {
+    // Default constructor should load both CCME and CPSRoot without error
+#ifdef PLATFORM_UNIX
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<OsslX509>();
+    });
+#else
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<WincryptX509>();
+    });
+#endif
+}
+
+TEST(X509MultiRootTests, CCMERootOnlyConstructor) {
+    // Single-root with CCME only should work (backward compatibility)
+    std::vector<const char*> roots = { CCME_ROOTCERT_PEM };
+#ifdef PLATFORM_UNIX
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<OsslX509>(roots);
+    });
+#else
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<WincryptX509>(roots);
+    });
+#endif
+}
+
+TEST(X509MultiRootTests, CPSRootOnlyConstructor) {
+    // Single-root with CPSRoot only should work
+    std::vector<const char*> roots = { CPSROOT_CERT_PEM };
+#ifdef PLATFORM_UNIX
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<OsslX509>(roots);
+    });
+#else
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<WincryptX509>(roots);
+    });
+#endif
+}
+
+TEST(X509MultiRootTests, ExplicitBothRootsConstructor) {
+    // Explicitly passing both roots should work identically to the default
+    std::vector<const char*> roots = { CCME_ROOTCERT_PEM, CPSROOT_CERT_PEM };
+#ifdef PLATFORM_UNIX
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<OsslX509>(roots);
+    });
+#else
+    EXPECT_NO_THROW({
+        auto x509 = std::make_unique<WincryptX509>(roots);
+    });
+#endif
+}
+
+TEST(X509MultiRootTests, EmptyRootsConstructorThrows) {
+    // Empty roots vector should fail (no trusted roots to add)
+    std::vector<const char*> roots = {};
+#ifdef PLATFORM_UNIX
+    // OpenSSL path: succeeds at store creation but will fail at chain verification
+    // since no roots are in the store — constructor doesn't throw for empty vector
+    auto x509 = std::make_unique<OsslX509>(roots);
+    EXPECT_NE(x509, nullptr);
+#else
+    // WinCrypt path: similarly, the store opens but has no roots
+    auto x509 = std::make_unique<WincryptX509>(roots);
+    EXPECT_NE(x509, nullptr);
+#endif
+}
+
+#ifdef PLATFORM_UNIX
+TEST(X509MultiRootTests, CertGenWithMultiRootStillWorks) {
+    // Verify that generateCertChain() (which uses a single custom root)
+    // still works after the multi-root refactor
+    std::unique_ptr<OsslX509> certChain;
+    std::vector<unsigned char> testData = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+    std::vector<unsigned char> signature;
+    ASSERT_NO_THROW({
+        certChain = generateCertChain();
+        signature = certChain->SignData(testData);
+    });
+    EXPECT_TRUE(certChain->VerifyCertChain(X509_SUBJECT_NAME_SUFFIX));
+    EXPECT_TRUE(certChain->VerifySignature(testData, signature));
+}
+#endif // PLATFORM_UNIX

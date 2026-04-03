@@ -268,7 +268,7 @@ std::unique_ptr<OsslX509> generateCertChain() {
 
     std::unique_ptr<OsslX509> retCertChain;
     try{
-        retCertChain = std::make_unique<OsslX509>((const char *)getDerEncodedCertificate(rootCert.get()).c_str());
+        retCertChain = std::make_unique<OsslX509>(std::vector<const char*>{(const char *)getDerEncodedCertificate(rootCert.get()).c_str()});
         retCertChain->LoadIntermediateCertificate((const char *)getDerEncodedCertificate(intermediateCert.get()).c_str());
         retCertChain->LoadLeafCertificate((const char *)getDerEncodedCertificate(leafCert.get()).c_str());
         retCertChain->SetLeafKey(leafKey.release());
@@ -278,11 +278,10 @@ std::unique_ptr<OsslX509> generateCertChain() {
     return retCertChain;
 }
 
-OsslX509::OsslX509(const char *rootCert)
+OsslX509::OsslX509(const std::vector<const char*>& rootCerts)
     : leaf_cert(nullptr, &X509_free),
       intermediate_certs(sk_X509_new_null()),
-      leaf_key(nullptr, &EVP_PKEY_free),
-      pRootCertContext(nullptr, &X509_free)
+      leaf_key(nullptr, &EVP_PKEY_free)
 {
     // Linux-specific code for loading the root certificate using OpenSSL
     this->store = X509_STORE_new();
@@ -294,20 +293,23 @@ OsslX509::OsslX509(const char *rootCert)
         throw std::runtime_error("Failed to create stack of X509 certificates");
     }
 
-    auto root_cert = this->LoadCertificate(encoders::base64_decode(rootCert));
-    if (X509_STORE_add_cert(this->store, root_cert.get()) != 1) {
-        throw std::runtime_error("Failed to add root certificate to store");
-    }
-    LIBSECRETS_LOG(
-            LogLevel::Info,
-            "Certificate chain verification.",
-            "Certificate chain verification with cert %s",
-            printCertInfo(root_cert.get(), "Root").c_str());
+    for (const auto& rootCert : rootCerts) {
+        auto root_cert = this->LoadCertificate(encoders::base64_decode(rootCert));
+        if (X509_STORE_add_cert(this->store, root_cert.get()) != 1) {
+            throw std::runtime_error("Failed to add root certificate to store");
+        }
+        LIBSECRETS_LOG(
+                LogLevel::Info,
+                "Certificate chain verification.",
+                "Certificate chain verification with cert %s",
+                printCertInfo(root_cert.get(), "Root").c_str());
 
-    // Store a copy of the root cert for VerifyChainTerminatesAtRoot
-    this->pRootCertContext.reset(X509_dup(root_cert.get()));
-    if (!this->pRootCertContext) {
-        throw std::runtime_error("Failed to duplicate root certificate");
+        // Store a copy of the root cert for VerifyChainTerminatesAtRoot
+        std::unique_ptr<X509, decltype(&X509_free)> rootDup(X509_dup(root_cert.get()), &X509_free);
+        if (!rootDup) {
+            throw std::runtime_error("Failed to duplicate root certificate");
+        }
+        rootCertContexts.push_back(std::move(rootDup));
     }
 
     X509_STORE_set_flags(this->store, X509_V_FLAG_X509_STRICT);
@@ -639,19 +641,24 @@ bool OsslX509::VerifyChainTerminatesAtRoot(X509_STORE_CTX *ctx)
         return false;
     }
 
-    // Compare with expected root certificate
-    if (X509_cmp(actualRoot, pRootCertContext.get()) != 0) {
+    // Compare with any of the expected root certificates
+    bool rootMatched = false;
+    for (const auto& pRootCertContext : rootCertContexts) {
+        if (X509_cmp(actualRoot, pRootCertContext.get()) == 0) {
+            rootMatched = true;
+            break;
+        }
+    }
+
+    if (!rootMatched) {
         // Log detailed certificate information for debugging
         char* actual_subject = X509_NAME_oneline(X509_get_subject_name(actualRoot), NULL, 0);
-        char* expected_subject = X509_NAME_oneline(X509_get_subject_name(pRootCertContext.get()), NULL, 0);
 
-        LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match expected root certificate", "");
+        LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match any expected root certificate", "");
         LIBSECRETS_LOG(LogLevel::Error, "Actual root subject", actual_subject ? actual_subject : "Unknown");
-        LIBSECRETS_LOG(LogLevel::Error, "Expected root subject", expected_subject ? expected_subject : "Unknown");
         
         // Free the allocated strings
         if (actual_subject) OPENSSL_free(actual_subject);
-        if (expected_subject) OPENSSL_free(expected_subject);
         
         return false;
     }

@@ -12,7 +12,7 @@ std::string generate_root_cert();
 class WincryptX509: public BaseX509<PCCERT_CONTEXT>
 {
 public:
-    WincryptX509(const char *rootCert = ROOTCERT);
+    WincryptX509(const std::vector<const char*>& rootCerts = GetTrustedRoots());
     ~WincryptX509();
     PCCERT_CONTEXT LoadCertificate(const std::vector<unsigned char>& cert);
     void LoadLeafCertificate(const char* cert);
@@ -30,10 +30,9 @@ private:
     bool VerifyChainTerminatesAtRoot();
     std::string ExtractFieldFromDN(const std::string& dn, const std::string& field) const;
     PCCERT_CONTEXT pLeafCertContext;
-    PCCERT_CONTEXT pRootCertContext;
+    std::vector<PCCERT_CONTEXT> rootCertContexts;
     BCRYPT_KEY_HANDLE hKey;
     HCERTSTORE hStore;
-    CERT_CHAIN_PARA chainPara;
     PCCERT_CHAIN_CONTEXT chainContext;
     std::vector<unsigned char> leaf_cert_buffer;
 };

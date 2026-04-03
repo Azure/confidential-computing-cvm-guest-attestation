@@ -211,7 +211,7 @@ std::vector<unsigned char*> generate_cert_chain() {
 	return std::vector<unsigned char*>();
 }
 
-WincryptX509::WincryptX509(const char *rootCert)
+WincryptX509::WincryptX509(const std::vector<const char*>& rootCerts)
 {
     this->hStore = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, NULL, 0, NULL);
     if (this->hStore == NULL)
@@ -220,17 +220,20 @@ WincryptX509::WincryptX509(const char *rootCert)
         throw WinCryptError("CertOpenStore failed.", GetLastError(),
             ErrorCode::LibraryError_WinCrypt_certStoreError);
     }
-    pRootCertContext = LoadCertificate(encoders::base64_decode(rootCert));
-    if (!CertAddCertificateContextToStore(this->hStore, pRootCertContext, CERT_STORE_ADD_ALWAYS, NULL)) {
-        // LibraryError, WinCrypt subclass, certStoreError
-        throw WinCryptError("CertAddCertificateContextToStore - Root Cert - failed.", GetLastError(),
-            ErrorCode::LibraryError_WinCrypt_certStoreError);
+    for (const auto& rootCert : rootCerts) {
+        PCCERT_CONTEXT pRootCtx = LoadCertificate(encoders::base64_decode(rootCert));
+        if (!CertAddCertificateContextToStore(this->hStore, pRootCtx, CERT_STORE_ADD_ALWAYS, NULL)) {
+            // LibraryError, WinCrypt subclass, certStoreError
+            throw WinCryptError("CertAddCertificateContextToStore - Root Cert - failed.", GetLastError(),
+                ErrorCode::LibraryError_WinCrypt_certStoreError);
+        }
+        LIBSECRETS_LOG(
+                LogLevel::Info,
+                "Certificate chain verification.",
+                "Certificate chain verification with cert %s",
+                printCertInfo(pRootCtx, "Root").c_str());
+        rootCertContexts.push_back(pRootCtx);
     }
-    LIBSECRETS_LOG(
-            LogLevel::Info,
-            "Certificate chain verification.",
-            "Certificate chain verification with cert %s",
-            printCertInfo(pRootCertContext, "Root").c_str());
 }
 
 WincryptX509::~WincryptX509()
@@ -333,9 +336,14 @@ void WincryptX509::LoadLeafCertificate(const char* cert)
             "Certificate chain verification.",
             "Certificate chain verification with cert %s",
             printCertInfo(this->pLeafCertContext, "Leaf").c_str());
-    this->chainPara = { sizeof(chainPara) };
+    CERT_CHAIN_PARA chainPara = {};
+    chainPara.cbSize = sizeof(chainPara);
+    // chainPara.dwUrlRetrievalTimeout = 4000; // Requires CERT_CHAIN_PARA_HAS_EXTRA_FIELDS; not needed while all URL retrieval flags are disabled
     this->chainContext = nullptr;
-    if (!CertGetCertificateChain(NULL, this->pLeafCertContext, NULL, this->hStore, &(this->chainPara), 0, NULL, &(this->chainContext))) {
+    if (!CertGetCertificateChain(NULL, this->pLeafCertContext, NULL, this->hStore, &chainPara,
+            CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL | CERT_CHAIN_DISABLE_AIA
+            | CERT_CHAIN_DISABLE_AUTH_ROOT_AUTO_UPDATE |
+            CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY, NULL, &(this->chainContext))) {
 		// LibraryError, WinCrypt subclass, certChainError
         throw WinCryptError("CertGetCertificateChain failed.", GetLastError(),
             ErrorCode::LibraryError_WinCrypt_certChainError);
@@ -374,10 +382,7 @@ bool WincryptX509::VerifyCertChain(const std::string& expectedSubjectSuffix)
     CERT_CHAIN_POLICY_STATUS policyStatus = { sizeof(policyStatus) };
     
  
-    policyPara.dwFlags = CERT_CHAIN_POLICY_ALLOW_UNKNOWN_CA_FLAG; 
-    
-    // Optional: Add additional validation flags
-    // policyPara.dwFlags |= CERT_CHAIN_POLICY_IGNORE_NOT_TIME_VALID_FLAG; // if you want to ignore time validity
+    policyPara.dwFlags = CERT_CHAIN_POLICY_ALLOW_UNKNOWN_CA_FLAG;
 
     if (!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_BASE, this->chainContext, &policyPara, &policyStatus)) {
         throw WinCryptError("CertVerifyCertificateChainPolicy failed.", GetLastError(),
@@ -462,22 +467,31 @@ bool WincryptX509::VerifyChainTerminatesAtRoot()
         return false;
     }
 
-	if (actualRoot->dwCertEncodingType != pRootCertContext->dwCertEncodingType ||
-        !CertComparePublicKeyInfo(actualRoot->dwCertEncodingType,
-                                   &actualRoot->pCertInfo->SubjectPublicKeyInfo,
-                                   &pRootCertContext->pCertInfo->SubjectPublicKeyInfo) ||
-        !CertCompareCertificate(actualRoot->dwCertEncodingType,
-                                 actualRoot->pCertInfo,
-                                 pRootCertContext->pCertInfo))
-    {
-		// Root certificate does not match the expected root certificate
-        LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match expected root certificate", 
-                      "Expected encoding type: %d, Actual encoding type: %d,\nActual Root Cert: %s", 
-                      pRootCertContext->dwCertEncodingType, actualRoot->dwCertEncodingType,
-                      printCertInfo(actualRoot, "Actual Root").c_str());
+	// Check if the chain root matches any of the trusted root certificates
+	bool rootMatched = false;
+	for (const auto& pRootCertContext : rootCertContexts) {
+		if (actualRoot->dwCertEncodingType == pRootCertContext->dwCertEncodingType &&
+		    CertComparePublicKeyInfo(actualRoot->dwCertEncodingType,
+		                               &actualRoot->pCertInfo->SubjectPublicKeyInfo,
+		                               &pRootCertContext->pCertInfo->SubjectPublicKeyInfo) &&
+		    CertCompareCertificate(actualRoot->dwCertEncodingType,
+		                             actualRoot->pCertInfo,
+		                             pRootCertContext->pCertInfo))
+		{
+			rootMatched = true;
+			break;
+		}
+	}
 
-        return false;
-    }
+	if (!rootMatched)
+	{
+		// Root certificate does not match any expected root certificate
+		LIBSECRETS_LOG(LogLevel::Error, "Root certificate does not match any expected root certificate",
+		              "Actual Root Cert: %s",
+		              printCertInfo(actualRoot, "Actual Root").c_str());
+
+		return false;
+	}
 
     return true;
 }
