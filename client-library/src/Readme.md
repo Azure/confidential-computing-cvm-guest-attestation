@@ -24,3 +24,11 @@ sudo ./client-library/src/Attestation/build.sh
 ```
 
 AttestationLibrary would be built at path client-library/src/Attestation/_build/x86_64/packages/attestationlibrary
+
+**Note Azure Local Builds**
+1. An additional pre-req of edge-cc-base-attestation-sdk must be installed before building the client-library and libtss2-dev (run and build time)
+
+2. Build the Library specifiying its for Azure local.
+```
+sudo ./client-library/src/Attestation/build.sh -l
+```
