@@ -77,39 +77,6 @@ target_link_libraries(${CMAKE_PROJECT_TARGET} nlohmann_json::nlohmann_json)
 target_link_libraries(${CMAKE_PROJECT_TARGET} Boost::boost)
 set_property(TARGET ${CMAKE_PROJECT_TARGET} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-# CPack configuration
-
-# Check if /bin/apt or /bin/rpm exists
-find_program(APT_PROGRAM apt)
-find_program(RPM_PROGRAM rpm)
-
-# Check if running on Ubuntu
-execute_process(COMMAND lsb_release -is OUTPUT_VARIABLE DISTRO OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(APT_PROGRAM)
-    set(CPACK_GENERATOR "DEB")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft Corp")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libssl3t64, libtss2-esys-3.0.2-0t64, libtss2-sys1t64, libtss2-mu-4.0.1-0t64, libtss2-tcti-device0t64, libtss2-rc0t64")
-    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
-elseif(RPM_PROGRAM)
-    set(CPACK_GENERATOR "RPM")
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
-endif()
-set(CPACK_PACKAGE_VERSION "0.1.0")
-set(CPACK_PACKAGE_CONTACT "")
-set(CPACK_PACKAGE_NAME "azure-protected-vm-secrets")
-set(CPACK_PACKAGE_DESCRIPTION "Dynamic Library and CLI tool for the Azure Protected VM Secrets feature for CVMs")
-set(CPACK_PACKAGE_VENDOR "Microsoft Corp")
-set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
-
-# Include additional files in the package
-install(TARGETS ${CMAKE_PROJECT_TARGET} DESTINATION lib)
+# Install shared library and public header (CPack is configured at the root)
+install(TARGETS ${CMAKE_PROJECT_TARGET} LIBRARY DESTINATION lib)
 install(FILES ${CMAKE_SOURCE_DIR}/SecretsProvisioningLibrary.h DESTINATION include)
-install(PROGRAMS ${CMAKE_BINARY_DIR}/azure-protected-secrets-tool/azure-protected-secrets-tool DESTINATION bin)
-
-# Exclude gtest and gmock files from the package
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include
-        FILES_MATCHING PATTERN "*.h"
-        PATTERN "gtest" EXCLUDE
-        PATTERN "gmock" EXCLUDE)
-
-include(CPack)

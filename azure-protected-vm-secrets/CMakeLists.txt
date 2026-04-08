@@ -124,8 +124,34 @@ set_target_properties(SecretsProvisioningLibrary PROPERTIES
   SOVERSION ${SECRETS_LIB_VERSION_MAJOR}
 )
 
+# Prevent GoogleTest from installing its files into the package
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(SecretsProvsioningUT)
 add_subdirectory(SecretsProvisioningFunctionalityTest)
 add_subdirectory(DynamicSecretsProvisioningLibrary)
 add_subdirectory(SecretsProvisioningSample)
 add_subdirectory(azure-protected-secrets-tool)
+
+# --- CPack: bundle shared library + CLI into one package ---
+find_program(APT_PROGRAM apt)
+find_program(RPM_PROGRAM rpm)
+
+if(APT_PROGRAM)
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft Corp")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libssl3t64, libtss2-esys-3.0.2-0t64, libtss2-sys1t64, libtss2-mu-4.0.1-0t64, libtss2-tcti-device0t64, libtss2-rc0t64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+elseif(RPM_PROGRAM)
+    set(CPACK_GENERATOR "RPM")
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+endif()
+
+set(CPACK_PACKAGE_VERSION "${SECRETS_LIB_VERSION}")
+set(CPACK_PACKAGE_CONTACT "")
+set(CPACK_PACKAGE_NAME "azure-protected-vm-secrets")
+set(CPACK_PACKAGE_DESCRIPTION "Shared library and CLI tool for the Azure Protected VM Secrets feature for CVMs")
+set(CPACK_PACKAGE_VENDOR "Microsoft Corp")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
+
+include(CPack)

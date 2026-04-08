@@ -26,4 +26,6 @@ target_include_directories(azure-protected-secrets-tool PRIVATE
 
 target_link_libraries(azure-protected-secrets-tool DynamicSecretsProvisioningLibrary)
 
+install(TARGETS azure-protected-secrets-tool RUNTIME DESTINATION bin)
+
 add_subdirectory(tests)
