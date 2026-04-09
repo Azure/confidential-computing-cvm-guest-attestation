@@ -75,6 +75,9 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
                                                 unsigned char** jwt_token_out) noexcept {
 
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+
+#ifndef AZURE_LOCAL //Ak cert uses HCL and IGVMAgent in Azure local to renew the AkCert. Not IMDS. AKCert is only TVM level trusted in both CVM and TVM for Azure and Azure local respectively.
+
     // Validate the token to make sure that the input parameter is not empty.
     // Check the Version of the structure.
     if (client_params.version != CLIENT_PARAMS_VERSION ||
@@ -111,6 +114,7 @@ AttestationResult AttestationClientImpl::Attest(const ClientParameters& client_p
             }
         }
     }
+#endif
 
     result = AttestationResult::ErrorCode::SUCCESS;
 

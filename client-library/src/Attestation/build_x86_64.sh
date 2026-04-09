@@ -5,18 +5,22 @@ CMAKE_BUILDTYPE_OPT=""
 
 function Usage()
 {
-    echo "Usage: $0 [-h] [-d] --> where -d enables Debug Build. It defaults to Release Builds.";
+    echo "Usage: $0 [-h] [-d] [-l] --> where -d enables Debug Build, -l enables Azure Local. It defaults to Release Builds.";
     exit 1;
 }
 
-while getopts ":hd" opt; do
+while getopts ":hdl" opt; do
   case ${opt} in
     h )
         Usage
       ;;
     d )
-        CMAKE_BUILDTYPE_OPT="-DCMAKE_BUILD_TYPE=Debug"
+        CMAKE_BUILDTYPE_OPT="${CMAKE_BUILDTYPE_OPT} -DCMAKE_BUILD_TYPE=Debug"
         echo "Build Type = Debug"
+      ;;
+      l )
+        CMAKE_BUILDTYPE_OPT="${CMAKE_BUILDTYPE_OPT} -DAZURE_LOCAL=ON"
+        echo "Azure Local = ON"
       ;;
     \? )
         Usage
@@ -38,6 +42,8 @@ PACKAGE_DIR=${BUILD_DIR}/packages
 LOG_DIR=${BUILD_DIR}/log
 ATTESTATION_LIB_SHARED_DIR=${ATTESTATION_DIR}/AttestationClient/lib/DynamicLibrary
 VERSION="1.0.5"
+ldconfig
+
 # Create all directories
 mkdir -p $BUILD_DIR
 mkdir -p $PACKAGE_DIR
