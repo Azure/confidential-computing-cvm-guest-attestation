@@ -10,8 +10,8 @@
 #include <vector>
 #include <string>
 
-constexpr const char* CCME_ROOTCERT_PEM =
-"MIIFhDCCA2ygAwIBAgIQTCbDKjrVHLNOviLgKTAe8DANBgkqhkiG9w0BAQwFADBT" // CodeQL [SM05344] This is CCME, not AME root cert. We are working on alternative solutions (custom PKI-R) to deliver the cert.
+constexpr const char* CCME_ROOTCERT_PEM = // CodeQL [SM05344] This is CCME, not AME root cert. We are working on alternative solutions (custom PKI-R) to deliver the cert.
+"MIIFhDCCA2ygAwIBAgIQTCbDKjrVHLNOviLgKTAe8DANBgkqhkiG9w0BAQwFADBT"
 "MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSQw"
 "IgYDVQQDExtDb21tZXJjaWFsIENsb3VkIFJvb3QgQ0EgUjEwHhcNMjQwMjAxMTk1"
 "OTI1WhcNNDkwMjAxMjAwMzE2WjBTMQswCQYDVQQGEwJVUzEeMBwGA1UEChMVTWlj"
@@ -42,9 +42,9 @@ constexpr const char* CCME_ROOTCERT_PEM =
 "o/8fr9+A4SYRYNKS+JZvsrChuJLtBa9ICCaCMN7ljXQ0yCm+RTICc2ENP4truMD1"
 "fhnj9p0gY/wn0HhBJB8oSdSu29f0nP/Y";
 
-// Azure Confidential Cloud Provisioning Root CA 2026
-// Subject: CN=Azure Confidential Cloud Provisioning Root CA 2026
-// Validity: Mar 2026 - Mar 2041
+
+#define ROOTCERT CCME_ROOTCERT_PEM
+
 constexpr const char* CPSROOT_CERT_PEM =
 "MIIFWDCCA0CgAwIBAgIQHJOSmEiKe55AxeRq7d4cGjANBgkqhkiG9w0BAQ0FADA9"
 "MTswOQYDVQQDEzJBenVyZSBDb25maWRlbnRpYWwgQ2xvdWQgUHJvdmlzaW9uaW5n"

@@ -21,8 +21,6 @@ using namespace SecretsLogger;
 
 #define MY_ENCODING_TYPE (PKCS_7_ASN_ENCODING | X509_ASN_ENCODING)
 #define TEMPBUF_SIZE 1024
-#define SELFSIGNEDCERTNAME L"CN=SelfSignedCert"
-#define KEY_CONTAINER_NAME L"SelfSignedCertKeyContainer"
 #define DEBUG_SEPARATOR ", "
 
 // For WinX509CertStore.cpp - Windows equivalent to printCertInfo()
@@ -72,147 +70,497 @@ std::string printCertInfo(PCCERT_CONTEXT pCertContext, const std::string& label)
     return ss.str();
 }
 
-std::string generate_root_cert() {
-    std::string encoded_cert;
-    HCRYPTPROV hProv;
-    BYTE bEncoded[TEMPBUF_SIZE];
-    DWORD dwEncoded = TEMPBUF_SIZE;
-    PCCERT_CONTEXT pc = NULL;
-    DWORD dwError;
-
-    if (!CertStrToName(X509_ASN_ENCODING,
-        SELFSIGNEDCERTNAME,
-        CERT_X500_NAME_STR,
-        NULL,
-        bEncoded,
-        &dwEncoded,
-        NULL)) {
-        throw WinCryptError("CertStrToName failed.", GetLastError());
-    }
-
-    WCHAR* pszKeyContainerName = (WCHAR *)KEY_CONTAINER_NAME;
-
-    if (!CryptAcquireContext(&hProv, pszKeyContainerName, MS_STRONG_PROV, PROV_RSA_FULL, CRYPT_NEWKEYSET | CRYPT_MACHINE_KEYSET))
-    {
-        dwError = GetLastError();
-        if (dwError == NTE_EXISTS) {
-            if (!CryptAcquireContext(&hProv, pszKeyContainerName, MS_STRONG_PROV, PROV_RSA_FULL, CRYPT_MACHINE_KEYSET))
-            {
-                throw WinCryptError("CryptAcquireContext failed.", GetLastError());
-            }
-		}
-        else {
-            throw WinCryptError("CryptAcquireContext failed.", GetLastError());
-        }
-	}
-
-    HCRYPTKEY hKey = NULL;
-    DWORD keyLength = 0x08000000; // upper 16 bits is 2048 which is our requested key length
-    if (!CryptGenKey(hProv, AT_SIGNATURE, keyLength | CRYPT_EXPORTABLE, &hKey))
-    {
-		throw WinCryptError("CryptGenKey failed.", GetLastError());
-    }
-
-    CRYPT_KEY_PROV_INFO kpi;
-    ZeroMemory(&kpi, sizeof(kpi));
-    kpi.pwszContainerName = pszKeyContainerName;
-    kpi.pwszProvName = (LPWSTR)MS_STRONG_PROV;
-    kpi.dwProvType = PROV_RSA_FULL;
-    kpi.dwFlags = CERT_SET_KEY_CONTEXT_PROP_ID | CRYPT_MACHINE_KEYSET;
-    kpi.dwKeySpec = AT_SIGNATURE;
-
-    SYSTEMTIME et;
-    GetSystemTime(&et);
-
-    // We need to add 5 years to the current date to come up with the expiration time
-    // This is the way MSDN recommends
-    FILETIME ft;
-
-    if (!SystemTimeToFileTime(&et, &ft))
-    {
-		throw WinCryptError("SystemTimeToFileTime failed.", GetLastError());
-    }
-
-    ULARGE_INTEGER bigInt;
-    ZeroMemory(&bigInt, sizeof(bigInt));
-    bigInt.HighPart = ft.dwHighDateTime;
-    bigInt.LowPart = ft.dwLowDateTime;
-
-    //                 5 years * 365 days * 24 hours * 60 minutes * 60 seconds * 1,000,000,000 nanoseconds / 100 (100-nanoseconds)
-    bigInt.QuadPart += 1576800000000000; // 5 years in 100-nanosecond intervals
-    ft.dwHighDateTime = bigInt.HighPart;
-    ft.dwLowDateTime = bigInt.LowPart;
-    if (!FileTimeToSystemTime(&ft, &et))
-    {
-		throw WinCryptError("FileTimeToSystemTime failed.", GetLastError());
-    }
-
-    LPSTR lpEKU[1] = { 0 };
-    lpEKU[0] = const_cast<LPSTR> (szOID_PKIX_KP_CODE_SIGNING);
-    CERT_ENHKEY_USAGE certEKU;
-    certEKU.cUsageIdentifier = 1;
-    certEKU.rgpszUsageIdentifier = &lpEKU[0];
-
-    DWORD cbEncodedEKU = 0;
-    PBYTE pbEncodedEKU = NULL;
-    CERT_NAME_BLOB sib;
-    sib.cbData = dwEncoded;
-    sib.pbData = bEncoded;
-
-
-    // encode the key usage definition for use in the cert extension.
-    if (!CryptEncodeObjectEx(X509_ASN_ENCODING,
-        szOID_ENHANCED_KEY_USAGE,
-        &certEKU,
-        CRYPT_ENCODE_ALLOC_FLAG,
-        NULL,
-        &pbEncodedEKU,
-        &cbEncodedEKU))
-    {
-		throw WinCryptError("CryptEncodeObjectEx failed.", GetLastError());
-    }
-
-    // place the encoded key usage in the cert extension
-    CERT_EXTENSIONS certExts;
-    CERT_EXTENSION certExt[1];
-    certExt[0].pszObjId = (LPSTR)szOID_ENHANCED_KEY_USAGE;
-    certExt[0].fCritical = FALSE;
-    certExt[0].Value.cbData = cbEncodedEKU;
-    certExt[0].Value.pbData = pbEncodedEKU;
-
-    certExts.cExtension = 1;
-    certExts.rgExtension = certExt;
-
-    CRYPT_ALGORITHM_IDENTIFIER SignatureAlgorithm;
-    ZeroMemory(&SignatureAlgorithm, sizeof(SignatureAlgorithm));
-    SignatureAlgorithm.pszObjId = (LPSTR)szOID_RSA_SHA256RSA;
-
-    // create the self signed certificate
-    pc = CertCreateSelfSignCertificate(hProv, &sib, 0, &kpi, &SignatureAlgorithm, NULL, &et, &certExts);
-
-	BYTE* pbEncodedCert = NULL;
-	DWORD cbEncodedCert = 0;
-
-	CertSerializeCertificateStoreElement(pc, 0, NULL, &cbEncodedCert);
-    std::vector<unsigned char> cert = std::vector<unsigned char>(pc->pbCertEncoded, pc->pbCertEncoded + pc->cbCertEncoded);
-	encoded_cert = encoders::base64_encode(cert);
-
-    if (hKey != NULL)
-        CryptDestroyKey(hKey);
-	if (pbEncodedEKU != NULL) {
-		LocalFree(pbEncodedEKU);
-	}
-    CertFreeCertificateContext(pc);
-    CryptReleaseContext(hProv, 0);
-    return encoded_cert;
+void WincryptX509::SetLeafKey(BCRYPT_KEY_HANDLE key)
+{
+    this->leafPrivateKey = key;
 }
 
-std::vector<unsigned char*> generate_cert_chain() {
-	return std::vector<unsigned char*>();
+std::vector<unsigned char> WincryptX509::SignData(const std::vector<unsigned char>& data)
+{
+    if (this->leafPrivateKey == NULL) {
+        throw WinCryptError("Leaf private key is not set.", 0,
+            ErrorCode::LibraryError_Bcrypt_keyError);
+    }
+
+    // Open SHA-256 algorithm
+    BCRYPT_ALG_HANDLE hHashAlg = NULL;
+    NTSTATUS status = BCryptOpenAlgorithmProvider(&hHashAlg, BCRYPT_SHA256_ALGORITHM, NULL, 0);
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptOpenAlgorithmProvider - Hash Algorithm",
+            ErrorCode::LibraryError_Bcrypt_providerError);
+    }
+
+    // Hash the data
+    std::vector<unsigned char> hash(32);
+    status = BCryptHash(hHashAlg, NULL, 0, (PUCHAR)data.data(), (ULONG)data.size(), hash.data(), 32);
+    BCryptCloseAlgorithmProvider(hHashAlg, 0);
+    
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptHash",
+            ErrorCode::CryptographyError_Hash_hashError);
+    }
+
+    // Get signature size
+    BCRYPT_PKCS1_PADDING_INFO paddingInfo = { 0 };
+    paddingInfo.pszAlgId = BCRYPT_SHA256_ALGORITHM;
+    
+    DWORD signatureSize = 0;
+    status = BCryptSignHash(this->leafPrivateKey, &paddingInfo, hash.data(), 32, 
+                           NULL, 0, &signatureSize, BCRYPT_PAD_PKCS1);
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptSignHash - Get Size",
+            ErrorCode::CryptographyError_Signing_verifyError);
+    }
+
+    // Sign the hash
+    std::vector<unsigned char> signature(signatureSize);
+    status = BCryptSignHash(this->leafPrivateKey, &paddingInfo, hash.data(), 32,
+                           signature.data(), signatureSize, &signatureSize, BCRYPT_PAD_PKCS1);
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptSignHash",
+            ErrorCode::CryptographyError_Signing_verifyError);
+    }
+
+    return signature;
+}
+
+// ============================================================================
+// Test Certificate Chain Generation (Root -> Intermediate -> Leaf)
+// These functions are for unit testing only and generate fresh certificates
+// at runtime to avoid expiration issues with hardcoded test certificates.
+// ============================================================================
+
+// Helper struct to hold a generated certificate and its key
+struct GeneratedCert {
+    PCCERT_CONTEXT cert;
+    HCRYPTPROV hProv;
+    HCRYPTKEY hKey;
+    std::wstring containerName;
+    
+    GeneratedCert() : cert(nullptr), hProv(0), hKey(0) {}
+    ~GeneratedCert() {
+        if (cert) CertFreeCertificateContext(cert);
+        if (hKey) CryptDestroyKey(hKey);
+        if (hProv) CryptReleaseContext(hProv, 0);
+        // Delete the key container
+        if (!containerName.empty()) {
+            HCRYPTPROV hTempProv = 0;
+            CryptAcquireContextW(&hTempProv, containerName.c_str(), MS_STRONG_PROV_W,
+                                PROV_RSA_FULL, CRYPT_DELETEKEYSET);
+        }
+    }
+};
+
+// Helper function to compute expiry time
+static SYSTEMTIME computeExpiryTime(int days) {
+    SYSTEMTIME stNow, stExpiry;
+    GetSystemTime(&stNow);
+    
+    FILETIME ftNow, ftExpiry;
+    SystemTimeToFileTime(&stNow, &ftNow);
+    
+    ULARGE_INTEGER uliExpiry;
+    uliExpiry.LowPart = ftNow.dwLowDateTime;
+    uliExpiry.HighPart = ftNow.dwHighDateTime;
+    uliExpiry.QuadPart += (ULONGLONG)days * 24 * 60 * 60 * 10000000ULL;
+    ftExpiry.dwLowDateTime = uliExpiry.LowPart;
+    ftExpiry.dwHighDateTime = uliExpiry.HighPart;
+    FileTimeToSystemTime(&ftExpiry, &stExpiry);
+    
+    return stExpiry;
+}
+
+// Helper function to create a key pair and crypto context
+static void createKeyPair(const std::wstring& containerName, HCRYPTPROV& hProv, HCRYPTKEY& hKey) {
+    // Delete existing container if present
+    CryptAcquireContextW(&hProv, containerName.c_str(), MS_STRONG_PROV_W,
+                        PROV_RSA_FULL, CRYPT_DELETEKEYSET);
+    
+    if (!CryptAcquireContextW(&hProv, containerName.c_str(), MS_STRONG_PROV_W,
+                              PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
+        throw WinCryptError("CryptAcquireContext failed.", GetLastError());
+    }
+    
+    // Generate 2048-bit RSA key
+    DWORD keyLength = 0x08000000; // 2048 bits in upper 16 bits
+    if (!CryptGenKey(hProv, AT_SIGNATURE, keyLength | CRYPT_EXPORTABLE, &hKey)) {
+        CryptReleaseContext(hProv, 0);
+        hProv = 0;
+        throw WinCryptError("CryptGenKey failed.", GetLastError());
+    }
+}
+
+// Helper function to create a self-signed root CA certificate
+static std::unique_ptr<GeneratedCert> createRootCACert(const std::wstring& subjectName, int validityDays) {
+    auto result = std::make_unique<GeneratedCert>();
+    result->containerName = L"TestRootCAContainer";
+    
+    createKeyPair(result->containerName, result->hProv, result->hKey);
+    
+    // Encode subject name
+    BYTE bEncoded[TEMPBUF_SIZE];
+    DWORD dwEncoded = TEMPBUF_SIZE;
+    if (!CertStrToNameW(X509_ASN_ENCODING, subjectName.c_str(), CERT_X500_NAME_STR,
+                        NULL, bEncoded, &dwEncoded, NULL)) {
+        throw WinCryptError("CertStrToName failed for root CA.", GetLastError());
+    }
+    
+    CERT_NAME_BLOB subjectBlob = { dwEncoded, bEncoded };
+    SYSTEMTIME stExpiry = computeExpiryTime(validityDays);
+    
+    // Set up key provider info
+    CRYPT_KEY_PROV_INFO kpi = {0};
+    kpi.pwszContainerName = const_cast<LPWSTR>(result->containerName.c_str());
+    kpi.pwszProvName = const_cast<LPWSTR>(MS_STRONG_PROV_W);
+    kpi.dwProvType = PROV_RSA_FULL;
+    kpi.dwFlags = 0;
+    kpi.dwKeySpec = AT_SIGNATURE;
+    
+    // Set up signature algorithm
+    CRYPT_ALGORITHM_IDENTIFIER signAlg = {0};
+    signAlg.pszObjId = const_cast<LPSTR>(szOID_RSA_SHA256RSA);
+    
+    // Add CA basic constraints extension
+    CERT_BASIC_CONSTRAINTS2_INFO basicConstraints = {0};
+    basicConstraints.fCA = TRUE;
+    basicConstraints.fPathLenConstraint = TRUE;
+    basicConstraints.dwPathLenConstraint = 1;
+    
+    DWORD cbEncoded = 0;
+    PBYTE pbEncoded = NULL;
+    if (!CryptEncodeObjectEx(X509_ASN_ENCODING, X509_BASIC_CONSTRAINTS2,
+                            &basicConstraints, CRYPT_ENCODE_ALLOC_FLAG,
+                            NULL, &pbEncoded, &cbEncoded)) {
+        throw WinCryptError("CryptEncodeObjectEx failed for basic constraints.", GetLastError());
+    }
+    
+    CERT_EXTENSION certExt = {0};
+    certExt.pszObjId = const_cast<LPSTR>(szOID_BASIC_CONSTRAINTS2);
+    certExt.fCritical = TRUE;
+    certExt.Value.cbData = cbEncoded;
+    certExt.Value.pbData = pbEncoded;
+    
+    CERT_EXTENSIONS certExts = {0};
+    certExts.cExtension = 1;
+    certExts.rgExtension = &certExt;
+    
+    // Create self-signed certificate
+    result->cert = CertCreateSelfSignCertificate(result->hProv, &subjectBlob, 0, &kpi, &signAlg,
+                                                  NULL, &stExpiry, &certExts);
+    LocalFree(pbEncoded);
+    
+    if (!result->cert) {
+        throw WinCryptError("CertCreateSelfSignCertificate failed for root CA.", GetLastError());
+    }
+    
+    LIBSECRETS_LOG(LogLevel::Info, "createRootCACert",
+                  "Created root CA: %s", printCertInfo(result->cert, "Root CA").c_str());
+    
+    return result;
+}
+
+// Helper function to create a certificate signed by an issuer
+static std::unique_ptr<GeneratedCert> createSignedCert(
+    const std::wstring& subjectName,
+    const std::wstring& containerName,
+    GeneratedCert* issuer,
+    int validityDays,
+    bool isCA,
+    int pathLen = -1)
+{
+    auto result = std::make_unique<GeneratedCert>();
+    result->containerName = containerName;
+    
+    createKeyPair(result->containerName, result->hProv, result->hKey);
+    
+    // Export the public key to create CERT_PUBLIC_KEY_INFO
+    DWORD cbPubKeyInfo = 0;
+    if (!CryptExportPublicKeyInfo(result->hProv, AT_SIGNATURE, X509_ASN_ENCODING,
+                                  NULL, &cbPubKeyInfo)) {
+        throw WinCryptError("CryptExportPublicKeyInfo size failed.", GetLastError());
+    }
+    
+    std::vector<BYTE> pubKeyInfoBuf(cbPubKeyInfo);
+    PCERT_PUBLIC_KEY_INFO pPubKeyInfo = (PCERT_PUBLIC_KEY_INFO)pubKeyInfoBuf.data();
+    if (!CryptExportPublicKeyInfo(result->hProv, AT_SIGNATURE, X509_ASN_ENCODING,
+                                  pPubKeyInfo, &cbPubKeyInfo)) {
+        throw WinCryptError("CryptExportPublicKeyInfo failed.", GetLastError());
+    }
+    
+    // Encode subject name
+    BYTE bSubjectEncoded[TEMPBUF_SIZE];
+    DWORD dwSubjectEncoded = TEMPBUF_SIZE;
+    if (!CertStrToNameW(X509_ASN_ENCODING, subjectName.c_str(), CERT_X500_NAME_STR,
+                        NULL, bSubjectEncoded, &dwSubjectEncoded, NULL)) {
+        throw WinCryptError("CertStrToName failed.", GetLastError());
+    }
+    
+    // Build certificate info
+    CERT_INFO certInfo = {0};
+    certInfo.dwVersion = CERT_V3;
+    
+    // Serial number (simple incrementing)
+    static DWORD serialNum = 2;
+    BYTE serialBytes[4];
+    serialBytes[0] = (BYTE)(serialNum & 0xFF);
+    serialBytes[1] = (BYTE)((serialNum >> 8) & 0xFF);
+    serialBytes[2] = (BYTE)((serialNum >> 16) & 0xFF);
+    serialBytes[3] = (BYTE)((serialNum >> 24) & 0xFF);
+    serialNum++;
+    certInfo.SerialNumber.cbData = 4;
+    certInfo.SerialNumber.pbData = serialBytes;
+    
+    // Signature algorithm
+    certInfo.SignatureAlgorithm.pszObjId = const_cast<LPSTR>(szOID_RSA_SHA256RSA);
+    
+    // Issuer name (from issuer certificate)
+    certInfo.Issuer = issuer->cert->pCertInfo->Subject;
+    
+    // Validity period
+    SYSTEMTIME stNow;
+    GetSystemTime(&stNow);
+    FILETIME ftNow;
+    SystemTimeToFileTime(&stNow, &ftNow);
+    certInfo.NotBefore = ftNow;
+    
+    SYSTEMTIME stExpiry = computeExpiryTime(validityDays);
+    FILETIME ftExpiry;
+    SystemTimeToFileTime(&stExpiry, &ftExpiry);
+    certInfo.NotAfter = ftExpiry;
+    
+    // Subject name
+    certInfo.Subject.cbData = dwSubjectEncoded;
+    certInfo.Subject.pbData = bSubjectEncoded;
+    
+    // Public key
+    certInfo.SubjectPublicKeyInfo = *pPubKeyInfo;
+    
+    // Add extensions
+    std::vector<CERT_EXTENSION> extensions;
+    std::vector<BYTE> basicConstraintsBuf;
+    
+    // Basic Constraints extension
+    CERT_BASIC_CONSTRAINTS2_INFO basicConstraints = {0};
+    basicConstraints.fCA = isCA ? TRUE : FALSE;
+    if (isCA && pathLen >= 0) {
+        basicConstraints.fPathLenConstraint = TRUE;
+        basicConstraints.dwPathLenConstraint = pathLen;
+    }
+    
+    DWORD cbBasicConstraints = 0;
+    PBYTE pbBasicConstraints = NULL;
+    if (!CryptEncodeObjectEx(X509_ASN_ENCODING, X509_BASIC_CONSTRAINTS2,
+                            &basicConstraints, CRYPT_ENCODE_ALLOC_FLAG,
+                            NULL, &pbBasicConstraints, &cbBasicConstraints)) {
+        throw WinCryptError("CryptEncodeObjectEx failed for basic constraints.", GetLastError());
+    }
+    
+    CERT_EXTENSION bcExt = {0};
+    bcExt.pszObjId = const_cast<LPSTR>(szOID_BASIC_CONSTRAINTS2);
+    bcExt.fCritical = TRUE;
+    bcExt.Value.cbData = cbBasicConstraints;
+    bcExt.Value.pbData = pbBasicConstraints;
+    extensions.push_back(bcExt);
+    
+    certInfo.cExtension = (DWORD)extensions.size();
+    certInfo.rgExtension = extensions.data();
+    
+    // Sign the certificate with issuer's key
+    DWORD cbEncodedCert = 0;
+    if (!CryptSignAndEncodeCertificate(issuer->hProv, AT_SIGNATURE, X509_ASN_ENCODING,
+                                       X509_CERT_TO_BE_SIGNED, &certInfo,
+                                       &certInfo.SignatureAlgorithm,
+                                       NULL, NULL, &cbEncodedCert)) {
+        LocalFree(pbBasicConstraints);
+        throw WinCryptError("CryptSignAndEncodeCertificate size failed.", GetLastError());
+    }
+    
+    std::vector<BYTE> encodedCert(cbEncodedCert);
+    if (!CryptSignAndEncodeCertificate(issuer->hProv, AT_SIGNATURE, X509_ASN_ENCODING,
+                                       X509_CERT_TO_BE_SIGNED, &certInfo,
+                                       &certInfo.SignatureAlgorithm,
+                                       NULL, encodedCert.data(), &cbEncodedCert)) {
+        LocalFree(pbBasicConstraints);
+        throw WinCryptError("CryptSignAndEncodeCertificate failed.", GetLastError());
+    }
+    
+    LocalFree(pbBasicConstraints);
+    
+    // Create certificate context from encoded certificate
+    result->cert = CertCreateCertificateContext(X509_ASN_ENCODING, encodedCert.data(), cbEncodedCert);
+    if (!result->cert) {
+        throw WinCryptError("CertCreateCertificateContext failed.", GetLastError());
+    }
+    
+    LIBSECRETS_LOG(LogLevel::Info, "createSignedCert",
+                  "Created certificate: %s", printCertInfo(result->cert, isCA ? "Intermediate CA" : "Leaf").c_str());
+    
+    return result;
+}
+
+// Helper function to convert CryptoAPI private key to BCrypt key handle
+static BCRYPT_KEY_HANDLE convertToBcryptKey(HCRYPTPROV hProv, HCRYPTKEY hCryptKey) {
+    // Export the private key from CryptoAPI
+    DWORD dwKeyBlobLen = 0;
+    if (!CryptExportKey(hCryptKey, 0, PRIVATEKEYBLOB, 0, NULL, &dwKeyBlobLen)) {
+        throw WinCryptError("CryptExportKey size failed.", GetLastError());
+    }
+    
+    std::vector<BYTE> keyBlob(dwKeyBlobLen);
+    if (!CryptExportKey(hCryptKey, 0, PRIVATEKEYBLOB, 0, keyBlob.data(), &dwKeyBlobLen)) {
+        throw WinCryptError("CryptExportKey failed.", GetLastError());
+    }
+    
+    // Import to BCrypt for signing operations
+    BCRYPT_ALG_HANDLE hRsaAlg = NULL;
+    NTSTATUS status = BCryptOpenAlgorithmProvider(&hRsaAlg, BCRYPT_RSA_ALGORITHM, NULL, 0);
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptOpenAlgorithmProvider for RSA",
+            ErrorCode::LibraryError_Bcrypt_providerError);
+    }
+    
+    // Parse CryptoAPI PRIVATEKEYBLOB format
+    RSAPUBKEY* rsaPubKey = (RSAPUBKEY*)(keyBlob.data() + sizeof(PUBLICKEYSTRUC));
+    DWORD bitLen = rsaPubKey->bitlen;
+    DWORD byteLen = bitLen / 8;
+    
+    // Build BCRYPT_RSAKEY_BLOB for private key
+    DWORD cbHeader = sizeof(BCRYPT_RSAKEY_BLOB);
+    DWORD cbPublicExp = sizeof(DWORD);
+    DWORD cbModulus = byteLen;
+    DWORD cbPrime1 = byteLen / 2;
+    DWORD cbPrime2 = byteLen / 2;
+    
+    DWORD cbBcryptBlob = cbHeader + cbPublicExp + cbModulus + cbPrime1 + cbPrime2;
+    std::vector<BYTE> bcryptBlob(cbBcryptBlob);
+    
+    BCRYPT_RSAKEY_BLOB* pBcryptBlob = (BCRYPT_RSAKEY_BLOB*)bcryptBlob.data();
+    pBcryptBlob->Magic = BCRYPT_RSAPRIVATE_MAGIC;
+    pBcryptBlob->BitLength = bitLen;
+    pBcryptBlob->cbPublicExp = cbPublicExp;
+    pBcryptBlob->cbModulus = cbModulus;
+    pBcryptBlob->cbPrime1 = cbPrime1;
+    pBcryptBlob->cbPrime2 = cbPrime2;
+    
+    // Copy public exponent (reverse byte order from little-endian to big-endian)
+    BYTE* pDst = bcryptBlob.data() + cbHeader;
+    DWORD pubExp = rsaPubKey->pubexp;
+    for (DWORD i = 0; i < cbPublicExp; i++) {
+        pDst[cbPublicExp - 1 - i] = (BYTE)(pubExp >> (i * 8));
+    }
+    pDst += cbPublicExp;
+    
+    // Pointer to data after RSAPUBKEY structure
+    BYTE* pSrc = keyBlob.data() + sizeof(PUBLICKEYSTRUC) + sizeof(RSAPUBKEY);
+    
+    // Copy modulus (reverse byte order)
+    for (DWORD i = 0; i < cbModulus; i++) {
+        pDst[cbModulus - 1 - i] = pSrc[i];
+    }
+    pSrc += cbModulus;
+    pDst += cbModulus;
+    
+    // Copy Prime1 (reverse byte order)
+    for (DWORD i = 0; i < cbPrime1; i++) {
+        pDst[cbPrime1 - 1 - i] = pSrc[i];
+    }
+    pSrc += cbPrime1;
+    pDst += cbPrime1;
+    
+    // Copy Prime2 (reverse byte order)
+    for (DWORD i = 0; i < cbPrime2; i++) {
+        pDst[cbPrime2 - 1 - i] = pSrc[i];
+    }
+    
+    BCRYPT_KEY_HANDLE hBcryptKey = NULL;
+    status = BCryptImportKeyPair(hRsaAlg, NULL, BCRYPT_RSAPRIVATE_BLOB,
+                                &hBcryptKey, bcryptBlob.data(), cbBcryptBlob, 0);
+    BCryptCloseAlgorithmProvider(hRsaAlg, 0);
+    
+    if (status != STATUS_SUCCESS) {
+        throw BcryptError(status, "BCryptImportKeyPair",
+            ErrorCode::LibraryError_Bcrypt_keyError);
+    }
+    
+    return hBcryptKey;
+}
+
+// Helper function to get base64-encoded DER certificate
+static std::string getCertBase64(PCCERT_CONTEXT cert) {
+    std::vector<unsigned char> der(cert->pbCertEncoded, cert->pbCertEncoded + cert->cbCertEncoded);
+    return encoders::base64_encode(der);
+}
+
+std::unique_ptr<WincryptX509> generateCertChain()
+{
+    // Generate a complete 3-level certificate chain: Root CA -> Intermediate CA -> Leaf
+    // This matches the production certificate structure and the Linux implementation.
+    
+    try {
+        // 1. Create Root CA (self-signed, valid for 10 years)
+        auto rootCA = createRootCACert(L"CN=Test Root CA", 3650);
+        
+        // 2. Create Intermediate CA (signed by Root, valid for 5 years)
+        auto intermediateCA = createSignedCert(
+            L"CN=Test Intermediate CA",
+            L"TestIntermediateCAContainer",
+            rootCA.get(),
+            1825,  // 5 years
+            true,  // is CA
+            0      // pathlen = 0 (can only sign end-entity certs)
+        );
+        
+        // 3. Create Leaf certificate (signed by Intermediate, valid for 1 year)
+        // Include the expected suffix for verification
+        std::wstring leafSubject = L"CN=eastus" + std::wstring(L".SecureCPSProvisioning.cloudapp.net");
+        auto leafCert = createSignedCert(
+            leafSubject,
+            L"TestLeafCertContainer",
+            intermediateCA.get(),
+            365,   // 1 year
+            false  // not a CA
+        );
+        
+        // Get base64-encoded certificates
+        std::string rootCertBase64 = getCertBase64(rootCA->cert);
+        std::string intermediateCertBase64 = getCertBase64(intermediateCA->cert);
+        std::string leafCertBase64 = getCertBase64(leafCert->cert);
+        
+        // Convert leaf private key to BCrypt handle for signing
+        BCRYPT_KEY_HANDLE hBcryptKey = convertToBcryptKey(leafCert->hProv, leafCert->hKey);
+        
+        // Create WincryptX509 with the root certificate
+        auto certChain = std::make_unique<WincryptX509>(std::vector<const char*>{ rootCertBase64.c_str() });
+        
+        // Load intermediate certificate
+        certChain->LoadIntermediateCertificate(intermediateCertBase64.c_str());
+        
+        // Load leaf certificate
+        certChain->LoadLeafCertificate(leafCertBase64.c_str());
+        
+        // Set the private key for signing
+        certChain->SetLeafKey(hBcryptKey);
+        
+        LIBSECRETS_LOG(LogLevel::Info, "generateCertChain",
+                      "Successfully generated 3-level test certificate chain (Root -> Intermediate -> Leaf)");
+        
+        return certChain;
+        
+    } catch (const std::exception& e) {
+        LIBSECRETS_LOG(LogLevel::Error, "generateCertChain",
+                      "Failed to generate certificate chain: %s", e.what());
+        throw;
+    }
+}
+
+WincryptX509::WincryptX509(const char* rootCert)
+    : WincryptX509(std::vector<const char*>{ rootCert })
+{
 }
 
 WincryptX509::WincryptX509(const std::vector<const char*>& rootCerts)
 {
+    this->leafPrivateKey = NULL;
     this->hStore = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, NULL, 0, NULL);
     if (this->hStore == NULL)
     {
@@ -238,6 +586,10 @@ WincryptX509::WincryptX509(const std::vector<const char*>& rootCerts)
 
 WincryptX509::~WincryptX509()
 {
+    if (this->leafPrivateKey != NULL)
+    {
+        BCryptDestroyKey(this->leafPrivateKey);
+    }
     if (this->hStore != NULL)
     {
         CertCloseStore(hStore, 0);
