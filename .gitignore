@@ -1,6 +1,9 @@
 #Nuget Cache
 packages/
 
+# vcpkg manifest mode output
+vcpkg_installed/
+
 #################
 ## Visual Studio
 #################
