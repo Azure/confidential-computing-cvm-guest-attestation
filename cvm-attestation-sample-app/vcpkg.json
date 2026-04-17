@@ -1,0 +1,12 @@
+{
+  "name": "cvm-attestation-sample-app",
+  "version-string": "1.0.0",
+  "description": "Azure CVM Guest Attestation sample application",
+  "dependencies": [
+    {
+      "name": "curl",
+      "features": ["ssl"]
+    },
+    "openssl"
+  ]
+}
