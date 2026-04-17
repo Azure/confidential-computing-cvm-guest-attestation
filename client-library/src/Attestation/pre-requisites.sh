@@ -84,5 +84,3 @@ export CC=gcc && export CXX=g++ && \
     sudo rm -rf /usr/src/tpm2-tss
 
 cd ${CURRENT_DIR}
-
-popd

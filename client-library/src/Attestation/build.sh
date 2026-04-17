@@ -8,17 +8,20 @@ BUILDTYPE=""
 
 function Usage()
 {
-    echo "Usage: $0 [-h] [-d] --> where -d enables Debug Build. It defaults to Release Builds.";
+    echo "Usage: $0 [-h] [-d] [-l] --> where -d enables Debug Build, -l enables Azure Local. It defaults to Release Builds.";
     exit 1;
 }
 
-while getopts ":hd" opt; do
+while getopts ":hdl" opt; do
   case ${opt} in
     h )
         Usage
       ;;
     d )
-        BUILDTYPE="-d"
+        BUILDTYPE="${BUILDTYPE} -d"
+      ;;
+    l )
+        BUILDTYPE="${BUILDTYPE} -l"
       ;;
     \? )
         Usage

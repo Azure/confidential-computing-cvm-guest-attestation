@@ -67,3 +67,7 @@ target_link_libraries(${CMAKE_PROJECT_TARGET} Tpm2)
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${TSS2_LIBRARIES})
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${CURL_LIB} z)
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${SSL_LIB})
+
+if(AZURE_LOCAL)
+    target_link_libraries(${CMAKE_PROJECT_TARGET} edge-cc-base-attestation-sdk)
+endif()
