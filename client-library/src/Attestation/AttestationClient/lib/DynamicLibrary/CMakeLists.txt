@@ -6,9 +6,17 @@ project(azguestattestation VERSION 1.0.5)
 set(CMAKE_PROJECT_TARGET azguestattestation)
 
 find_package(Tss2 REQUIRED)
+
 include_directories(${TSS2_INCLUDE_DIRS})
 
 add_definitions (-DPLATFORM_UNIX)
+
+if(AZURE_LOCAL)
+    add_compile_definitions(AZURE_LOCAL)
+    message(STATUS "Azure Local mode: ENABLED")
+else()
+    message(STATUS "Azure Local mode: DISABLED")
+endif()
 
 find_path(CURL_INCLUDE_DIR NAMES curl PATHS /usr/local/attestationcurl/include
                                             NO_DEFAULT_PATH)
@@ -50,6 +58,10 @@ find_library(CURL_LIB NAMES curl PATHS /usr/local/attestationcurl/lib
 
 target_link_libraries(${CMAKE_PROJECT_TARGET} Tpm2)
 target_link_libraries(${CMAKE_PROJECT_TARGET} ${CURL_LIB})
+
+if(AZURE_LOCAL)
+    target_link_libraries(${CMAKE_PROJECT_TARGET} edge-cc-base-attestation-sdk)
+endif()
 
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES VERSION ${PROJECT_VERSION})
 set_target_properties(${CMAKE_PROJECT_TARGET} PROPERTIES SOVERSION 1)
