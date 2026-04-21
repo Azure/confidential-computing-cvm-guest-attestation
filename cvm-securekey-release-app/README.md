@@ -26,6 +26,22 @@ Use the below command to install the attestation package
 $ wget https://packages.microsoft.com/repos/azurecore/pool/main/a/azguestattestation1/azguestattestation1_1.1.2_amd64.deb
 $ sudo dpkg -i azguestattestation1_1.1.2_amd64.deb
 ```
+
+Once the above packages have been installed, use below steps to build and run the app
+
+```sh
+$ git clone --recursive https://github.com/Azure/confidential-computing-cvm-guest-attestation
+$ cd confidential-computing-cvm-guest-attestation
+$ cd cvm-securekey-release-app/
+$ mkdir build && cd build
+$ cmake .. -DCMAKE_BUILD_TYPE=Release  # Debug for more tracing output and define TRACE constant in CMakeLists.txt
+$ make
+```
+
+## Build Instructions for Azure Local
+
+On Azure Local, the Evidence SDK (`edge-cc-base-attestation-sdk`) handles AKV authentication and key release via the IGVM agent, so IMDS/Service Principal credentials are not required.
+
 Note for Azure Local the attestation package must be built from source with Azure Local support enabled.
 Use the following script from the repo root to build and install:
 
@@ -36,14 +52,12 @@ $ sudo ./ClientLibBuildAndInstallAzureLocal.sh -p  # -p to install pre-requisite
 
 See client-library/src/Readme.md for more details.
 
-Once the above packages have been installed, use below steps to build and run the app
+Once the prerequisites have been installed, build with the `AZURE_LOCAL` CMake option enabled:
 
 ```sh
-$ git clone --recursive https://github.com/Azure/confidential-computing-cvm-guest-attestation
-$ cd confidential-computing-cvm-guest-attestation
 $ cd cvm-securekey-release-app/
 $ mkdir build && cd build
-$ cmake .. -DCMAKE_BUILD_TYPE=Release  # Debug for more tracing output and define TRACE constant in CMakeLists.txt
+$ cmake .. -DCMAKE_BUILD_TYPE=Release -DAZURE_LOCAL=ON
 $ make
 ```
 
@@ -102,7 +116,7 @@ For Azure Local, use the following SKR sample policy:
 
 3- Create or use an existing Managed Identity (user-assigned).
 
-> **⚠️ Azure Local Note:** Managed Identities are not supported on Azure Local CVMs. Use a Service Principal (`-c sp`) instead. See the `-c` option below for details.
+> **⚠️ Azure Local Note:** Managed Identities are not supported on Azure Local CVMs. SKR is handled using the Azure Local cluster identity. You must grant this identity the 'Release' permissions on the key you wish to release.
 4- Assign the managed identity to the confidential VM.
 4- Grant 'Get' and 'Release' permissions to the managed identity in the Azure Keyvault access policies.
 5- Copy the built sample application to your target confidential VM.
