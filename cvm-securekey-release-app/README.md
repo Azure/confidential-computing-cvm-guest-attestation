@@ -182,15 +182,15 @@ cat keys.json | sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds 
 
 # Inline JSON
 sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds \
-    -B '{"keys":[{"id":"key1","wrapped":"base64..."}]}'
+    -B '{"keys":[{"id":"label1","wrapped":"base64..."}]}'
 ```
 
-**Input format:**
+**Input format** (`id` is a caller-chosen label for correlating results — it is not a key vault reference):
 ```json
 {
   "keys": [
-    { "id": "disk-key-1", "wrapped": "base64-encoded-ciphertext" },
-    { "id": "disk-key-2", "wrapped": "base64-encoded-ciphertext" }
+    { "id": "label1", "wrapped": "base64-encoded-ciphertext" },
+    { "id": "label2", "wrapped": "base64-encoded-ciphertext" }
   ]
 }
 ```
@@ -199,8 +199,8 @@ sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds \
 ```json
 {
   "results": [
-    { "id": "disk-key-1", "unwrapped": "plaintext-key" },
-    { "id": "disk-key-2", "unwrapped": "plaintext-key" }
+    { "id": "label1", "unwrapped": "plaintext-key" },
+    { "id": "label2", "unwrapped": "plaintext-key" }
   ]
 }
 ```

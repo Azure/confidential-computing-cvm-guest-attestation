@@ -848,10 +848,6 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
         TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_ERRORBUFFER")
     }
 
-    // DEBUG only, when a proxy is needed such as Fiddler.
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
     curlRet = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Util::CurlWriteCallback);
     if (curlRet != CURLE_OK)
     {
