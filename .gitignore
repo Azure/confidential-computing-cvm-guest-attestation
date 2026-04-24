@@ -78,3 +78,6 @@ packages/
 **/compile_commands.json
 
 *.swp
+
+# vcpkg installation
+vcpkg_installed/

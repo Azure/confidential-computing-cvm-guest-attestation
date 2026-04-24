@@ -136,6 +136,155 @@ sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -n "<some-iden
 
   - `sp`: If a custom service principal credentials needs to be used, `AKV_SKR_CLIENT_ID`, `AKV_SKR_CLIENT_SECRET` and `AKV_SKR_TENANT_ID` environment variables can be provided
 
+---
+
+## Enhancements
+
+### Cross-Platform Support (Windows + Linux)
+
+The application now builds on both **Linux** and **Windows**.
+
+#### Windows Build
+
+Requires Visual Studio 2022 with C++ workload, CMake ≥ 3.15, and [vcpkg](https://github.com/microsoft/vcpkg).
+
+```powershell
+# One-time: install the GuestAttestation NuGet package
+nuget install Microsoft.Azure.Security.GuestAttestation -Version 1.1.0 -OutputDirectory packages
+
+# Configure and build
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
+      -DVCPKG_TARGET_TRIPLET=x64-windows-release ^
+      -DVCPKG_OVERLAY_TRIPLETS=triplets
+cmake --build build --config Release
+```
+
+The build output in `build/Release/` includes the executable, all required vcpkg DLLs, the AttestationClientLib DLL, and MSVC runtime DLLs — ready for xcopy deployment.
+
+#### Linux Build — Classic vs Portable
+
+The CMake file supports a **`SKR_PORTABLE_DEPLOY`** option (default `OFF`):
+
+| Mode | CMake flag | Behavior |
+|------|-----------|----------|
+| **Classic** (default) | none | Hardcoded system paths, links jsoncpp. Matches the original main-branch build. |
+| **Portable** | `-DSKR_PORTABLE_DEPLOY=ON` | Uses `find_path`/`find_library`, sets `RPATH=$ORIGIN`, drops jsoncpp from the link line. Used by Dockerfiles and `build-linux.sh`. |
+
+### Docker Build (Ubuntu 22.04)
+
+Builds the application inside a Docker container using the pre-built `azguestattestation1` .deb package. Build time is ~2 minutes.
+
+```sh
+# From repo root:
+docker build -t azureattest-skr -f cvm-securekey-release-app/Dockerfile .
+
+# Extract the binaries:
+docker create --name skr-build azureattest-skr /bin/false
+docker cp skr-build:/out/ .
+docker rm skr-build
+```
+
+Output is a flat deploy directory:
+```
+out/AzureAttestSKR                  # executable (RPATH=$ORIGIN)
+out/libazguestattestation.so.1      # attestation library (RUNPATH stripped)
+```
+
+### Docker Build (Azure Linux 3.0)
+
+Builds the attestation library from source (Azure Linux has no pre-built .deb). System OpenSSL/curl/tpm2-tss packages are symlinked into the paths the attestation library's CMake expects.
+
+```sh
+docker build -t azureattest-skr-azl \
+    -f cvm-securekey-release-app/Dockerfile.azurelinux .
+```
+
+### Runtime Dependencies (target machine)
+
+| Distro | Packages |
+|--------|----------|
+| Ubuntu 22.04+ | `libcurl4 libssl3 libtss2-esys-3.0.2-0` |
+| RHEL 9+ | `openssl-libs libcurl tpm2-tss` |
+| Azure Linux 3.0+ | `curl-libs openssl-libs tpm2-tss libgcrypt` |
+
+### Batch Key Unwrap (`-B` flag)
+
+Performs **one SKR call** followed by multiple unwrap operations. Accepts input from a file, stdin (`-`), or inline JSON.
+
+```sh
+# From a JSON file
+sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds -B keys.json
+
+# From stdin
+cat keys.json | sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds -B -
+
+# Inline JSON
+sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds \
+    -B '{"keys":[{"id":"label1","wrapped":"base64..."}]}'
+```
+
+**Input format** (`id` is a caller-chosen label for correlating results — it is not a key vault reference):
+```json
+{
+  "keys": [
+    { "id": "label1", "wrapped": "base64-encoded-ciphertext" },
+    { "id": "label2", "wrapped": "base64-encoded-ciphertext" }
+  ]
+}
+```
+
+**Output format** (stdout):
+```json
+{
+  "results": [
+    { "id": "label1", "unwrapped": "plaintext-key" },
+    { "id": "label2", "unwrapped": "plaintext-key" }
+  ]
+}
+```
+
+### OAEP / MGF1 Hash Algorithm Options
+
+For unwrap operations (`-u` and `-B`), the OAEP and MGF1 hash algorithms can be specified:
+
+- `-H <hash>` — OAEP hash algorithm: `sha1`, `sha256`, `sha384`, `sha512` (default: `sha256`, i.e. RSA-OAEP-256)
+- `-G <hash>` — MGF1 hash algorithm (default: same as `-H`)
+
+```sh
+# Unwrap with SHA-256 for both OAEP and MGF1 (default — AKV standard)
+sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u
+
+# Legacy RSA-OAEP (SHA-1)
+sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u -H sha1
+```
+
+### Structured Exit Codes
+
+The application returns structured exit codes for programmatic callers:
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | `EXIT_OK` | Success |
+| 1 | `EXIT_USAGE` | Bad CLI arguments |
+| 2 | `EXIT_ATTEST_FAIL` | MAA attestation failed |
+| 3 | `EXIT_AUTH_FAIL` | IMDS / AAD token acquisition failed |
+| 4 | `EXIT_SKR_FAIL` | AKV/MHSM SKR HTTP error (policy, 403, key not found) |
+| 5 | `EXIT_CRYPTO_FAIL` | OpenSSL error (decrypt, parse, unwrap) |
+| 6 | `EXIT_NETWORK_FAIL` | curl/WinHTTP transport failure |
+
+### Cross-Distro SSL CA Bundle Fix
+
+On non-Ubuntu distros (RHEL, Fedora, SUSE, Alpine), the attestation library's hardcoded CA path (`/etc/ssl/certs/ca-certificates.crt`) does not exist, causing HTTPS failures. The application now auto-creates a `curl-ca-bundle.crt` symlink in the current working directory pointing to the distro's actual CA bundle at startup.
+
+### Stdout / Stderr Separation
+
+All diagnostic and trace output is written to **stderr**. Only the final result (plaintext key, JSON) is written to **stdout**, enabling clean piping:
+
+```sh
+# Pipe unwrapped key directly to another tool
+sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u 2>/dev/null | my-consumer
+```
+
   Example:
 
   ```sh

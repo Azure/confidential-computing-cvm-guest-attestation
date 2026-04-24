@@ -7,6 +7,10 @@
 
 // TODO: Use OPENSSL_cleanse(buffer, sizeof(buffer)) to clear sensitive data from memory.
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4996) // suppress MSVC deprecation warning for std::getenv
+#endif
+
 #include <cstdlib>
 #include <ctime>
 #include <thread>
@@ -25,6 +29,10 @@
 #include "AttestationUtil.h"
 #include "Logger.h"
 #include "Constants.h"
+
+#ifdef _WIN32
+#include <winhttp.h>
+#endif
 
 using namespace attest;
 using json = nlohmann::json;
@@ -210,7 +218,7 @@ std::string getResourceUrl(const std::string &KEKUrl, bool isIMDS = true)
     // If neither AKV nor MHSM suffix is found, throw an error
     else
     {
-        TRACE_ERROR_EXIT(std::string("Invalid resource suffix found in KEKUrl: " + KEKUrl).c_str())
+        THROW_SKR_ERROR(EXIT_USAGE, std::string("Invalid resource suffix found in KEKUrl: " + KEKUrl))
     }
 }
 
@@ -269,18 +277,47 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
     curlRet = curl_easy_perform(curl);
     if (curlRet != CURLE_OK)
     {
-        std::ostringstream oss;
-        oss << "curl_easy_perform() failed: " << curl_easy_strerror(curlRet);
-        TRACE_ERROR_EXIT(oss.str().c_str())
+        std::string msg = std::string("IMDS curl_easy_perform() failed: ") + curl_easy_strerror(curlRet);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        throw skr_error(EXIT_NETWORK_FAIL, msg);
     }
 
+    // Check HTTP status code
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    TRACE_OUT("Response: %s\n", Util::reduct_log(responseStr).c_str());
+
+    TRACE_OUT("IMDS HTTP status: %ld, Response: %s", http_code, Util::reduct_log(responseStr).c_str());
+
+    if (http_code != 200)
+    {
+        // Try to extract the error_description from the IMDS error JSON
+        std::string detail = responseStr;
+        try
+        {
+            json errJson = json::parse(responseStr);
+            if (errJson.contains("error_description"))
+                detail = errJson["error_description"].get<std::string>();
+            else if (errJson.contains("error"))
+                detail = errJson["error"].get<std::string>();
+        }
+        catch (...) {} // use raw response if not JSON
+        std::ostringstream oss;
+        oss << "IMDS token request failed: HTTP " << http_code << ": " << detail;
+        throw skr_error(EXIT_AUTH_FAIL, oss.str());
+    }
+
     json json_object = json::parse(responseStr.c_str());
+    if (!json_object.contains("access_token"))
+    {
+        throw skr_error(EXIT_AUTH_FAIL,
+                        "IMDS response missing 'access_token' field: " + responseStr);
+    }
     std::string access_token = json_object["access_token"].get<std::string>();
 
-    TRACE_OUT("Access Token: %s\n", Util::reduct_log(access_token).c_str());
-
+    TRACE_OUT("Access Token: %s", Util::reduct_log(access_token).c_str());
     TRACE_OUT("Exiting Util::GetIMDSToken()");
 
     return access_token;
@@ -295,58 +332,70 @@ std::string Util::GetAADToken(const std::string &KEKUrl)
     auto clientSecret = std::getenv("AKV_SKR_CLIENT_SECRET");
     auto tenantId = std::getenv("AKV_SKR_TENANT_ID");
 
+    if (!clientId || !clientSecret || !tenantId)
+    {
+        throw skr_error(EXIT_AUTH_FAIL,
+                        "AAD service principal env vars not set. "
+                        "Need AKV_SKR_CLIENT_ID, AKV_SKR_CLIENT_SECRET, AKV_SKR_TENANT_ID");
+    }
+
     std::string resourceUrl = getResourceUrl(KEKUrl, false);
     std::string tokenUrl = "https://login.microsoftonline.com/" + std::string(tenantId) + "/oauth2/v2.0/token";
     std::string postData = "client_id=" + std::string(clientId) + "&client_secret=" + std::string(clientSecret) + "&grant_type=client_credentials&scope= " + resourceUrl;
 
     CURL *curl = curl_easy_init();
-    if (curl)
+    if (!curl)
     {
-        curl_easy_setopt(curl, CURLOPT_URL, tokenUrl.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, postData.length());
+        throw skr_error(EXIT_NETWORK_FAIL, "AAD: curl_easy_init() failed");
+    }
 
-        curl_slist *headers = nullptr;
-        headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_URL, tokenUrl.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, postData.length());
 
-        std::string response;
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_slist *headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
-        CURLcode result = curl_easy_perform(curl);
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+    CURLcode result = curl_easy_perform(curl);
+    if (result != CURLE_OK)
+    {
+        std::string msg = std::string("AAD curl_easy_perform() failed: ") + curl_easy_strerror(result);
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
-
-        if (result == CURLE_OK)
-        {
-            std::string token;
-            json jsonResponse = json::parse(response);
-            if (jsonResponse.contains("access_token"))
-            {
-                token = jsonResponse["access_token"].get<std::string>();
-            }
-            else
-            {
-                TRACE_ERROR_EXIT("access_token not found in AAD auth response")
-            }
-
-            TRACE_OUT("Response: %s\n", token.c_str());
-            TRACE_OUT("Exiting Util::GetAADToken()");
-            return token;
-        }
-        else
-        {
-            TRACE_ERROR_EXIT("curl_easy_perform() failed for URL")
-        }
+        throw skr_error(EXIT_NETWORK_FAIL, msg);
     }
-    else
+
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    TRACE_OUT("AAD HTTP status: %ld, Response: %s", http_code, Util::reduct_log(response).c_str());
+
+    json jsonResponse = json::parse(response);
+    if (jsonResponse.contains("access_token"))
     {
-        TRACE_ERROR_EXIT("curl_easy_init() failed")
+        std::string token = jsonResponse["access_token"].get<std::string>();
+        TRACE_OUT("Response: %s", Util::reduct_log(token).c_str());
+        TRACE_OUT("Exiting Util::GetAADToken()");
+        return token;
     }
 
-    std::cerr << "Failed to obtain AKV AAD token" << std::endl;
-    exit(-1);
+    // No access_token — extract the AAD error details
+    std::string detail = response;
+    if (jsonResponse.contains("error_description"))
+        detail = jsonResponse["error_description"].get<std::string>();
+    else if (jsonResponse.contains("error"))
+        detail = jsonResponse["error"].get<std::string>();
+
+    std::ostringstream oss;
+    oss << "AAD token request failed: HTTP " << http_code << ": " << detail;
+    throw skr_error(EXIT_AUTH_FAIL, oss.str());
 }
 
 /// \copydoc Util::GetMAAToken()
@@ -377,9 +426,8 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
     // Initialize attestation client
     if (!Initialize(log_handle, &attestation_client))
     {
-        std::cerr << "Failed to create attestation client object" << std::endl;
         Uninitialize();
-        exit(-1);
+        throw skr_error(EXIT_ATTEST_FAIL, "Failed to create attestation client object");
     }
 
     // parameters for the Attest call
@@ -392,43 +440,49 @@ std::string Util::GetMAAToken(const std::string &attestation_url, const std::str
     attest::AttestationResult result;
 
     bool is_cvm = false;
-    bool attestation_success = true;
     std::string jwt_str;
     if ((result = attestation_client->Attest(params, &jwt)).code_ != attest::AttestationResult::ErrorCode::SUCCESS)
     {
-        attestation_success = false;
+        std::string errDesc = result.description_.empty() ? "(no description)" : result.description_;
+        fprintf(stderr, "MAA attestation failed: error code %d, description: %s\n",
+                static_cast<int>(result.code_), errDesc.c_str());
+        Uninitialize();
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation failed: " + errDesc);
     }
 
-    if (attestation_success)
+    // Attestation succeeded
+    jwt_str = std::string(reinterpret_cast<char *>(jwt));
+    std::vector<std::string> tokens;
+    boost::split(tokens, jwt_str, [](char c)
+                 { return c == '.'; });
+    if (tokens.size() < 3)
     {
-        jwt_str = std::string(reinterpret_cast<char *>(jwt));
-        std::vector<std::string> tokens;
-        boost::split(tokens, jwt_str, [](char c)
-                     { return c == '.'; });
-        if (tokens.size() < 3)
-        {
-            std::cerr << "Invalid JWT token" << std::endl;
-            exit(-1);
-        }
-
-        json attestation_claims = json::parse(base64_decode(tokens[1]));
-        try
-        {
-            std::string attestation_type = attestation_claims["x-ms-isolation-tee"]["x-ms-attestation-type"].get<std::string>();
-            std::string compliance_status = attestation_claims["x-ms-isolation-tee"]["x-ms-compliance-status"].get<std::string>();
-            if (boost::iequals(attestation_type, "sevsnpvm") &&
-                boost::iequals(compliance_status, "azure-compliant-cvm"))
-            {
-                is_cvm = true;
-            }
-        }
-        catch (...)
-        {
-        } // sevsnp claim does not exist in the token
-
         attestation_client->Free(jwt);
         Uninitialize();
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA returned invalid JWT token (fewer than 3 parts)");
     }
+
+    json attestation_claims = json::parse(base64_decode(tokens[1]));
+    try
+    {
+        std::string attestation_type = attestation_claims["x-ms-isolation-tee"]["x-ms-attestation-type"].get<std::string>();
+        std::string compliance_status = attestation_claims["x-ms-isolation-tee"]["x-ms-compliance-status"].get<std::string>();
+        if ((boost::iequals(attestation_type, "sevsnpvm") ||
+             boost::iequals(attestation_type, "tdxvm")) &&
+            boost::iequals(compliance_status, "azure-compliant-cvm"))
+        {
+            is_cvm = true;
+        }
+    }
+    catch (...)
+    {
+        TRACE_OUT("TEE isolation claims not found in token (non-CVM or different token schema)");
+    }
+
+    attestation_client->Free(jwt);
+    Uninitialize();
+
+    TRACE_OUT("MAA attestation succeeded, is_cvm=%d, token length=%zu", is_cvm, jwt_str.length());
 
     TRACE_OUT("Exiting Util::GetMAAToken()");
     return jwt_str;
@@ -456,7 +510,8 @@ static void handle_openssl_errors(void)
 {
     TRACE_OUT("Entering handle_openssl_errors()");
 
-    std::cerr << "Error in OpenSSL" << std::endl;
+    std::ostringstream oss;
+    oss << "OpenSSL error: ";
     ERR_print_errors_fp(stderr);
 
     unsigned long error;
@@ -464,11 +519,11 @@ static void handle_openssl_errors(void)
     {
         char error_str[120]{};
         ERR_error_string_n(error, error_str, sizeof(error_str));
-        std::cerr << "Error: " << error_str << std::endl;
+        oss << error_str << "; ";
     }
 
     TRACE_OUT("Exiting handle_openssl_errors()");
-    exit(-1);
+    throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
 }
 
 /// Decrypt ciphertext using the key
@@ -527,18 +582,210 @@ std::string Util::GetKeyVaultSKRurl(const std::string &KEKUrl)
                << "api-version";
     requestUri << "="
                << "7.3";
-    TRACE_OUT("Request URI: %s\n", requestUri.str().c_str());
+    TRACE_OUT("Request URI: %s", requestUri.str().c_str());
 
     TRACE_OUT("Exiting Util::GetKeyVaultSKRurl()");
     return requestUri.str();
 }
 
-std::string Util::GetKeyVaultResponse(const std::string &requestUri,
-                                      const std::string &access_token,
-                                      const std::string &attestation_token,
-                                      const std::string &nonce)
+#ifdef _WIN32
+/// <summary>
+/// Windows-specific implementation of the SKR HTTP POST using WinHTTP.
+/// WinHTTP is the preferred HTTP client on Windows — it supports system proxy
+/// settings, Kerberos/NTLM auth, and does not require shipping a CA bundle.
+/// </summary>
+static std::string GetKeyVaultResponseWinHttp(const std::string &requestUri,
+                                              const std::string &access_token,
+                                              const std::string &requestBodyStr)
 {
-    TRACE_OUT("Entering Util::GetKeyVaultResponse()");
+    TRACE_OUT("Entering GetKeyVaultResponseWinHttp()");
+
+    HINTERNET hSession = NULL;
+    HINTERNET hConnect = NULL;
+    HINTERNET hRequest = NULL;
+    std::string responseStr;
+
+    try
+    {
+        // Parse the URL to extract host and path components
+        URL_COMPONENTS urlComp = {0};
+        urlComp.dwStructSize = sizeof(urlComp);
+
+        WCHAR szHostName[256] = {0};
+        WCHAR szUrlPath[1024] = {0};
+
+        urlComp.lpszHostName = szHostName;
+        urlComp.dwHostNameLength = sizeof(szHostName) / sizeof(WCHAR);
+        urlComp.lpszUrlPath = szUrlPath;
+        urlComp.dwUrlPathLength = sizeof(szUrlPath) / sizeof(WCHAR);
+
+        // Convert URI to wide string
+        std::wstring wRequestUri(requestUri.begin(), requestUri.end());
+        TRACE_OUT("Cracking URL: %s", requestUri.c_str());
+
+        if (!WinHttpCrackUrl(wRequestUri.c_str(), (DWORD)wRequestUri.length(), 0, &urlComp))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpCrackUrl failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Initialize WinHTTP session
+        hSession = WinHttpOpen(L"AzureDiskEncryption/1.0",
+                               WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                               WINHTTP_NO_PROXY_NAME,
+                               WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hSession)
+        {
+            std::ostringstream oss;
+            oss << "WinHttpOpen failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Connect to the server
+        hConnect = WinHttpConnect(hSession, szHostName, urlComp.nPort, 0);
+        if (!hConnect)
+        {
+            std::ostringstream oss;
+            oss << "WinHttpConnect failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Create an HTTP POST request
+        DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+        hRequest = WinHttpOpenRequest(hConnect, L"POST", szUrlPath, NULL,
+                                      WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags);
+        if (!hRequest)
+        {
+            std::ostringstream oss;
+            oss << "WinHttpOpenRequest failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Add headers individually to avoid issues with very long bearer tokens
+        std::string authHeader = "Authorization: Bearer " + access_token;
+        std::wstring wAuthHeader(authHeader.begin(), authHeader.end());
+        if (!WinHttpAddRequestHeaders(hRequest, wAuthHeader.c_str(), (DWORD)wAuthHeader.length(), WINHTTP_ADDREQ_FLAG_ADD))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpAddRequestHeaders (Authorization) failed: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        if (!WinHttpAddRequestHeaders(hRequest, L"Content-Type: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpAddRequestHeaders (Content-Type) failed: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        if (!WinHttpAddRequestHeaders(hRequest, L"Accept: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpAddRequestHeaders (Accept) failed: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        if (!WinHttpAddRequestHeaders(hRequest, L"User-Agent: AzureDiskEncryption", -1, WINHTTP_ADDREQ_FLAG_ADD))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpAddRequestHeaders (User-Agent) failed: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        TRACE_OUT("HTTP headers added, sending request with body length: %d", (int)requestBodyStr.length());
+
+        // Send the request
+        BOOL bResults = WinHttpSendRequest(hRequest,
+                                           WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                           (LPVOID)requestBodyStr.c_str(), (DWORD)requestBodyStr.length(),
+                                           (DWORD)requestBodyStr.length(), 0);
+        if (!bResults)
+        {
+            std::ostringstream oss;
+            oss << "WinHttpSendRequest failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Wait for the response
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
+        if (!bResults)
+        {
+            std::ostringstream oss;
+            oss << "WinHttpReceiveResponse failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        // Check the HTTP status code
+        DWORD dwStatusCode = 0;
+        DWORD dwSize = sizeof(dwStatusCode);
+        WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
+
+        // Read the response body
+        DWORD dwDownloaded = 0;
+        do
+        {
+            dwSize = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &dwSize))
+            {
+                std::ostringstream oss;
+                oss << "WinHttpQueryDataAvailable failed with error: " << GetLastError();
+                TRACE_ERROR_EXIT(oss.str().c_str())
+            }
+
+            if (dwSize > 0)
+            {
+                char szBuffer[8192] = {0};
+                DWORD dwToRead = (dwSize < sizeof(szBuffer) - 1) ? dwSize : (DWORD)(sizeof(szBuffer) - 1);
+                if (!WinHttpReadData(hRequest, szBuffer, dwToRead, &dwDownloaded))
+                {
+                    std::ostringstream oss;
+                    oss << "WinHttpReadData failed with error: " << GetLastError();
+                    TRACE_ERROR_EXIT(oss.str().c_str())
+                }
+                szBuffer[dwDownloaded] = '\0';
+                responseStr.append(szBuffer, dwDownloaded);
+            }
+        } while (dwSize > 0);
+
+        TRACE_OUT("HTTP status=%d, response: %s", dwStatusCode, Util::reduct_log(responseStr).c_str());
+
+        if (dwStatusCode != 200)
+        {
+            std::ostringstream oss;
+            oss << "SKR HTTP request failed: HTTP " << dwStatusCode << ": " << responseStr;
+            throw skr_error(EXIT_SKR_FAIL, oss.str());
+        }
+    }
+    catch (...)
+    {
+        // Cleanup on exception and re-throw
+        if (hRequest) WinHttpCloseHandle(hRequest);
+        if (hConnect) WinHttpCloseHandle(hConnect);
+        if (hSession) WinHttpCloseHandle(hSession);
+        throw;
+    }
+
+    // Cleanup
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+
+    TRACE_OUT("Exiting GetKeyVaultResponseWinHttp()");
+    return responseStr;
+}
+#endif // _WIN32
+
+#ifndef _WIN32
+/// <summary>
+/// Linux (and non-Windows) implementation of the SKR HTTP POST using libcurl.
+/// </summary>
+static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
+                                           const std::string &access_token,
+                                           const std::string &requestBodyStr)
+{
+    TRACE_OUT("Entering GetKeyVaultResponseCurl()");
 
     CURL *curl = curl_easy_init();
     if (!curl)
@@ -574,75 +821,38 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     curlRet = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     if (curlRet != CURLE_OK)
     {
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed\n")
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed")
     }
 
-    std::ostringstream requestBody;
-
-    std::string nonce_token;
-    nonce_token.assign(nonce);
-    if (nonce_token.empty())
-    {
-        // use some random nonce
-        nonce_token.assign(Constants::NONCE);
-    }
-
-    requestBody << "{";
-    requestBody << "\"nonce\": \"" + nonce_token + "\",";
-    requestBody << "\"target\": \"" << attestation_token << "\",";
-    requestBody << "\"enc\": \"CKM_RSA_AES_KEY_WRAP\"";
-    requestBody << "}";
-    std::string requestBodyStr(requestBody.str());
-    // TRACE_OUT("requestBody: size=%d, '%s'", requestBodyStr.size(), requestBodyStr.c_str());
     curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBodyStr.c_str());
     if (curlRet != CURLE_OK)
     {
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDS\n")
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDS")
     }
     curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)requestBodyStr.size());
     if (curlRet != CURLE_OK)
     {
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDSIZE\n")
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDSIZE")
     }
 
-    // Enable verbose output from curl for debugging.
-    /*
-    curlRet = curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-    if (curlRet != CURLE_OK)
-    {
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_VERBOSE\n")
-    }
-    */
-
-    char errbuf[CURL_ERROR_SIZE] = {
-        0,
-    };
-
+    char errbuf[CURL_ERROR_SIZE] = {0};
     curlRet = curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
     if (curlRet != CURLE_OK)
     {
         size_t len = strlen(errbuf);
         std::cerr << "libcurl: " << curlRet << std::endl;
         if (len)
-            std::cerr << errbuf << (errbuf[len - 1] != '\n') ? "\n" : "";
+            std::cerr << errbuf << ((errbuf[len - 1] != '\n') ? "\n" : "");
         std::cerr << curl_easy_strerror(curlRet) << std::endl;
 
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_ERRORBUFFER\n")
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_ERRORBUFFER")
     }
 
-    // DEBUG only, when a proxy is needed such as Fiddler.
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
-    curlRet = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+    curlRet = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Util::CurlWriteCallback);
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
     }
-
-#ifndef PLATFORM_UNIX
-    curl_easy_setopt(curl, CURLOPT_CAINFO, "curl-ca-bundle.crt");
-#endif
 
     std::string responseStr;
     curlRet = curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStr);
@@ -653,35 +863,79 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
         TRACE_ERROR_EXIT(oss.str().c_str())
     }
 
-    // Perform the request, check the return code
+    // Perform the request
     curlRet = curl_easy_perform(curl);
-    // Check for errors
     if (curlRet != CURLE_OK)
     {
-        std::ostringstream oss;
-        oss << "curl_easy_perform() failed: " << curl_easy_strerror(curlRet);
-        TRACE_ERROR_EXIT(oss.str().c_str())
+        std::string msg = std::string("SKR curl_easy_perform() failed: ") + curl_easy_strerror(curlRet);
+        if (strlen(errbuf))
+            msg += std::string(" (") + errbuf + ")";
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        throw skr_error(EXIT_NETWORK_FAIL, msg);
     }
-    /*
-    switch (code) {
-    case CURLE_COULDNT_RESOLVE_HOST:
-    case CURLE_COULDNT_RESOLVE_PROXY:
-    case CURLE_COULDNT_CONNECT:
-    case CURLE_WRITE_ERROR:
-        STATSCOUNTER_INC(indexConFail, mutIndexConFail);
-        return RS_RET_SUSPENDED;
-    default:
-        STATSCOUNTER_INC(indexSubmit, mutIndexSubmit);
-        return RS_RET_OK;
-    }
-    */
+
+    // Check HTTP status — AKV/MHSM errors (403, 404, etc.) come back as valid HTTP responses
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
     // Cleanup curl
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    TRACE_OUT("SKR response: %s", Util::reduct_log(responseStr).c_str());
-    TRACE_OUT("Exiting Util::GetKeyVaultResponse()");
+
+    TRACE_OUT("SKR HTTP status: %ld, response: %s", http_code, Util::reduct_log(responseStr).c_str());
+
+    if (http_code != 200)
+    {
+        std::ostringstream oss;
+        oss << "SKR HTTP request failed: HTTP " << http_code << ": " << responseStr;
+        throw skr_error(EXIT_SKR_FAIL, oss.str());
+    }
+
+    TRACE_OUT("Exiting GetKeyVaultResponseCurl()");
     return responseStr;
+}
+#endif // !_WIN32
+
+std::string Util::GetKeyVaultResponse(const std::string &requestUri,
+                                      const std::string &access_token,
+                                      const std::string &attestation_token,
+                                      const std::string &nonce)
+{
+    TRACE_OUT("Entering Util::GetKeyVaultResponse()");
+
+    std::string nonce_token;
+    nonce_token.assign(nonce);
+    if (nonce_token.empty())
+    {
+        // use some random nonce
+        nonce_token.assign(Constants::NONCE);
+    }
+
+    // Build the JSON request body (shared across both implementations)
+    std::ostringstream requestBody;
+    requestBody << "{";
+    requestBody << "\"nonce\": \"" + nonce_token + "\",";
+    requestBody << "\"target\": \"" << attestation_token << "\",";
+    requestBody << "\"enc\": \"CKM_RSA_AES_KEY_WRAP\"";
+    requestBody << "}";
+    std::string requestBodyStr(requestBody.str());
+
+    TRACE_OUT("SKR request URI: %s", requestUri.c_str());
+    TRACE_OUT("SKR request body length: %zu, target (attestation_token) length: %zu",
+              requestBodyStr.length(), attestation_token.length());
+    // Log first 200 chars of body for diagnostics (token is large)
+    TRACE_OUT("SKR request body prefix: %.200s", requestBodyStr.c_str());
+
+#ifdef _WIN32
+    std::string result = GetKeyVaultResponseWinHttp(requestUri, access_token, requestBodyStr);
+#else
+    std::string result = GetKeyVaultResponseCurl(requestUri, access_token, requestBodyStr);
+#endif
+
+    TRACE_OUT("SKR response: %s", Util::reduct_log(result).c_str());
+    TRACE_OUT("Exiting Util::GetKeyVaultResponse()");
+    return result;
 }
 
 bool Util::doSKR(const std::string &attestation_url,
@@ -696,6 +950,12 @@ bool Util::doSKR(const std::string &attestation_url,
     {
         std::string attest_token(Util::GetMAAToken(attestation_url, nonce));
         TRACE_OUT("MAA Token: %s", Util::reduct_log(attest_token).c_str());
+
+        if (attest_token.empty())
+        {
+            throw skr_error(EXIT_ATTEST_FAIL,
+                            "MAA attestation returned an empty token. Cannot proceed with key release.");
+        }
 
         // Get Akv access token either using IMDS or Service Principal
         std::string access_token;
@@ -720,7 +980,7 @@ bool Util::doSKR(const std::string &attestation_url,
         std::vector<std::string> tokenParts = Util::SplitString(skrToken, '.');
         if (tokenParts.size() != 3)
         {
-            TRACE_ERROR_EXIT("Invalid SKR token")
+            throw skr_error(EXIT_SKR_FAIL, "Invalid SKR token (expected 3 dot-separated parts)");
         }
 
         std::vector<BYTE> tokenPayload(Util::base64url_to_binary(tokenParts[1]));
@@ -732,7 +992,6 @@ bool Util::doSKR(const std::string &attestation_url,
         json cipherTextJson = json::parse(key_hsm);
         std::vector<BYTE> cipherText = Util::base64url_to_binary(cipherTextJson["ciphertext"]);
         TRACE_OUT("Encrypted bytes length: %ld", cipherText.size());
-        std::string cipherTextStr(cipherText.begin(), cipherText.end());
         TRACE_OUT("Encrypted bytes: %s", Util::reduct_log(Util::binary_to_base64url(cipherText)).c_str());
 
         AttestationClient *attestation_client = nullptr;
@@ -741,11 +1000,11 @@ bool Util::doSKR(const std::string &attestation_url,
         // Initialize attestation client
         if (!Initialize(log_handle, &attestation_client))
         {
-            printf("Failed to create attestation client object\n");
             Uninitialize();
-            exit(1);
+            // Note: do NOT delete log_handle — Initialize() wraps it in a
+            // shared_ptr that takes ownership (see AttestationClient.cpp).
+            throw skr_error(EXIT_SKR_FAIL, "Failed to create attestation client object for TPM decrypt");
         }
-        // gsl::span<const BYTE> payload = { cipherText + headerSize, cipherText - headerSize };
 
         attest::AttestationResult result;
         int RSASize = 2048;
@@ -759,18 +1018,22 @@ bool Util::doSKR(const std::string &attestation_url,
                                              0,
                                              &decryptedAESBytes,
                                              &decryptedBytesSize,
-                                             attest::RsaScheme::RsaOaep, // mHSM uses RSA-OAEP wrapping
-                                             attest::RsaHashAlg::RsaSha1 // mHSM uses SHA1 hashing
+                                             attest::RsaScheme::RsaOaep,   // mHSM uses RSA-OAEP wrapping
+                                             attest::RsaHashAlg::RsaSha1   // mHSM uses SHA1 hashing
         );
         if (result.code_ != attest::AttestationResult::ErrorCode::SUCCESS)
         {
-            printf("Failed to decrypt the AES key. Error code: %d, TPM error code=%d, Desc=%s\n", static_cast<int>(result.code_), result.tpm_error_code_, result.description_.c_str());
-            exit(1);
+            std::ostringstream oss;
+            oss << "Failed to decrypt AES key: error code " << static_cast<int>(result.code_)
+                << ", TPM error code=" << result.tpm_error_code_
+                << ", Desc=" << result.description_;
+            fprintf(stderr, "%s\n", oss.str().c_str());
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
         }
-        else
         {
             std::vector<BYTE> decryptedAESBytesVec(decryptedAESBytes, decryptedAESBytes + decryptedBytesSize);
-            TRACE_OUT("Decrypted Transfer key: %s\n", Util::reduct_log(Util::binary_to_base64url(decryptedAESBytesVec)).c_str());
+            TRACE_OUT("Decrypted Transfer key: %s", Util::reduct_log(Util::binary_to_base64url(decryptedAESBytesVec)).c_str());
         }
 
         // The remaining bytes are the encrypted CMK bytes with the decrypted AES key.
@@ -781,66 +1044,110 @@ bool Util::doSKR(const std::string &attestation_url,
                                                  cipherText.data() + ModulusSize,
                                                  (int)(cipherText.size() - ModulusSize),
                                                  private_key);
+
+        // Securely zero and free the decrypted AES transfer key
+        OPENSSL_cleanse(decryptedAESBytes, decryptedBytesSize);
+        free(decryptedAESBytes);
+        decryptedAESBytes = nullptr;
+
         if (private_key_len == 0)
         {
-            printf("Failed to decrypt the CMK\n");
-            exit(1);
+            OPENSSL_cleanse(private_key, sizeof(private_key));
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL, "Failed to decrypt the CMK (AES key unwrap returned 0 bytes)");
         }
-        else
+
+        TRACE_OUT("CMK private key has length=%d", private_key_len);
+
+        // PKCS#8: parse the decrypted private key material
+        BIO *bio_key = BIO_new_mem_buf(private_key, private_key_len);
+        if (!bio_key)
         {
-            TRACE_OUT("CMK private key has length=%d", private_key_len);
-            std::vector<BYTE> privateKeyVec(private_key, private_key + private_key_len);
-            TRACE_OUT("Decrypted CMK in base64url: %s", Util::reduct_log(Util::binary_to_base64url(privateKeyVec)).c_str());
-            TRACE_OUT("Decrypted CMK in hex: %s", Util::reduct_log(Util::binary_to_hex(privateKeyVec)).c_str());
-
-            // PKCS#8
-            BIO *bio_key = BIO_new_mem_buf(privateKeyVec.data(), (int)privateKeyVec.size());
-            if (!bio_key)
-            {
-                std::cerr << "Error creating memory BIO" << std::endl;
-                exit(-1);
-            }
-            *pkey = d2i_PrivateKey_bio(bio_key, NULL);
-            if (!*pkey)
-            {
-                // error handling
-                std::cout << "Failed to load the priv key" << std::endl;
-                ERR_print_errors_fp(stderr);
-
-                // input data is not in correct format
-                char buf[120];
-                ERR_error_string(ERR_get_error(), buf);
-                printf("PKCS8 format check failed: %s\n", buf);
-                exit(-1);
-            }
-            BIO_free(bio_key);
-
-            return true;
+            OPENSSL_cleanse(private_key, sizeof(private_key));
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL, "Error creating memory BIO for private key");
         }
 
-        // Cleanup
+        *pkey = d2i_PrivateKey_bio(bio_key, NULL);
+        BIO_free(bio_key);
+
+        if (!*pkey)
+        {
+            // Collect OpenSSL error details
+            std::ostringstream oss;
+            oss << "Failed to parse PKCS#8 private key: ";
+            unsigned long oerr;
+            while ((oerr = ERR_get_error()))
+            {
+                char buf[120];
+                ERR_error_string_n(oerr, buf, sizeof(buf));
+                oss << buf << "; ";
+            }
+            OPENSSL_cleanse(private_key, sizeof(private_key));
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
+        }
+
+        TRACE_OUT("Parsed private key: type=%d", EVP_PKEY_base_id(*pkey));
+
+        // Securely zero the private key material on the stack
+        OPENSSL_cleanse(private_key, sizeof(private_key));
+
+        // Cleanup attestation client resources
         Uninitialize();
-        delete log_handle;
-        log_handle = nullptr;
+        // Note: do NOT delete log_handle — Initialize() wraps it in a
+        // shared_ptr that takes ownership (see AttestationClient.cpp).
+
+        TRACE_OUT("Exiting Util::doSKR()");
+        return true;
+    }
+    catch (skr_error &)
+    {
+        throw; // let structured errors propagate to main()
     }
     catch (std::exception &e)
     {
-        printf("Exception occured. Details - %s", e.what());
-        exit(1);
+        // Wrap unexpected exceptions with EXIT_SKR_FAIL
+        throw skr_error(EXIT_SKR_FAIL, std::string("doSKR failed: ") + e.what());
     }
 
-    TRACE_OUT("Exiting Util::doSKR()");
-    return true;
+    return false;
 }
 
 // A helper function to handle errors
 void handleErrors()
 {
+    std::ostringstream oss;
+    oss << "OpenSSL error: ";
+    unsigned long err;
+    while ((err = ERR_get_error()))
+    {
+        char buf[120];
+        ERR_error_string_n(err, buf, sizeof(buf));
+        oss << buf << "; ";
+    }
     ERR_print_errors_fp(stderr);
-    abort();
+    throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
 }
 
 // A function that encrypts a message with a public key using EVP_PKEY_encrypt
+/// @brief Map a hash algorithm name to an OpenSSL EVP_MD.
+/// Supported names (case-insensitive): sha1, sha256, sha384, sha512.
+static const EVP_MD *get_evp_md_by_name(const std::string &name)
+{
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    // Strip optional dashes (e.g. "sha-256" -> "sha256")
+    lower.erase(std::remove(lower.begin(), lower.end(), '-'), lower.end());
+
+    if (lower == "sha1")   return EVP_sha1();
+    if (lower == "sha256") return EVP_sha256();
+    if (lower == "sha384") return EVP_sha384();
+    if (lower == "sha512") return EVP_sha512();
+    throw std::runtime_error("Unsupported hash algorithm: " + name +
+                             ". Supported: sha1, sha256, sha384, sha512");
+}
+
 int rsa_encrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *enc, size_t *enclen)
 {
     TRACE_OUT("Entering rsa_encrypt()");
@@ -890,21 +1197,30 @@ int rsa_encrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *enc, size
     return ret;
 }
 
-// A function that encrypts a message with a public key using EVP_PKEY_encrypt
-int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size_t *declen)
+/// @brief RSA-OAEP decrypt with caller-specified hash algorithms.
+/// @param oaep_md  OAEP hash (e.g. EVP_sha256()).  Must not be NULL.
+/// @param mgf1_md  MGF1 hash.  If NULL, defaults to oaep_md.
+int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size_t *declen,
+                const EVP_MD *oaep_md, const EVP_MD *mgf1_md)
 {
     TRACE_OUT("Entering rsa_decrypt()");
+    TRACE_OUT("  OAEP hash: %s, MGF1 hash: %s",
+              EVP_MD_get0_name(oaep_md),
+              mgf1_md ? EVP_MD_get0_name(mgf1_md) : EVP_MD_get0_name(oaep_md));
+
+    if (mgf1_md == nullptr)
+        mgf1_md = oaep_md;
 
     int ret = -1;
     EVP_PKEY_CTX *ctx = NULL;
     size_t outlen;
 
-    // Create the context for the encryption operation
+    // Create the context for the decryption operation
     ctx = EVP_PKEY_CTX_new(pkey, NULL);
     if (!ctx)
         handleErrors();
 
-    // Initialize the encryption operation
+    // Initialize the decryption operation
     if (EVP_PKEY_decrypt_init(ctx) <= 0)
         handleErrors();
 
@@ -912,8 +1228,12 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
         handleErrors();
 
-    // Set RSA signature scheme to SHA256
-    if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, EVP_sha256()) <= 0) // TODO: can be a parameter
+    // Set OAEP hash algorithm
+    if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, oaep_md) <= 0)
+        handleErrors();
+
+    // Set MGF1 hash algorithm (explicit to avoid platform-dependent defaults)
+    if (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, mgf1_md) <= 0)
         handleErrors();
 
     // Determine the buffer length for the encrypted data
@@ -940,6 +1260,57 @@ int rsa_decrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *dec, size
     return ret;
 }
 
+/// @brief RSA-OAEP decrypt (exception-safe variant for batch operations).
+/// Throws std::runtime_error on failure instead of calling abort().
+static void rsa_decrypt_safe(EVP_PKEY *pkey, const PBYTE msg, size_t msglen,
+                             PBYTE *dec, size_t *declen,
+                             const EVP_MD *oaep_md, const EVP_MD *mgf1_md)
+{
+    if (mgf1_md == nullptr)
+        mgf1_md = oaep_md;
+
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(pkey, NULL);
+    if (!ctx)
+        throw std::runtime_error("EVP_PKEY_CTX_new failed");
+
+    // Use a lambda to ensure ctx cleanup on any exit path
+    auto cleanup = [&]() { EVP_PKEY_CTX_free(ctx); };
+
+    try
+    {
+        if (EVP_PKEY_decrypt_init(ctx) <= 0)
+            throw std::runtime_error("EVP_PKEY_decrypt_init failed");
+        if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
+            throw std::runtime_error("set_rsa_padding failed");
+        if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, oaep_md) <= 0)
+            throw std::runtime_error("set_rsa_oaep_md failed");
+        if (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, mgf1_md) <= 0)
+            throw std::runtime_error("set_rsa_mgf1_md failed");
+
+        size_t outlen = 0;
+        if (EVP_PKEY_decrypt(ctx, NULL, &outlen, msg, msglen) <= 0)
+            throw std::runtime_error("EVP_PKEY_decrypt (size query) failed");
+
+        *dec = (PBYTE)OPENSSL_malloc(outlen);
+        if (!*dec)
+            throw std::runtime_error("OPENSSL_malloc failed");
+
+        if (EVP_PKEY_decrypt(ctx, *dec, &outlen, msg, msglen) <= 0)
+        {
+            OPENSSL_free(*dec);
+            *dec = nullptr;
+            throw std::runtime_error("EVP_PKEY_decrypt failed");
+        }
+        *declen = outlen;
+    }
+    catch (...)
+    {
+        cleanup();
+        throw;
+    }
+    cleanup();
+}
+
 std::string Util::WrapKey(const std::string &attestation_url,
                           const std::string &nonce,
                           const std::string &sym_key,
@@ -951,18 +1322,17 @@ std::string Util::WrapKey(const std::string &attestation_url,
     EVP_PKEY *pkey = nullptr;
     if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
     {
-        std::cerr << "Failed to release the private key" << std::endl;
-        exit(-1);
+        throw skr_error(EXIT_SKR_FAIL, "WrapKey: Failed to release the private key");
     }
     int pkeyBaseId = EVP_PKEY_base_id(pkey);
     TRACE_OUT("Key release completed successfully. EVP_PKEY_base_id=%d", pkeyBaseId);
 
-    // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey^M
+    // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey
     if (pkeyBaseId != EVP_PKEY_RSA /* PKCS1 */ &&
         pkeyBaseId != EVP_PKEY_RSA2 /* X500 */)
     {
-        std::cerr << "The key is not of type RSA. Only RSA keys are supported for wrapKey/unwrapKey" << std::endl;
-        exit(-1);
+        EVP_PKEY_free(pkey);
+        throw skr_error(EXIT_CRYPTO_FAIL, "The key is not of type RSA. Only RSA keys are supported for wrapKey/unwrapKey");
     }
 
     int rsaSize = EVP_PKEY_get_size(pkey);
@@ -972,15 +1342,14 @@ std::string Util::WrapKey(const std::string &attestation_url,
     PBYTE encryptedKey;
     if (rsa_encrypt(pkey, (const PBYTE)sym_key.c_str(), sym_key.size(), &encryptedKey, &encrypted_length) == -1)
     {
-        std::cerr << "Failed to wrap the symmetric key: " << std::endl;
-        handle_openssl_errors();
-        exit(-1);
+        EVP_PKEY_free(pkey);
+        handle_openssl_errors(); // throws skr_error(EXIT_CRYPTO_FAIL)
     }
 
-    TRACE_OUT("Wrapping the symmetric key succeeded: encrypted_length=%ld\n", encrypted_length);
+    TRACE_OUT("Wrapping the symmetric key succeeded: encrypted_length=%ld", encrypted_length);
     std::vector<BYTE> encryptedKeyVector(encryptedKey, encryptedKey + encrypted_length);
     std::string cipherText = Util::binary_to_base64(encryptedKeyVector);
-    TRACE_OUT("Wrapped symmetric key in base64: %s\n", Util::reduct_log(cipherText).c_str());
+    TRACE_OUT("Wrapped symmetric key in base64: %s", Util::reduct_log(cipherText).c_str());
 
     // Cleanup
     OPENSSL_free(encryptedKey);
@@ -994,38 +1363,52 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
                             const std::string &nonce,
                             const std::string &wrapped_key_base64,
                             const std::string &key_enc_key_url,
-                            const Util::AkvCredentialSource &akv_credential_source)
+                            const Util::AkvCredentialSource &akv_credential_source,
+                            const std::string &oaep_hash_alg,
+                            const std::string &mgf1_hash_alg)
 {
     TRACE_OUT("Entering Util::UnwrapKey()");
+    TRACE_OUT("  OAEP hash: %s, MGF1 hash: %s",
+              oaep_hash_alg.c_str(),
+              mgf1_hash_alg.empty() ? oaep_hash_alg.c_str() : mgf1_hash_alg.c_str());
 
     EVP_PKEY *pkey = nullptr;
     if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
     {
-        std::cerr << "Failed to release the private key" << std::endl;
-        exit(-1);
+        throw skr_error(EXIT_SKR_FAIL, "UnwrapKey: Failed to release the private key");
     }
     int pkeyBaseId = EVP_PKEY_base_id(pkey);
     TRACE_OUT("Key release completed successfully. EVP_PKEY_base_id=%d", pkeyBaseId);
 
-    // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey^M
+    // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey
     if (pkeyBaseId != EVP_PKEY_RSA /* PKCS1 */ &&
         pkeyBaseId != EVP_PKEY_RSA2 /* X500 */)
     {
-        std::cerr << "The key is not of type RSA. Only RSA keys are supported for wrapKey/unwrapKey" << std::endl;
-        exit(-1);
+        EVP_PKEY_free(pkey);
+        throw skr_error(EXIT_CRYPTO_FAIL, "The key is not of type RSA. Only RSA keys are supported for wrapKey/unwrapKey");
     }
 
     int rsaSize = EVP_PKEY_get_size(pkey);
-    TRACE_OUT("Unwrapping: %s\n", wrapped_key_base64.c_str());
+    TRACE_OUT("Unwrapping: %s", wrapped_key_base64.c_str());
     std::vector<BYTE> wrapped_key = Util::base64_to_binary(wrapped_key_base64);
+    TRACE_OUT("RSA key size=%d bytes, wrapped_key decoded size=%zu bytes", rsaSize, wrapped_key.size());
+    if ((int)wrapped_key.size() != rsaSize)
+    {
+        TRACE_OUT("WARNING: wrapped_key size (%zu) != RSA key size (%d). Possible base64 or key-size mismatch.",
+                  wrapped_key.size(), rsaSize);
+    }
+
+    // Resolve hash algorithms
+    const EVP_MD *oaep_md = get_evp_md_by_name(oaep_hash_alg);
+    const EVP_MD *mgf1_md = mgf1_hash_alg.empty() ? nullptr : get_evp_md_by_name(mgf1_hash_alg);
 
     size_t decrypted_length = 0;
     PBYTE decryptedKey;
-    if (rsa_decrypt(pkey, wrapped_key.data(), wrapped_key.size(), &decryptedKey, &decrypted_length) == -1)
+    if (rsa_decrypt(pkey, wrapped_key.data(), wrapped_key.size(), &decryptedKey, &decrypted_length,
+                    oaep_md, mgf1_md) == -1)
     {
-        std::cerr << "Failed to unwrap the symmetric key: " << std::endl;
-        handle_openssl_errors();
-        exit(-1);
+        EVP_PKEY_free(pkey);
+        handle_openssl_errors(); // throws skr_error(EXIT_CRYPTO_FAIL)
     }
 
     TRACE_OUT("Unwrapping the symmetric key succeeded: decrypted_length=%lud", decrypted_length);
@@ -1042,6 +1425,117 @@ std::string Util::UnwrapKey(const std::string &attestation_url,
     return Util::base64_decode(plainText);
 }
 
+std::string Util::UnwrapKeyBatch(const std::string &attestation_url,
+                                  const std::string &nonce,
+                                  const std::string &batch_json,
+                                  const std::string &key_enc_key_url,
+                                  const Util::AkvCredentialSource &akv_credential_source,
+                                  const std::string &oaep_hash_alg,
+                                  const std::string &mgf1_hash_alg)
+{
+    TRACE_OUT("Entering Util::UnwrapKeyBatch()");
+    TRACE_OUT("  OAEP hash: %s, MGF1 hash: %s",
+              oaep_hash_alg.c_str(),
+              mgf1_hash_alg.empty() ? oaep_hash_alg.c_str() : mgf1_hash_alg.c_str());
+
+    // --- Parse the input JSON ---
+    json inputJson;
+    try
+    {
+        inputJson = json::parse(batch_json);
+    }
+    catch (const json::parse_error &e)
+    {
+        throw skr_error(EXIT_USAGE, std::string("UnwrapKeyBatch: Invalid JSON input: ") + e.what());
+    }
+
+    if (!inputJson.contains("keys") || !inputJson["keys"].is_array())
+    {
+        throw skr_error(EXIT_USAGE, "UnwrapKeyBatch: JSON must contain a \"keys\" array");
+    }
+
+    const auto &keysArray = inputJson["keys"];
+    TRACE_OUT("Batch contains %zu keys to unwrap", keysArray.size());
+
+    // --- Single SKR call for the entire batch ---
+    EVP_PKEY *pkey = nullptr;
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
+    {
+        throw skr_error(EXIT_SKR_FAIL, "UnwrapKeyBatch: Failed to release the private key");
+    }
+    int pkeyBaseId = EVP_PKEY_base_id(pkey);
+    TRACE_OUT("Key release completed successfully. EVP_PKEY_base_id=%d", pkeyBaseId);
+
+    if (pkeyBaseId != EVP_PKEY_RSA && pkeyBaseId != EVP_PKEY_RSA2)
+    {
+        EVP_PKEY_free(pkey);
+        throw skr_error(EXIT_CRYPTO_FAIL, "UnwrapKeyBatch: Released key is not RSA. Only RSA keys are supported for unwrap.");
+    }
+
+    // Resolve hash algorithms once for the whole batch
+    const EVP_MD *oaep_md = get_evp_md_by_name(oaep_hash_alg);
+    const EVP_MD *mgf1_md = mgf1_hash_alg.empty() ? nullptr : get_evp_md_by_name(mgf1_hash_alg);
+
+    // --- Iterate and unwrap each key ---
+    json resultsArray = json::array();
+    int successCount = 0;
+    int errorCount = 0;
+
+    for (size_t i = 0; i < keysArray.size(); ++i)
+    {
+        const auto &entry = keysArray[i];
+        json resultEntry;
+
+        // Extract the id (optional — default to index)
+        std::string id = entry.value("id", std::to_string(i));
+        resultEntry["id"] = id;
+
+        try
+        {
+            // "wrapped" field is required
+            if (!entry.contains("wrapped") || !entry["wrapped"].is_string())
+            {
+                throw std::runtime_error("missing or invalid \"wrapped\" field");
+            }
+
+            std::string wrapped_key_base64 = entry["wrapped"].get<std::string>();
+            TRACE_OUT("Unwrapping key [%s] (%zu/%zu)", id.c_str(), i + 1, keysArray.size());
+
+            std::vector<BYTE> wrapped_key = Util::base64_to_binary(wrapped_key_base64);
+
+            size_t decrypted_length = 0;
+            PBYTE decryptedKey = nullptr;
+            rsa_decrypt_safe(pkey, wrapped_key.data(), wrapped_key.size(),
+                             &decryptedKey, &decrypted_length, oaep_md, mgf1_md);
+
+            std::vector<BYTE> decryptedKeyVector(decryptedKey, decryptedKey + decrypted_length);
+            std::string plainTextB64 = Util::binary_to_base64(decryptedKeyVector);
+            OPENSSL_free(decryptedKey);
+
+            resultEntry["unwrapped"] = Util::base64_decode(plainTextB64);
+            ++successCount;
+        }
+        catch (const std::exception &e)
+        {
+            resultEntry["error"] = e.what();
+            ++errorCount;
+            TRACE_OUT("Key [%s] failed: %s", id.c_str(), e.what());
+        }
+
+        resultsArray.push_back(resultEntry);
+    }
+
+    EVP_PKEY_free(pkey);
+
+    TRACE_OUT("Batch unwrap complete: %d succeeded, %d failed out of %zu",
+              successCount, errorCount, keysArray.size());
+    TRACE_OUT("Exiting Util::UnwrapKeyBatch()");
+
+    json outputJson;
+    outputJson["results"] = resultsArray;
+    return outputJson.dump(2); // pretty-print with 2-space indent
+}
+
 bool Util::ReleaseKey(const std::string &attestation_url,
                       const std::string &nonce,
                       const std::string &key_enc_key_url,
@@ -1052,24 +1546,28 @@ bool Util::ReleaseKey(const std::string &attestation_url,
     EVP_PKEY *pkey = nullptr;
     if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, &pkey, akv_credential_source))
     {
-        std::cerr << "Failed to release the private key" << std::endl;
-        return false;
+        throw skr_error(EXIT_SKR_FAIL, "Failed to release the private key");
     }
 
     TRACE_OUT("Key release completed successfully.");
 
     // Check if the key is of type RSA. If not, exit because EC keys do not support wrapKey/unwrapKey
+    bool releaseOk = false;
     switch (EVP_PKEY_base_id(pkey))
     {
     case EVP_PKEY_RSA:
     case EVP_PKEY_RSA2:
-        std::cout << "The released key is of type RSA. It can be used for wrapKey/unwrapKey operations." << std::endl;
-        return true;
+        std::cerr << "The released key is of type RSA. It can be used for wrapKey/unwrapKey operations." << std::endl;
+        releaseOk = true;
+        break;
     case EVP_PKEY_EC:
-        std::cout << "The released key is of type EC. It can be used for sign/verify operations." << std::endl;
-        return true;
+        std::cerr << "The released key is of type EC. It can be used for sign/verify operations." << std::endl;
+        releaseOk = true;
+        break;
     default:
-        std::cout << "The released key is of type " << EVP_PKEY_base_id(pkey) << ". Not sure what operations are supported." << std::endl;
-        return false;
+        std::cerr << "The released key is of type " << EVP_PKEY_base_id(pkey) << ". Not sure what operations are supported." << std::endl;
+        break;
     }
+    EVP_PKEY_free(pkey);
+    return releaseOk;
 }
