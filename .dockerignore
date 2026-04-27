@@ -1,0 +1,9 @@
+**/build/
+**/build-linux/
+**/packages/
+**/_build/
+**/.vs/
+**/*.exe
+**/*.dll
+**/*.obj
+**/*.pdb
