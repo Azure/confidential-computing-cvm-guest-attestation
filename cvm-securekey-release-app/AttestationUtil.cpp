@@ -913,13 +913,17 @@ std::string Util::GetKeyVaultResponse(const std::string &requestUri,
     }
 
     // Build the JSON request body (shared across both implementations)
+    // RSA_AES_KEY_WRAP_256 uses RSA-OAEP with SHA-256 for the transfer key,
+    // upgrading from CKM_RSA_AES_KEY_WRAP which used SHA-1.
+    // See: https://learn.microsoft.com/en-us/rest/api/keyvault/keys/release/release
     std::ostringstream requestBody;
     requestBody << "{";
     requestBody << "\"nonce\": \"" + nonce_token + "\",";
     requestBody << "\"target\": \"" << attestation_token << "\",";
-    requestBody << "\"enc\": \"CKM_RSA_AES_KEY_WRAP\"";
+    requestBody << "\"enc\": \"RSA_AES_KEY_WRAP_256\"";
     requestBody << "}";
     std::string requestBodyStr(requestBody.str());
+    TRACE_OUT("SKR wrapping algorithm: RSA_AES_KEY_WRAP_256 (RSA-OAEP-SHA256)");
 
     TRACE_OUT("SKR request URI: %s", requestUri.c_str());
     TRACE_OUT("SKR request body length: %zu, target (attestation_token) length: %zu",
@@ -1011,6 +1015,7 @@ bool Util::doSKR(const std::string &attestation_url,
         int ModulusSize = RSASize / 8;
         uint8_t *decryptedAESBytes = nullptr;
         uint32_t decryptedBytesSize = 0;
+        TRACE_OUT("TPM decrypt: RSA-OAEP with SHA-256 (matching RSA_AES_KEY_WRAP_256)");
         result = attestation_client->Decrypt(attest::EncryptionType::NONE,
                                              cipherText.data(),
                                              ModulusSize,
@@ -1018,8 +1023,8 @@ bool Util::doSKR(const std::string &attestation_url,
                                              0,
                                              &decryptedAESBytes,
                                              &decryptedBytesSize,
-                                             attest::RsaScheme::RsaOaep,   // mHSM uses RSA-OAEP wrapping
-                                             attest::RsaHashAlg::RsaSha1   // mHSM uses SHA1 hashing
+                                             attest::RsaScheme::RsaOaep,   // RSA-OAEP wrapping
+                                             attest::RsaHashAlg::RsaSha256 // SHA-256 to match RSA_AES_KEY_WRAP_256
         );
         if (result.code_ != attest::AttestationResult::ErrorCode::SUCCESS)
         {
