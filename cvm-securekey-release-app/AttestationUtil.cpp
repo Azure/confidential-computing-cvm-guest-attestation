@@ -983,7 +983,7 @@ bool Util::doSKR(const std::string &attestation_url,
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
 #else
         // On Azure Local, the Evidence SDK handles AKV authentication and key release
-        // via the IGVM agent.
+        // via the host using the cluster identity.
         std::string nonce_token = nonce.empty() ? Constants::NONCE : nonce;
 
         // RAII wrapper: ensures hw_evidence_free is called on every exit path

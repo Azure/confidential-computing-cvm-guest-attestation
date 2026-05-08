@@ -40,7 +40,7 @@ $ make
 
 ## Build Instructions for Azure Local
 
-On Azure Local, the Evidence SDK (`edge-cc-base-attestation-sdk`) handles AKV authentication and key release via the IGVM agent, so IMDS/Service Principal credentials are not required.
+On Azure Local, the Evidence SDK (`edge-cc-base-attestation-sdk`) handles AKV authentication and key release via the host, using the Azure Local cluster identity, so IMDS/Service Principal credentials are not required.
 
 Note for Azure Local the attestation package must be built from source with Azure Local support enabled.
 Use the following script from the repo root to build and install:
