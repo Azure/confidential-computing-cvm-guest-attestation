@@ -1010,11 +1010,16 @@ bool Util::doSKR(const std::string &attestation_url,
             static_cast<uint32_t>(encryption_algorithm.size()),
             &wrapped_key_raw,
             &wrapped_key_size);
+
+        if (wrapped_key_raw == nullptr || wrapped_key_size == 0)
+        {
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() did not return a wrapped key");
+        }
         wrapped_key.reset(wrapped_key_raw);
 
         if (skr_result != HW_EVIDENCE_OK)
         {
-            TRACE_ERROR_EXIT("release_akv_key() failed on Azure Local")
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() failed on Azure Local");
         }
 
         std::string responseStr(reinterpret_cast<char*>(wrapped_key.get()), wrapped_key_size);
