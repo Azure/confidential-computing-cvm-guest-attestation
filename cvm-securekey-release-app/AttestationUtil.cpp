@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 #include <thread>
 #include <vector>
 #include <string>
@@ -985,9 +986,18 @@ bool Util::doSKR(const std::string &attestation_url,
         // via the IGVM agent.
         std::string nonce_token = nonce.empty() ? Constants::NONCE : nonce;
 
-        uint8_t* wrapped_key = nullptr;
+        // RAII wrapper: ensures hw_evidence_free is called on every exit path
+        // (success, exception, early return). hw_evidence_free is documented
+        // to no-op on null, so the initial null state is safe.
+        std::unique_ptr<uint8_t, decltype(&hw_evidence_free)> wrapped_key(
+            nullptr, &hw_evidence_free);
+
+        // release_akv_key writes the allocated buffer pointer into a uint8_t**
+        // out-parameter, so we need a short-lived raw pointer; we transfer
+        // ownership to the unique_ptr immediately after the call.
+        uint8_t* wrapped_key_raw = nullptr;
         uint32_t wrapped_key_size = 0;
-        std::string encryption_algorithm = "CKM_RSA_AES_KEY_WRAP";
+        std::string encryption_algorithm = "RSA_AES_KEY_WRAP_256";
 
         hw_evidence_result skr_result = release_akv_key(
             reinterpret_cast<uint8_t*>(const_cast<char*>(KEKUrl.c_str())),
@@ -998,16 +1008,16 @@ bool Util::doSKR(const std::string &attestation_url,
             static_cast<uint32_t>(nonce_token.size()),
             reinterpret_cast<uint8_t*>(const_cast<char*>(encryption_algorithm.c_str())),
             static_cast<uint32_t>(encryption_algorithm.size()),
-            &wrapped_key,
+            &wrapped_key_raw,
             &wrapped_key_size);
+        wrapped_key.reset(wrapped_key_raw);
 
         if (skr_result != HW_EVIDENCE_OK)
         {
             TRACE_ERROR_EXIT("release_akv_key() failed on Azure Local")
         }
 
-        std::string responseStr(reinterpret_cast<char*>(wrapped_key), wrapped_key_size);
-        hw_evidence_free(wrapped_key);
+        std::string responseStr(reinterpret_cast<char*>(wrapped_key.get()), wrapped_key_size);
         TRACE_OUT("Azure Local SKR response: %s", Util::reduct_log(responseStr).c_str());
 #endif
 
