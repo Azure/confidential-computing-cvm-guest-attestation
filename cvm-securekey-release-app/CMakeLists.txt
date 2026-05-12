@@ -35,6 +35,13 @@ add_executable(${CMAKE_PROJECT_TARGET}
 if(UNIX)
     add_definitions(-DPLATFORM_UNIX)
 
+    if(AZURE_LOCAL)
+        add_compile_definitions(AZURE_LOCAL)
+        message(STATUS "Azure Local mode: ENABLED")
+    else()
+        message(STATUS "Azure Local mode: DISABLED")
+    endif()
+
     # -------------------------------------------------------------------
     # SKR_PORTABLE_DEPLOY (default: OFF)
     #   OFF — "classic" build: hardcoded paths, links jsoncpp, no RPATH.
@@ -115,6 +122,10 @@ if(UNIX)
             jsoncpp
             crypto
         )
+    endif()
+
+    if(AZURE_LOCAL)
+        target_link_libraries(${CMAKE_PROJECT_TARGET} edge-cc-base-attestation-sdk)
     endif()
 
 elseif(WIN32)
