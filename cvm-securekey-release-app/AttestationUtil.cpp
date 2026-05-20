@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 #include <thread>
 #include <vector>
 #include <string>
@@ -29,6 +30,9 @@
 #include "AttestationUtil.h"
 #include "Logger.h"
 #include "Constants.h"
+#ifdef AZURE_LOCAL
+#include <hw_evidence_api.h>
+#endif
 
 #ifdef _WIN32
 #include <winhttp.h>
@@ -961,6 +965,7 @@ bool Util::doSKR(const std::string &attestation_url,
                             "MAA attestation returned an empty token. Cannot proceed with key release.");
         }
 
+#ifndef AZURE_LOCAL
         // Get Akv access token either using IMDS or Service Principal
         std::string access_token;
         if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
@@ -976,6 +981,50 @@ bool Util::doSKR(const std::string &attestation_url,
 
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
+#else
+        // On Azure Local, the Evidence SDK handles AKV authentication and key release
+        // via the host using the cluster identity.
+        std::string nonce_token = nonce.empty() ? Constants::NONCE : nonce;
+
+        // RAII wrapper: ensures hw_evidence_free is called on every exit path
+        // (success, exception, early return). hw_evidence_free is documented
+        // to no-op on null, so the initial null state is safe.
+        std::unique_ptr<uint8_t, decltype(&hw_evidence_free)> wrapped_key(
+            nullptr, &hw_evidence_free);
+
+        // release_akv_key writes the allocated buffer pointer into a uint8_t**
+        // out-parameter, so we need a short-lived raw pointer; we transfer
+        // ownership to the unique_ptr immediately after the call.
+        uint8_t* wrapped_key_raw = nullptr;
+        uint32_t wrapped_key_size = 0;
+        std::string encryption_algorithm = "RSA_AES_KEY_WRAP_256";
+
+        hw_evidence_result skr_result = release_akv_key(
+            reinterpret_cast<uint8_t*>(const_cast<char*>(KEKUrl.c_str())),
+            static_cast<uint32_t>(KEKUrl.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(attest_token.c_str())),
+            static_cast<uint32_t>(attest_token.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(nonce_token.c_str())),
+            static_cast<uint32_t>(nonce_token.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(encryption_algorithm.c_str())),
+            static_cast<uint32_t>(encryption_algorithm.size()),
+            &wrapped_key_raw,
+            &wrapped_key_size);
+
+        if (wrapped_key_raw == nullptr || wrapped_key_size == 0)
+        {
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() did not return a wrapped key");
+        }
+        wrapped_key.reset(wrapped_key_raw);
+
+        if (skr_result != HW_EVIDENCE_OK)
+        {
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() failed on Azure Local");
+        }
+
+        std::string responseStr(reinterpret_cast<char*>(wrapped_key.get()), wrapped_key_size);
+        TRACE_OUT("Azure Local SKR response: %s", Util::reduct_log(responseStr).c_str());
+#endif
 
         // Parse the response:
         json skrJson = json::parse(responseStr.c_str());
