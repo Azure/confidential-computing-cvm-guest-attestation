@@ -38,6 +38,10 @@
 #include "HclReportParser.h"
 #include "TpmCertOperations.h"
 
+#ifdef AZURE_LOCAL
+#include <hw_evidence_manager.h>
+#endif
+
 #define MAX_ATTESTATION_RETRIES 3
 
 #ifdef PLATFORM_UNIX
@@ -63,7 +67,7 @@ constexpr char g_distro_name_str[] = "Microsoft";
 #endif
 
 constexpr char azure_guest_protocol[] = "https://";
-constexpr char azure_guest_url[] = "/attest/AzureGuest?api-version=2020-10-01";
+constexpr char azure_guest_url[] = "/attest/AzureGuest?api-version=2025-06-01";
 
 using namespace attest;
 
@@ -528,6 +532,10 @@ AttestationResult AttestationClientImpl::sendAttestationRequest(
         return result;
     }
 
+    if (getenv("ATTESTATION_CLIENT_LOG_PAYLOAD") != nullptr) {
+        CLIENT_LOG_INFO("Attestation payload:%s", payload.c_str());
+    }
+
     std::string response;
     if((result = sendHttpRequest(payload, response)).code_ !=
                                                 AttestationResult::ErrorCode::SUCCESS) {
@@ -709,8 +717,109 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
     CLIENT_LOG_INFO("Retrieving Isolation Info");
     isolation_info = IsolationInfo();
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
-    Buffer hcl_report;
     std::string isolation_info_str = std::string();
+
+#ifdef AZURE_LOCAL
+    CLIENT_LOG_INFO("AZURE_LOCAL path active");
+    // Check hardware capabilities to determine if this is a CVM or TVM.
+    uint32_t hw_capabilities = get_hardware_capabilities();
+    CLIENT_LOG_INFO("get_hardware_capabilities() returned 0x%x (SNP=0x%x, TDX=0x%x, INCAPABLE=0x%x)",
+                    hw_capabilities, CONFIDENTIAL_COMPUTE_SNP, CONFIDENTIAL_COMPUTE_TDX, CONFIDENTIAL_COMPUTE_INCAPABLE);
+
+    if (hw_capabilities == CONFIDENTIAL_COMPUTE_INCAPABLE) {
+        // No confidential compute hardware — this is a TVM.
+        CLIENT_LOG_INFO("Hardware does not support confidential compute, falling back to Trusted Launch");
+        isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
+        isolation_info_str = "TVM";
+    } else {
+        // CVM-capable hardware — gather evidence via the evidence SDK.
+        payload_type ptype = PAYLOAD_INVALID;
+
+        // First call to get required buffer sizes.
+        uint32_t hw_report_size = 0;
+        uint32_t custom_claims_size = 0;
+        CLIENT_LOG_INFO("Calling get_evidence for sizing (nonce=nullptr, nonce_size=0)");
+        hw_evidence_result evidence_result = get_evidence(nullptr, 0, nullptr, &hw_report_size, nullptr, &custom_claims_size, &ptype);
+        CLIENT_LOG_INFO("get_evidence sizing returned result=0x%x, hw_report_size=%u, custom_claims_size=%u, ptype=%d",
+                        static_cast<int>(evidence_result), hw_report_size, custom_claims_size, static_cast<int>(ptype));
+
+        if (hw_evidence_result_failed(evidence_result)) {
+            CLIENT_LOG_ERROR("Failed to get evidence buffer sizes from evidence SDK (result=0x%x)", static_cast<int>(evidence_result));
+            result.code_ = AttestationResult::ErrorCode::ERROR_HCL_REPORT_EMPTY;
+            result.description_ = std::string("get_evidence sizing failed: " + std::to_string(static_cast<int>(evidence_result)));
+            return result;
+        }
+
+        // Second call to retrieve the actual evidence.
+        std::vector<uint8_t> hw_report(hw_report_size);
+        std::vector<uint8_t> custom_claims(custom_claims_size);
+        evidence_result = get_evidence(nullptr, 0, hw_report.data(), &hw_report_size, custom_claims.data(), &custom_claims_size, &ptype);
+
+        if (hw_evidence_result_failed(evidence_result)) {
+            CLIENT_LOG_ERROR("Failed to get evidence from evidence SDK");
+            result.code_ = AttestationResult::ErrorCode::ERROR_HCL_REPORT_EMPTY;
+            result.description_ = std::string("get_evidence failed: " + std::to_string(static_cast<int>(evidence_result)));
+            return result;
+        }
+
+        CLIENT_LOG_INFO("get_evidence returned ptype=%d (PAYLOAD_SNP=%d, PAYLOAD_TDX=%d)",
+                        static_cast<int>(ptype), static_cast<int>(PAYLOAD_SNP), static_cast<int>(PAYLOAD_TDX));
+
+        if (ptype == PAYLOAD_SNP) {
+            isolation_info.isolation_type_ = attest::IsolationType::SEV_SNP;
+            isolation_info_str = "CVM";
+        } else if (ptype == PAYLOAD_TDX) {
+            isolation_info.isolation_type_ = attest::IsolationType::TDX;
+            isolation_info_str = "TDX";
+        } else {
+            CLIENT_LOG_ERROR("Unsupported payload type from evidence SDK: %d", static_cast<int>(ptype));
+            result.code_ = AttestationResult::ErrorCode::ERROR_HCL_REPORT_PARSING_FAILURE;
+            result.description_ = std::string("Unsupported payload type: " + std::to_string(static_cast<int>(ptype)));
+            return result;
+        }
+
+        isolation_info.runtime_data_ = Buffer(custom_claims.begin(), custom_claims.begin() + custom_claims_size);
+
+        if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
+            isolation_info.snp_report_ = Buffer(hw_report.begin(), hw_report.begin() + hw_report_size);
+        } else {
+            isolation_info.tdx_quote_ = Buffer(hw_report.begin(), hw_report.begin() + hw_report_size);
+        }
+
+        // SNP needs endorsements (VCEK cert); TDX does not.
+        CLIENT_LOG_INFO("isolation_type_=%d (TRUSTED_LAUNCH=0, SEV_SNP=1, TDX=2), entering endorsements check",
+                        static_cast<int>(isolation_info.isolation_type_));
+        if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
+            uint32_t endorsements_size = 0;
+            endorsement_options options{ false };
+            hw_evidence_result endorse_result = get_endorsements(options, nullptr, &endorsements_size);
+
+            if (hw_evidence_result_failed(endorse_result)) {
+                CLIENT_LOG_ERROR("Failed to get endorsements size from evidence SDK");
+                result.code_ = AttestationResult::ErrorCode::ERROR_EMPTY_VCEK_CERT;
+                result.description_ = std::string("get_endorsements sizing failed: " + std::to_string(static_cast<int>(endorse_result)));
+                return result;
+            }
+
+            std::vector<uint8_t> endorsements(endorsements_size);
+            endorse_result = get_endorsements(options, endorsements.data(), &endorsements_size);
+
+            if (hw_evidence_result_failed(endorse_result)) {
+                CLIENT_LOG_ERROR("Failed to get endorsements from evidence SDK");
+                result.code_ = AttestationResult::ErrorCode::ERROR_EMPTY_VCEK_CERT;
+                result.description_ = std::string("get_endorsements failed: " + std::to_string(static_cast<int>(endorse_result)));
+                return result;
+            }
+
+            endorsements.push_back('\0');
+            std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
+            isolation_info.vcek_cert_ = attest::base64::base64_encode(endorsements_str);
+        }
+    }
+
+#else // !AZURE_LOCAL
+
+    Buffer hcl_report;
     try {
         Tpm tpm;
         hcl_report = tpm.GetHCLReport();
@@ -721,12 +830,6 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
     catch (...) {
         isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
         isolation_info_str = "TVM";
-    }
-
-    if(telemetry_reporting.get() != nullptr) {
-        telemetry_reporting->UpdateEvent("IsolationInfo", 
-                                            isolation_info_str, 
-                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
     }
 
     if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
@@ -749,6 +852,15 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
 
         isolation_info.vcek_cert_ = vcek_cert;
     }
+
+#endif // AZURE_LOCAL
+
+    if(telemetry_reporting.get() != nullptr) {
+        telemetry_reporting->UpdateEvent("IsolationInfo", 
+                                            isolation_info_str, 
+                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
+    }
+
     return result;
 }
 
