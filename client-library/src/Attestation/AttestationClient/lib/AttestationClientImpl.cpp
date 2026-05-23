@@ -67,7 +67,7 @@ constexpr char g_distro_name_str[] = "Microsoft";
 #endif
 
 constexpr char azure_guest_protocol[] = "https://";
-constexpr char azure_guest_url[] = "/attest/AzureGuest?api-version=2025-06-01";
+constexpr char azure_guest_url[] = "/attest/AzureGuest?api-version=2020-10-01";
 
 using namespace attest;
 
@@ -532,10 +532,6 @@ AttestationResult AttestationClientImpl::sendAttestationRequest(
         return result;
     }
 
-    if (getenv("ATTESTATION_CLIENT_LOG_PAYLOAD") != nullptr) {
-        CLIENT_LOG_INFO("Attestation payload:%s", payload.c_str());
-    }
-
     std::string response;
     if((result = sendHttpRequest(payload, response)).code_ !=
                                                 AttestationResult::ErrorCode::SUCCESS) {
@@ -761,7 +757,7 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
             result.description_ = std::string("get_evidence failed: " + std::to_string(static_cast<int>(evidence_result)));
             return result;
         }
-
+        
         CLIENT_LOG_INFO("get_evidence returned ptype=%d (PAYLOAD_SNP=%d, PAYLOAD_TDX=%d)",
                         static_cast<int>(ptype), static_cast<int>(PAYLOAD_SNP), static_cast<int>(PAYLOAD_TDX));
 
@@ -778,6 +774,14 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
             return result;
         }
 
+        // Emit telemetry now that we know the Isolation Info
+        if(telemetry_reporting.get() != nullptr) {
+            telemetry_reporting->UpdateEvent("IsolationInfo", 
+                                                isolation_info_str, 
+                                                attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
+        }
+
+        // Now that we have the isolation info, we can populate the runtime data.
         isolation_info.runtime_data_ = Buffer(custom_claims.begin(), custom_claims.begin() + custom_claims_size);
 
         if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
@@ -815,6 +819,7 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
             std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
             isolation_info.vcek_cert_ = attest::base64::base64_encode(endorsements_str);
         }
+        
     }
 
 #else // !AZURE_LOCAL
@@ -830,6 +835,12 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
     catch (...) {
         isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
         isolation_info_str = "TVM";
+    }
+
+    if(telemetry_reporting.get() != nullptr) {
+        telemetry_reporting->UpdateEvent("IsolationInfo", 
+                                            isolation_info_str, 
+                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
     }
 
     if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
@@ -854,12 +865,6 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
     }
 
 #endif // AZURE_LOCAL
-
-    if(telemetry_reporting.get() != nullptr) {
-        telemetry_reporting->UpdateEvent("IsolationInfo", 
-                                            isolation_info_str, 
-                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
-    }
 
     return result;
 }
