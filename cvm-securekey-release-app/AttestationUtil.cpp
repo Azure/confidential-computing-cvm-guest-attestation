@@ -36,6 +36,8 @@
 
 #ifdef _WIN32
 #include <winhttp.h>
+#else
+#include <sys/stat.h>
 #endif
 
 using namespace attest;
@@ -813,6 +815,45 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed for HTTP_VERSION")
     }
+
+#ifdef PLATFORM_UNIX
+    // Resolve the CA bundle path - curl's compiled-in default may not exist on all distros.
+    // The statically-linked curl inside libazguestattestation.so was built on Ubuntu and
+    // hardcodes /etc/ssl/certs/ca-certificates.crt, which doesn't exist on RHEL/Fedora.
+    {
+        const char *ca_path = nullptr;
+        curl_version_info_data *ver = curl_version_info(CURLVERSION_NOW);
+        if (ver && ver->cainfo)
+            ca_path = ver->cainfo;
+
+        struct stat ca_st;
+        if (!ca_path || stat(ca_path, &ca_st) != 0)
+        {
+            // Compiled-in default missing - probe known distro paths.
+            static const char *ca_candidates[] = {
+                "/etc/pki/tls/certs/ca-bundle.crt",     // RHEL / Fedora / CentOS
+                "/etc/ssl/certs/ca-certificates.crt",   // Debian / Ubuntu
+                "/etc/ssl/ca-bundle.pem",               // SUSE
+                "/etc/ssl/cert.pem",                    // Alpine / macOS
+                "curl-ca-bundle.crt",                   // symlink in CWD
+                nullptr
+            };
+            for (const char **p = ca_candidates; *p; ++p)
+            {
+                if (stat(*p, &ca_st) == 0)
+                {
+                    ca_path = *p;
+                    break;
+                }
+            }
+        }
+        if (ca_path)
+        {
+            curl_easy_setopt(curl, CURLOPT_CAINFO, ca_path);
+            TRACE_OUT("CA bundle: %s", ca_path);
+        }
+    }
+#endif
 
     struct curl_slist *headers = NULL;
     std::ostringstream bearerToken;
