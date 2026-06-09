@@ -11,6 +11,7 @@
 #pragma warning(disable : 4996) // suppress MSVC deprecation warning for std::getenv
 #endif
 
+#include <array>
 #include <cstdlib>
 #include <ctime>
 #include <memory>
@@ -830,19 +831,18 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
         if (!ca_path || stat(ca_path, &ca_st) != 0)
         {
             // Compiled-in default missing - probe known distro paths.
-            static const char *ca_candidates[] = {
+            static constexpr std::array<const char*, 5> ca_candidates = {{
                 "/etc/pki/tls/certs/ca-bundle.crt",     // RHEL / Fedora / CentOS
                 "/etc/ssl/certs/ca-certificates.crt",   // Debian / Ubuntu
                 "/etc/ssl/ca-bundle.pem",               // SUSE
                 "/etc/ssl/cert.pem",                    // Alpine / macOS
                 "curl-ca-bundle.crt",                   // symlink in CWD
-                nullptr
-            };
-            for (const char **p = ca_candidates; *p; ++p)
+            }};
+            for (const char *candidate : ca_candidates)
             {
-                if (stat(*p, &ca_st) == 0)
+                if (stat(candidate, &ca_st) == 0)
                 {
-                    ca_path = *p;
+                    ca_path = candidate;
                     break;
                 }
             }
