@@ -52,8 +52,25 @@ std::vector<BYTE> Util::base64_to_binary(const std::string &base64_data)
 {
     using namespace boost::archive::iterators;
     using It = transform_width<binary_from_base64<std::string::const_iterator>, 8, 6>;
-    return boost::algorithm::trim_right_copy_if(std::vector<BYTE>(It(std::begin(base64_data)), It(std::end(base64_data))), [](char c)
-                                                { return c == '\0'; });
+
+    // Strip '=' padding before decoding. Boost's binary_from_base64 does not
+    // understand padding and would otherwise emit spurious trailing bytes.
+    // Previously those were removed by trimming trailing nulls, but that also
+    // stripped legitimate 0x00 bytes from binary payloads (e.g. RSA ciphertext
+    // ending in 0x00), shrinking a 256-byte RSA-2048 ciphertext to 255 bytes
+    // and causing OAEP decrypt to fail.
+    std::string input = base64_data;
+    input.erase(std::remove(input.begin(), input.end(), '='), input.end());
+
+    // Each base64 character carries 6 bits, so the exact decoded length is
+    // floor(chars * 6 / 8). Resizing to this length drops only the partial-
+    // group padding bits — never real trailing data bytes.
+    size_t decoded_len = (input.size() * 6) / 8;
+
+    std::vector<BYTE> decoded(It(std::begin(input)), It(std::end(input)));
+    if (decoded.size() > decoded_len)
+        decoded.resize(decoded_len);
+    return decoded;
 }
 
 /// \copydoc Util::binary_to_base64()
