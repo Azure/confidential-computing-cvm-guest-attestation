@@ -122,10 +122,7 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     }
 
 
-    // Convert endorsements to null-terminated string
-    endorsements.push_back('\0');
-    std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
-    vcek_cert = attest::base64::base64_encode(endorsements_str);
+    vcek_cert = attest::base64::binary_to_base64(endorsements);
 
     return result;
 }

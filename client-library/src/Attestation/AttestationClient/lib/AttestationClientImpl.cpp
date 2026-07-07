@@ -815,9 +815,7 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
                 return result;
             }
 
-            endorsements.push_back('\0');
-            std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
-            isolation_info.vcek_cert_ = attest::base64::base64_encode(endorsements_str);
+            isolation_info.vcek_cert_ = attest::base64::binary_to_base64(endorsements);
         }
         
     }
@@ -864,7 +862,7 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
         isolation_info.vcek_cert_ = vcek_cert;
     }
 
-#endif // AZURE_LOCAL
+#endif // !AZURE_LOCAL
 
     return result;
 }
