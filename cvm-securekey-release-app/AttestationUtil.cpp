@@ -11,8 +11,10 @@
 #pragma warning(disable : 4996) // suppress MSVC deprecation warning for std::getenv
 #endif
 
+#include <array>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 #include <thread>
 #include <vector>
 #include <string>
@@ -29,9 +31,14 @@
 #include "AttestationUtil.h"
 #include "Logger.h"
 #include "Constants.h"
+#ifdef AZURE_LOCAL
+#include <hw_evidence_api.h>
+#endif
 
 #ifdef _WIN32
 #include <winhttp.h>
+#else
+#include <sys/stat.h>
 #endif
 
 using namespace attest;
@@ -45,8 +52,25 @@ std::vector<BYTE> Util::base64_to_binary(const std::string &base64_data)
 {
     using namespace boost::archive::iterators;
     using It = transform_width<binary_from_base64<std::string::const_iterator>, 8, 6>;
-    return boost::algorithm::trim_right_copy_if(std::vector<BYTE>(It(std::begin(base64_data)), It(std::end(base64_data))), [](char c)
-                                                { return c == '\0'; });
+
+    // Strip '=' padding before decoding. Boost's binary_from_base64 does not
+    // understand padding and would otherwise emit spurious trailing bytes.
+    // Previously those were removed by trimming trailing nulls, but that also
+    // stripped legitimate 0x00 bytes from binary payloads (e.g. RSA ciphertext
+    // ending in 0x00), shrinking a 256-byte RSA-2048 ciphertext to 255 bytes
+    // and causing OAEP decrypt to fail.
+    std::string input = base64_data;
+    input.erase(std::remove(input.begin(), input.end(), '='), input.end());
+
+    // Each base64 character carries 6 bits, so the exact decoded length is
+    // floor(chars * 6 / 8). Resizing to this length drops only the partial-
+    // group padding bits — never real trailing data bytes.
+    size_t decoded_len = (input.size() * 6) / 8;
+
+    std::vector<BYTE> decoded(It(std::begin(input)), It(std::end(input)));
+    if (decoded.size() > decoded_len)
+        decoded.resize(decoded_len);
+    return decoded;
 }
 
 /// \copydoc Util::binary_to_base64()
@@ -810,6 +834,44 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
         TRACE_ERROR_EXIT("curl_easy_setopt() failed for HTTP_VERSION")
     }
 
+#ifdef PLATFORM_UNIX
+    // Resolve the CA bundle path - curl's compiled-in default may not exist on all distros.
+    // The statically-linked curl inside libazguestattestation.so was built on Ubuntu and
+    // hardcodes /etc/ssl/certs/ca-certificates.crt, which doesn't exist on RHEL/Fedora.
+    {
+        const char *ca_path = nullptr;
+        curl_version_info_data *ver = curl_version_info(CURLVERSION_NOW);
+        if (ver && ver->cainfo)
+            ca_path = ver->cainfo;
+
+        struct stat ca_st;
+        if (!ca_path || stat(ca_path, &ca_st) != 0)
+        {
+            // Compiled-in default missing - probe known distro paths.
+            static constexpr std::array<const char*, 5> ca_candidates = {{
+                "/etc/pki/tls/certs/ca-bundle.crt",     // RHEL / Fedora / CentOS
+                "/etc/ssl/certs/ca-certificates.crt",   // Debian / Ubuntu
+                "/etc/ssl/ca-bundle.pem",               // SUSE
+                "/etc/ssl/cert.pem",                    // Alpine / macOS
+                "curl-ca-bundle.crt",                   // symlink in CWD
+            }};
+            for (const char *candidate : ca_candidates)
+            {
+                if (stat(candidate, &ca_st) == 0)
+                {
+                    ca_path = candidate;
+                    break;
+                }
+            }
+        }
+        if (ca_path)
+        {
+            curl_easy_setopt(curl, CURLOPT_CAINFO, ca_path);
+            TRACE_OUT("CA bundle: %s", ca_path);
+        }
+    }
+#endif
+
     struct curl_slist *headers = NULL;
     std::ostringstream bearerToken;
     bearerToken << "Authorization: Bearer " << access_token;
@@ -961,6 +1023,7 @@ bool Util::doSKR(const std::string &attestation_url,
                             "MAA attestation returned an empty token. Cannot proceed with key release.");
         }
 
+#ifndef AZURE_LOCAL
         // Get Akv access token either using IMDS or Service Principal
         std::string access_token;
         if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
@@ -976,6 +1039,50 @@ bool Util::doSKR(const std::string &attestation_url,
 
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);
+#else
+        // On Azure Local, the Evidence SDK handles AKV authentication and key release
+        // via the host using the cluster identity.
+        std::string nonce_token = nonce.empty() ? Constants::NONCE : nonce;
+
+        // RAII wrapper: ensures hw_evidence_free is called on every exit path
+        // (success, exception, early return). hw_evidence_free is documented
+        // to no-op on null, so the initial null state is safe.
+        std::unique_ptr<uint8_t, decltype(&hw_evidence_free)> wrapped_key(
+            nullptr, &hw_evidence_free);
+
+        // release_akv_key writes the allocated buffer pointer into a uint8_t**
+        // out-parameter, so we need a short-lived raw pointer; we transfer
+        // ownership to the unique_ptr immediately after the call.
+        uint8_t* wrapped_key_raw = nullptr;
+        uint32_t wrapped_key_size = 0;
+        std::string encryption_algorithm = "RSA_AES_KEY_WRAP_256";
+
+        hw_evidence_result skr_result = release_akv_key(
+            reinterpret_cast<uint8_t*>(const_cast<char*>(KEKUrl.c_str())),
+            static_cast<uint32_t>(KEKUrl.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(attest_token.c_str())),
+            static_cast<uint32_t>(attest_token.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(nonce_token.c_str())),
+            static_cast<uint32_t>(nonce_token.size()),
+            reinterpret_cast<uint8_t*>(const_cast<char*>(encryption_algorithm.c_str())),
+            static_cast<uint32_t>(encryption_algorithm.size()),
+            &wrapped_key_raw,
+            &wrapped_key_size);
+
+        if (wrapped_key_raw == nullptr || wrapped_key_size == 0)
+        {
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() did not return a wrapped key");
+        }
+        wrapped_key.reset(wrapped_key_raw);
+
+        if (skr_result != HW_EVIDENCE_OK)
+        {
+            throw skr_error(EXIT_SKR_FAIL, "release_akv_key() failed on Azure Local");
+        }
+
+        std::string responseStr(reinterpret_cast<char*>(wrapped_key.get()), wrapped_key_size);
+        TRACE_OUT("Azure Local SKR response: %s", Util::reduct_log(responseStr).c_str());
+#endif
 
         // Parse the response:
         json skrJson = json::parse(responseStr.c_str());

@@ -61,7 +61,7 @@ if [ "$CLEAN_BUILD" = true ]; then
     rm -rf "${SCRIPT_DIR}/cvm-securekey-release-app/build"
     mkdir -p "${SCRIPT_DIR}/cvm-securekey-release-app/build"
     pushd "${SCRIPT_DIR}/cvm-securekey-release-app/build" > /dev/null
-    cmake .. -DCMAKE_BUILD_TYPE=Release
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DAZURE_LOCAL=ON
     make
     popd > /dev/null
 
@@ -111,7 +111,7 @@ if [ ! -f "${SKR_APP}" ]; then
     echo "Building AzureAttestSKR..."
     mkdir -p "${SCRIPT_DIR}/cvm-securekey-release-app/build"
     pushd "${SCRIPT_DIR}/cvm-securekey-release-app/build" > /dev/null
-    cmake .. -DCMAKE_BUILD_TYPE=Release
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DAZURE_LOCAL=ON
     make
     popd > /dev/null
 fi
