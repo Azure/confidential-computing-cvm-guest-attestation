@@ -43,14 +43,7 @@ TEST_F(Tss2WrapperTest, ConstructorTest) {
 }
 
 TEST_F(Tss2WrapperTest, Tss2RsaDecryptTest) {
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_SetAuth(_, _, _))
-        .Times(2)
-        .WillOnce(Return(TSS2_RC_SUCCESS))
-        .WillOnce(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, _, _, _, _, _, _, _, _))
-        .Times(1)
-        .WillOnce(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
+    EXPECT_CALL(*tpmLibMockObj, Tss2_Sys_RSA_Decrypt(_, _, _, _, _, _, _, _))
         .Times(1)
         .WillOnce(Return(TSS2_RC_SUCCESS));
     // Test the Tss2RsaDecrypt method
@@ -59,16 +52,12 @@ TEST_F(Tss2WrapperTest, Tss2RsaDecryptTest) {
 
 }
 
-// Verify that RSAES padding passes TPM2_ALG_RSAES to Esys_RSA_Decrypt
+// Verify that RSAES padding passes TPM2_ALG_RSAES to Tss2_Sys_RSA_Decrypt
 TEST_F(Tss2WrapperTest, Tss2RsaDecrypt_RsaesPadding_PassesCorrectAlg) {
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_SetAuth(_, _, _))
-        .WillRepeatedly(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
-        .WillOnce(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, _, _, _, _, _,
+    EXPECT_CALL(*tpmLibMockObj, Tss2_Sys_RSA_Decrypt(_, _, _, _,
         ::testing::Pointee(::testing::Field(&TPMT_RSA_DECRYPT::scheme,
             TPM2_ALG_RSAES)),
-        _, _))
+        _, _, _))
         .Times(1)
         .WillOnce(Return(TSS2_RC_SUCCESS));
 
@@ -76,16 +65,12 @@ TEST_F(Tss2WrapperTest, Tss2RsaDecrypt_RsaesPadding_PassesCorrectAlg) {
     tss2Wrapper->Tss2RsaDecrypt(data, RsaPaddingScheme::Rsaes);
 }
 
-// Verify that OAEP padding passes TPM2_ALG_OAEP to Esys_RSA_Decrypt
+// Verify that OAEP padding passes TPM2_ALG_OAEP to Tss2_Sys_RSA_Decrypt
 TEST_F(Tss2WrapperTest, Tss2RsaDecrypt_OaepPadding_PassesCorrectAlg) {
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_SetAuth(_, _, _))
-        .WillRepeatedly(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _))
-        .WillOnce(Return(TSS2_RC_SUCCESS));
-    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, _, _, _, _, _,
+    EXPECT_CALL(*tpmLibMockObj, Tss2_Sys_RSA_Decrypt(_, _, _, _,
         ::testing::Pointee(::testing::Field(&TPMT_RSA_DECRYPT::scheme,
             TPM2_ALG_OAEP)),
-        _, _))
+        _, _, _))
         .Times(1)
         .WillOnce(Return(TSS2_RC_SUCCESS));
 

@@ -7,20 +7,26 @@
 #include "tss2/tss2_tcti_tbs.h"  // Windows context handling is routed to tbs library
 #define TPM_DEVICE "" // For windows we don't need the device Manager context string. 
 #else 
-#include "tss2/tss2_tcti_device.h"  // Windows context handling is routed to tbs library
+#include "tss2/tss2_tcti_device.h"  // Linux context handling is routed to device library
 #define TPM_DEVICE "/dev/tpmrm0" // Use in-kernel resource manager.
 #endif // !PLATFORM_UNIX
 
 
 TssCtx::TssCtx()
 {
-    TSS2_ABI_VERSION abiVer = TSS2_ABI_VERSION_CURRENT; // These are the current default values of the TPM2-TSS library.
+    TSS2_ABI_VERSION abiVer = TSS2_ABI_VERSION_CURRENT;
 
     auto tcti = InitializeTcti();
 
-    TSS2_RC ret = Esys_Initialize(&ctx, tcti, &abiVer);
+    size_t sysSize = Tss2_Sys_GetContextSize(0);
+    sysCtxBuf = std::make_unique<unsigned char[]>(sysSize);
+    if (sysCtxBuf == nullptr) {
+        throw std::runtime_error("Failed to allocate SYS context memory");
+    }
+
+    TSS2_SYS_CONTEXT* sysCtx = (TSS2_SYS_CONTEXT*)sysCtxBuf.get();
+    TSS2_RC ret = Tss2_Sys_Initialize(sysCtx, sysSize, tcti, &abiVer);
     if (ret != TSS2_RC_SUCCESS) {
-		// TpmError, Subclass Context, esysInitError
         throw TpmError(ret, "Failed to initialize TSS context",
             ErrorCode::TpmError_Context_esysInitError);
     }
@@ -28,10 +34,8 @@ TssCtx::TssCtx()
 
 TssCtx::~TssCtx()
 {
-    // Esys_Finalize will free its own memory for ctx. Tss2_Tcti_Finalize will not,
-    // but its memory is managed by a unique_ptr.
-    if (ctx != nullptr) {
-        Esys_Finalize(&ctx);
+    if (sysCtxBuf != nullptr) {
+        Tss2_Sys_Finalize((TSS2_SYS_CONTEXT*)sysCtxBuf.get());
     }
 
     if (tctiCtx != nullptr) {
@@ -39,9 +43,9 @@ TssCtx::~TssCtx()
     }
 }
 
-ESYS_CONTEXT* TssCtx::Get()
+TSS2_SYS_CONTEXT* TssCtx::Get()
 {
-    return this->ctx;
+    return (TSS2_SYS_CONTEXT*)sysCtxBuf.get();
 }
 
 /**

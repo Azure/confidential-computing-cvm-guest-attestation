@@ -134,8 +134,58 @@ TEST_F(FunctionalityTests, FailureEncryptDecrypt) {
 }
 
 /**
- * @brief Tests the failure case of the unprotect_secret function with an
- * invalid ECDH private key.
+ * @brief Test case to verify the failure scenario when the RSA-encrypted
+ * transport key has been tampered with, causing TPM RSA decryption to fail.
+ *
+ * This test checks that the library correctly surfaces a TPM RSA decryption
+ * error when the ciphertext is corrupted.
+ *
+ * Steps:
+ * 1. Encrypt a sample secret data.
+ * 2. Parse the JWT and tamper with the wrappedAesTransportKey (flip bits).
+ * 3. Attempt to unprotect the modified JWT.
+ * 4. Perform assertions.
+ *
+ * Assertions:
+ * - The unprotect_secret function returns a value less than or equal to 0.
+ * - The error indicates a TPM RSA decryption failure.
+ * - The output_secret is nullptr.
+ */
+TEST_F(FunctionalityTests, FailureTpmRsaDecrypt) {
+	char data[] = "Test Secret info";
+
+	std::string encrypted_data = Encrypt(data);
+
+	// Parse JWT and tamper with the RSA-encrypted AES transport key
+	std::unique_ptr<JsonWebToken> jwt = std::make_unique<JsonWebToken>();
+	jwt->ParseToken(encrypted_data, false);
+
+	std::vector<unsigned char> wrappedKey =
+		encoders::base64_decode(jwt->getClaims()["wrappedAesTransportKey"]);
+	// Flip bits in the ciphertext — TPM RSA decrypt will fail padding check
+	wrappedKey[0] ^= 0xFF;
+	wrappedKey[wrappedKey.size() / 2] ^= 0xFF;
+
+	jwt->addClaim("wrappedAesTransportKey", encoders::base64_encode(wrappedKey));
+	std::string tampered_data = jwt->CreateToken();
+
+	unsigned int policy = 0;
+	policy = static_cast<unsigned int>(PolicyOption::AllowUnsigned);
+	unsigned int eval_policy = 0;
+	char* output_secret = nullptr;
+	long result = unprotect_secret(
+		(char *)tampered_data.c_str(), tampered_data.length(), policy,
+		&output_secret, &eval_policy
+	);
+	ASSERT_LE(result, 0);
+	ASSERT_STREQ(get_error_message(result), "CryptographyError_TpmRsa_decryptError");
+	ASSERT_EQ(output_secret, nullptr);
+	if (output_secret) {
+		free_secret(output_secret);
+	}
+}
+
+/**
  *
  * This test verifies that the unprotect_secret function returns -1 when
  * provided with an invalid ECDH private key. It simulates a potentially

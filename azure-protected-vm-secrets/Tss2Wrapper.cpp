@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <tss2/tss2_esys.h>
+#include <tss2/tss2_sys.h>
 
 #include "CommonTypes.h"
 #include "DebugInfo.h"
@@ -25,6 +25,12 @@
 #define RSA_PUBLIC_EXPONENT 0x00010001
 #define TPM_PT_NV_INDEX_MAX 1024
 
+static TSS2L_SYS_AUTH_COMMAND MakePasswordAuthCmd() {
+    TSS2L_SYS_AUTH_COMMAND cmdAuth = {};
+    cmdAuth.count = 1;
+    cmdAuth.auths[0].sessionHandle = TPM2_RS_PW;
+    return cmdAuth;
+}
 
 Tss2Wrapper::Tss2Wrapper()
 {
@@ -32,46 +38,32 @@ Tss2Wrapper::Tss2Wrapper()
 }
 
 TPM2_RC Tss2Wrapper::RemoveKey() {
-    ESYS_TR object_handle = {};
     TPM2_RC ret = TSS2_RC_SUCCESS;
+    TSS2L_SYS_AUTH_COMMAND cmdAuth = MakePasswordAuthCmd();
+    TSS2L_SYS_AUTH_RESPONSE rspAuth = {};
 
-    // Get Esys object for handle.
-    ret = Esys_TR_FromTPMPublic(
-        this->ctx->Get(), KEYHANDLE,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &object_handle);
-    if (ret != TSS2_RC_SUCCESS) {
-        // TpmError, Subclass Handles, handlePresentError
-        throw TpmError(ret, "Failed to get object from handle",
-            ErrorCode::TpmError_Handles_handlePresentError);
-    }
-
-    // Evict the key
-    ret = Esys_EvictControl(this->ctx->Get(),
-        ESYS_TR_RH_OWNER,
-        object_handle,
-        ESYS_TR_PASSWORD,
-        ESYS_TR_NONE,
-        ESYS_TR_NONE,
+    ret = Tss2_Sys_EvictControl(
+        this->ctx->Get(),
+        TPM2_RH_OWNER,
         KEYHANDLE,
-        &object_handle);
+        &cmdAuth,
+        KEYHANDLE,
+        &rspAuth);
     if (ret != TSS2_RC_SUCCESS) {
-		// TpmError, Subclass Handles, evictControlError
+        // TpmError, Subclass Handles, evictControlError
         throw TpmError(ret, "Failed to Evict object at handle",
             ErrorCode::TpmError_Handles_evictControlError);
     }
     return ret;
 }
 
-TPM2B_PUBLIC* Tss2Wrapper::GenerateGuestKey()
+TPM2B_PUBLIC Tss2Wrapper::GenerateGuestKey()
 {
     TPM2B_PUBLIC inPub = { 0 };
 
     TPM2B_SENSITIVE_CREATE inPriv = { 0 };
     TPM2B_DATA inOutsideInfo = { 0 };
     TPML_PCR_SELECTION inPcr = { 0 };
-    ESYS_TR primaryHandle = ESYS_TR_NONE;
-    ESYS_TR persistObjHandle = ESYS_TR_NONE;
 
     TPM2B_AUTH authValuePrimary = {
         0, // size
@@ -112,42 +104,48 @@ TPM2B_PUBLIC* Tss2Wrapper::GenerateGuestKey()
     inPub.publicArea.authPolicy = { 0 };
     inPub.publicArea.authPolicy.size = 0;
 
-    TPM2B_PUBLIC* outPub;
+    TPM2B_PUBLIC outPub = {};
+    TPM2B_CREATION_DATA creationData = {};
+    TPM2B_DIGEST creationHash = {};
+    TPMT_TK_CREATION creationTicket = {};
+    TPM2B_NAME name = {};
+    TPM2_HANDLE primaryHandle = 0;
+
+    TSS2L_SYS_AUTH_COMMAND cmdAuth = MakePasswordAuthCmd();
+    TSS2L_SYS_AUTH_RESPONSE rspAuth = {};
 
     // Create primary
-    TSS2_RC ret = Esys_CreatePrimary(
+    TSS2_RC ret = Tss2_Sys_CreatePrimary(
         this->ctx->Get(),
-        ESYS_TR_RH_OWNER,
-        ESYS_TR_PASSWORD,
-        ESYS_TR_NONE,
-        ESYS_TR_NONE,
+        TPM2_RH_OWNER,
+        &cmdAuth,
         &inPriv,
         &inPub,
         &inOutsideInfo,
         &inPcr,
         &primaryHandle,
         &outPub,
-        nullptr,
-        nullptr,
-        nullptr);
+        &creationData,
+        &creationHash,
+        &creationTicket,
+        &name,
+        &rspAuth);
     if (ret != TSS2_RC_SUCCESS) {
         // TpmError, Subclass Objects, createError
         throw TpmError(ret, "Failed to create primary object under storage hierarchy",
             ErrorCode::TpmError_Objects_createError);
     }
-    LIBSECRETS_LOG(SecretsLogger::LogLevel::Debug, "Create Pimary",
+    LIBSECRETS_LOG(SecretsLogger::LogLevel::Debug, "Create Primary",
         "Public key info %s",
-        formatHexBuffer(outPub->publicArea.unique.rsa.buffer, outPub->publicArea.unique.rsa.size).c_str());
+        formatHexBuffer(outPub.publicArea.unique.rsa.buffer, outPub.publicArea.unique.rsa.size).c_str());
 
-    ret = Esys_EvictControl(
+    ret = Tss2_Sys_EvictControl(
         this->ctx->Get(),
-        ESYS_TR_RH_OWNER,
+        TPM2_RH_OWNER,
         primaryHandle,
-        ESYS_TR_PASSWORD,
-        ESYS_TR_NONE,
-        ESYS_TR_NONE,
+        &cmdAuth,
         KEYHANDLE,
-        &persistObjHandle);
+        &rspAuth);
     if (ret != TSS2_RC_SUCCESS) {
         // TpmError, Subclass Handles, evictControlError
         throw TpmError(ret, "Failed to EvictControl key",
@@ -158,18 +156,14 @@ TPM2B_PUBLIC* Tss2Wrapper::GenerateGuestKey()
 }
 
 bool Tss2Wrapper::IsKeyPresent() {
-    ESYS_TR object_handle = {};
-    TPM2_RC ret = TSS2_RC_SUCCESS;
+    TPM2B_PUBLIC outPublic = {};
+    TPM2B_NAME name = {};
+    TPM2B_NAME qualifiedName = {};
 
-    // Get Esys object for handle.
-    ret = Esys_TR_FromTPMPublic(
+    TPM2_RC ret = Tss2_Sys_ReadPublic(
         this->ctx->Get(), KEYHANDLE,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &object_handle);
-    if (ret != TSS2_RC_SUCCESS) {
-        return false;
-    }
-    return true;
+        NULL, &outPublic, &name, &qualifiedName, NULL);
+    return ret == TSS2_RC_SUCCESS;
 }
 
 static TPMT_RSA_DECRYPT MakeRsaScheme(RsaPaddingScheme paddingScheme) {
@@ -192,167 +186,67 @@ static TPMT_RSA_DECRYPT MakeRsaScheme(RsaPaddingScheme paddingScheme) {
 std::vector<unsigned char> Tss2Wrapper::Tss2RsaEncrypt(std::vector<unsigned char> const&plaintextData,
                                                       RsaPaddingScheme paddingScheme) {
     TSS2_RC r;
-    ESYS_TR primaryHandle = ESYS_TR_NONE;
-    ESYS_TR persistObjHandle = ESYS_TR_NONE;
+    std::vector<unsigned char> retval;
 
-    TPM2B_PUBLIC* outPublic = nullptr;
-    TPM2B_CREATION_DATA* creationData = nullptr;
-    TPM2B_DIGEST* creationHash = nullptr;
-    TPMT_TK_CREATION* creationTicket = nullptr;
-    TPM2B_PUBLIC_KEY_RSA* cipher = nullptr;
-    TPM2B_PUBLIC_KEY_RSA* plain2 = nullptr;
-    TPM2B_DATA* null_data = nullptr;
-    std::vector<unsigned char> retval = std::vector<unsigned char>();
-
-
-    TPM2B_AUTH authValuePrimary = {
-        0, // size
-        {} // buffer
-    };
-
-    r = Esys_TR_FromTPMPublic(
-        this->ctx->Get(), KEYHANDLE,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &primaryHandle);
-    if (r != TSS2_RC_SUCCESS)
-    {
-        // TpmError, Subclass Handles, handlePresentError
-        throw TpmError(r, "Failed to read tpm object from handle",
-            ErrorCode::TpmError_Handles_handlePresentError);
-    }
-
-    r = Esys_TR_SetAuth(this->ctx->Get(), primaryHandle,
-        &authValuePrimary);
-    if (r != TSS2_RC_SUCCESS)
-    {
-		// TpmError, Subclass Auth, setAuthError
-        throw TpmError(r, "Failed to set auth",
-            ErrorCode::TpmError_Auth_setAuthError);
-    }
-
-    size_t plain_size = 3;
     TPM2B_PUBLIC_KEY_RSA plain = { 0 };
     std::copy(plaintextData.begin(), plaintextData.end(), plain.buffer);
-    plain.size = plaintextData.size();
+    plain.size = static_cast<uint16_t>(plaintextData.size());
 
     TPMT_RSA_DECRYPT scheme = MakeRsaScheme(paddingScheme);
-    r = Esys_RSA_Encrypt(this->ctx->Get(), primaryHandle, ESYS_TR_NONE,
-        ESYS_TR_NONE, ESYS_TR_NONE, &plain, &scheme,
-        null_data, &cipher);
+
+    TPM2B_PUBLIC_KEY_RSA cipher = { 0 };
+
+    // RSA_Encrypt is a public-key operation — no auth needed
+    r = Tss2_Sys_RSA_Encrypt(this->ctx->Get(), KEYHANDLE,
+        NULL, &plain, &scheme, NULL, &cipher, NULL);
     if (r != TSS2_RC_SUCCESS)
     {
-		// CryptoError, Subclass TpmRsa, encryptError
+        // CryptoError, Subclass TpmRsa, encryptError
         throw TpmError(r, "Failed to Encrypt data",
             ErrorCode::CryptographyError_TpmRsa_encryptError);
     }
-    Esys_Free(null_data);
-    retval.insert(retval.end(), cipher->buffer, cipher->buffer + cipher->size); 
+    retval.insert(retval.end(), cipher.buffer, cipher.buffer + cipher.size);
     return retval;
 }
 
 std::vector<unsigned char> Tss2Wrapper::Tss2RsaDecrypt(std::vector<unsigned char> const&encryptedData,
                                                       RsaPaddingScheme paddingScheme) {
-
-    TPM2B_PUBLIC* out_public = 0;
-    ESYS_TR ephemeral_handle = ESYS_TR_NONE;
-
-    std::vector<unsigned char> retval = std::vector<unsigned char>();
-
-    ESYS_TR object_handle = {};
-    ESYS_TR srk_handle = {};
-
-    ESYS_TR keyHandle, session;
-    
-    TSS2_RC r;
-    ESYS_TR primaryHandle = ESYS_TR_NONE;
+    std::vector<unsigned char> retval;
 
     TPM2B_PUBLIC_KEY_RSA cipher = { 0 };
-    TPM2B_PUBLIC_KEY_RSA* plain2 = nullptr;
-    TPM2B_DATA* null_data = nullptr;
-
-    TPM2B_AUTH authValue = {
-        0, // size
-        {} // buffer
-    };
-
-    r = Esys_TR_SetAuth(this->ctx->Get(), ESYS_TR_RH_OWNER, &authValue);
-    if (r != TSS2_RC_SUCCESS)
-    {
-        // TpmError, Subclass Auth, setAuthError
-        throw TpmError(r, "Failed to set auth",
-            ErrorCode::TpmError_Auth_setAuthError);
-    }
-
-    r = Esys_TR_FromTPMPublic(
-        this->ctx->Get(), KEYHANDLE,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &primaryHandle);
-    if (r != TSS2_RC_SUCCESS)
-    {
-        // TpmError, Subclass Handles, handlePresentError
-        throw TpmError(r, "Failed to read tpm object from handle",
-            ErrorCode::TpmError_Handles_handlePresentError);
-    }
-
-    r = Esys_TR_SetAuth(this->ctx->Get(), primaryHandle,
-        &authValue);
-    if (r != TSS2_RC_SUCCESS)
-    {
-        // TpmError, Subclass Auth, setAuthError
-        throw TpmError(r, "Failed to set auth",
-            ErrorCode::TpmError_Auth_setAuthError);
-    }
-
-    // Set plaintext data
-    TPM2B_PUBLIC_KEY_RSA plain = { 0 };
     std::copy(encryptedData.begin(), encryptedData.end(), cipher.buffer);
-    cipher.size = encryptedData.size();
-    
-    // Set scheme based on padding
+    cipher.size = static_cast<uint16_t>(encryptedData.size());
+
     TPMT_RSA_DECRYPT scheme = MakeRsaScheme(paddingScheme);
 
+    TPM2B_PUBLIC_KEY_RSA plain = { 0 };
+
+    TSS2L_SYS_AUTH_COMMAND cmdAuth = MakePasswordAuthCmd();
+    TSS2L_SYS_AUTH_RESPONSE rspAuth = {};
+
     // Execute decrypt
-    r = Esys_RSA_Decrypt(this->ctx->Get(), primaryHandle,
-        ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
-        &cipher, &scheme, null_data, &plain2);
+    TSS2_RC r = Tss2_Sys_RSA_Decrypt(this->ctx->Get(), KEYHANDLE,
+        &cmdAuth, &cipher, &scheme, NULL, &plain, &rspAuth);
     if (r != TSS2_RC_SUCCESS)
     {
         // CryptoError, Subclass TpmRsa, decryptError
         throw TpmError(r, "Failed to Decrypt data",
             ErrorCode::CryptographyError_TpmRsa_decryptError);
     }
-    retval.insert(retval.end(), plain2->buffer, plain2->buffer + plain2->size);
+    retval.insert(retval.end(), plain.buffer, plain.buffer + plain.size);
 
-    Esys_Free(null_data);
-    Esys_Free(plain2);
-    
     return retval;
 }
 
 std::vector<unsigned char> Tss2Wrapper::Tss2NvRead(TPM2_HANDLE nvIndex) {
     TSS2_RC r;
-    ESYS_TR nvHandle = ESYS_TR_NONE;
-    TPM2B_NV_PUBLIC* nvPubData = nullptr;
-    TPM2B_MAX_NV_BUFFER* nvData = nullptr;
-    std::unique_ptr<TPM2B_MAX_NV_BUFFER> nvDataUnique;
+    TPM2B_NV_PUBLIC nvPubData = {};
+    TPM2B_NAME nvName = {};
     std::vector<unsigned char> data;
 
-    // Get Esys object for handle.
-    r = Esys_TR_FromTPMPublic(
-        this->ctx->Get(), nvIndex,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &nvHandle);
-    if (r != TSS2_RC_SUCCESS)
-    {
-        // TpmError, Subclass Handles, handlePresentError
-        throw TpmError(r, "Failed to read tpm object from handle",
-            ErrorCode::TpmError_Handles_handlePresentError);
-    }
-
     // Get the NV public data for size
-    r = Esys_NV_ReadPublic(this->ctx->Get(), nvHandle,
-        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
-        &nvPubData, nullptr);
+    r = Tss2_Sys_NV_ReadPublic(this->ctx->Get(), nvIndex,
+        NULL, &nvPubData, &nvName, NULL);
     if (r != TSS2_RC_SUCCESS)
     {
         // TpmError, Subclass Handles, handlePresentError
@@ -360,33 +254,32 @@ std::vector<unsigned char> Tss2Wrapper::Tss2NvRead(TPM2_HANDLE nvIndex) {
             ErrorCode::TpmError_Handles_handlePresentError);
     }
 
-    size_t size = nvPubData->nvPublic.dataSize;
-    data.reserve(size);
+    size_t size = nvPubData.nvPublic.dataSize;
+    data.resize(size);
     size_t offset = 0;
-    data.resize(size); // Pre-allocate the vector to avoid resizing in the loop
+
+    TSS2L_SYS_AUTH_COMMAND cmdAuth = MakePasswordAuthCmd();
+    TSS2L_SYS_AUTH_RESPONSE rspAuth = {};
 
     while (size > 0) {
-        uint16_t bytesToRead = size > TPM_PT_NV_INDEX_MAX ? TPM_PT_NV_INDEX_MAX : size;
+        uint16_t bytesToRead = size > TPM_PT_NV_INDEX_MAX ? TPM_PT_NV_INDEX_MAX : static_cast<uint16_t>(size);
 
-        r = Esys_NV_Read(this->ctx->Get(),
-            ESYS_TR_RH_OWNER, nvHandle,
-            ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
-            bytesToRead, offset, &nvData);
+        TPM2B_MAX_NV_BUFFER nvData = {};
+        r = Tss2_Sys_NV_Read(this->ctx->Get(),
+            TPM2_RH_OWNER, nvIndex,
+            &cmdAuth,
+            bytesToRead, static_cast<uint16_t>(offset),
+            &nvData, &rspAuth);
         if (r != TSS2_RC_SUCCESS)
         {
-            // CryptoError, Subclass TpmRsa, decryptError
             throw TpmError(r, "Failed to read NV data",
                 ErrorCode::TpmError_Handles_esysNvReadError);
         }
 
-        nvDataUnique.reset(nvData); // Ensure nvData is freed after use
-
-        std::copy(nvData->buffer, nvData->buffer + nvData->size, data.begin() + offset);
-        size -= nvData->size;
-        offset += nvData->size;
+        std::copy(nvData.buffer, nvData.buffer + nvData.size, data.begin() + offset);
+        size -= nvData.size;
+        offset += nvData.size;
     }
-
-    data.resize(nvPubData->nvPublic.dataSize);
 
     return data;
 }
