@@ -5,8 +5,23 @@
 #include "../SecretsProvisioningLibrary.h"
 #include "../JsonWebToken.h"
 #include "../Policy.h"
-#include "../CommonTypes.h"
+#ifndef PLATFORM_UNIX
+#include "../Windows/Version.h"
+#else
+#include "Version.h"
+#endif
+#include <nlohmann/json.hpp>
+#include <sstream>
+#include <iomanip>
+#ifndef PLATFORM_UNIX
+#include <windows.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
+#else
+#include <openssl/evp.h>
+#endif
 
+using json = nlohmann::json;
 
 /**
  * @class FunctionalityTests
@@ -1442,4 +1457,34 @@ TEST_F(FunctionalityTests, EncryptDecryptWide_OaepPadding) {
 		ASSERT_EQ(wcscmp(data, output_secret), 0);
 		free_secret_wide(output_secret);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// is_secrets_provisioning_enabled -- key is present because SetUp ensured it
+// ---------------------------------------------------------------------------
+
+TEST_F(FunctionalityTests, IsSecretsProvisioningEnabled_KeyPresent)
+{
+    int result = is_secrets_provisioning_enabled();
+    ASSERT_GT(result, 0);
+}
+
+// ---------------------------------------------------------------------------
+// secrets_library_version -- no TPM required
+// ---------------------------------------------------------------------------
+
+TEST_F(FunctionalityTests, LibraryVersion)
+{
+    const char* version = secrets_library_version();
+    ASSERT_NE(version, nullptr);
+    ASSERT_GT(strlen(version), 0u);
+    // Expect semantic version format X.Y.Z
+    int major = 0, minor = 0, patch = 0;
+#ifndef PLATFORM_UNIX
+    int parsed = sscanf_s(version, "%d.%d.%d", &major, &minor, &patch);
+#else
+    int parsed = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+#endif
+    ASSERT_EQ(parsed, 3);
+    ASSERT_STREQ(version, secrets_library_version());
 }
