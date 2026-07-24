@@ -709,13 +709,60 @@ AttestationResult AttestationClientImpl::GetOSInfo(OsInfo& os_info) {
     return result;
 }
 
+#ifndef AZURE_LOCAL
+AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolation_info) {
+    CLIENT_LOG_INFO("Retrieving Isolation Info");
+    isolation_info = IsolationInfo();
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+    Buffer hcl_report;
+    std::string isolation_info_str = std::string();
+    try {
+        Tpm tpm;
+        hcl_report = tpm.GetHCLReport();
+        // If HCL report exists, then it's a CVM
+        isolation_info.isolation_type_ = attest::IsolationType::SEV_SNP;
+        isolation_info_str = "CVM";
+    }
+    catch (...) {
+        isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
+        isolation_info_str = "TVM";
+    }
+
+    if(telemetry_reporting.get() != nullptr) {
+        telemetry_reporting->UpdateEvent("IsolationInfo", 
+                                            isolation_info_str, 
+                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
+    }
+
+    if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
+        Buffer snp_report, runtime_data;
+        HclReportParser hcl_report_parser;
+        if ((result = hcl_report_parser.ExtractSnpReportAndRuntimeDataFromHclReport(hcl_report,
+                                                                                    snp_report,
+                                                                                    runtime_data)).code_ != AttestationResult::ErrorCode::SUCCESS) {
+            return result;
+        }
+
+        isolation_info.snp_report_ = snp_report;
+        isolation_info.runtime_data_ = runtime_data;
+        ImdsOperations imds_ops;
+        std::string vcek_cert;
+        if ((result = imds_ops.GetVCekCert(vcek_cert)).code_ != AttestationResult::ErrorCode::SUCCESS) {
+            CLIENT_LOG_ERROR("Failed to retrieve the VCek Cert from THIM");
+            return result;
+        }
+
+        isolation_info.vcek_cert_ = vcek_cert;
+    }
+    return result;
+}
+#else // AZURE_LOCAL
 AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolation_info) {
     CLIENT_LOG_INFO("Retrieving Isolation Info");
     isolation_info = IsolationInfo();
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
     std::string isolation_info_str = std::string();
 
-#ifdef AZURE_LOCAL
     CLIENT_LOG_INFO("AZURE_LOCAL path active");
     // Check hardware capabilities to determine if this is a CVM or TVM.
     uint32_t hw_capabilities = get_hardware_capabilities();
@@ -820,52 +867,9 @@ AttestationResult AttestationClientImpl::GetIsolationInfo(IsolationInfo& isolati
         
     }
 
-#else // !AZURE_LOCAL
-
-    Buffer hcl_report;
-    try {
-        Tpm tpm;
-        hcl_report = tpm.GetHCLReport();
-        // If HCL report exists, then it's a CVM
-        isolation_info.isolation_type_ = attest::IsolationType::SEV_SNP;
-        isolation_info_str = "CVM";
-    }
-    catch (...) {
-        isolation_info.isolation_type_ = attest::IsolationType::TRUSTED_LAUNCH;
-        isolation_info_str = "TVM";
-    }
-
-    if(telemetry_reporting.get() != nullptr) {
-        telemetry_reporting->UpdateEvent("IsolationInfo", 
-                                            isolation_info_str, 
-                                            attest::TelemetryReportingBase::EventLevel::VM_SECURITY_TYPE);
-    }
-
-    if (isolation_info.isolation_type_ == attest::IsolationType::SEV_SNP) {
-        Buffer snp_report, runtime_data;
-        HclReportParser hcl_report_parser;
-        if ((result = hcl_report_parser.ExtractSnpReportAndRuntimeDataFromHclReport(hcl_report,
-                                                                                    snp_report,
-                                                                                    runtime_data)).code_ != AttestationResult::ErrorCode::SUCCESS) {
-            return result;
-        }
-
-        isolation_info.snp_report_ = snp_report;
-        isolation_info.runtime_data_ = runtime_data;
-        ImdsOperations imds_ops;
-        std::string vcek_cert;
-        if ((result = imds_ops.GetVCekCert(vcek_cert)).code_ != AttestationResult::ErrorCode::SUCCESS) {
-            CLIENT_LOG_ERROR("Failed to retrieve the VCek Cert from THIM");
-            return result;
-        }
-
-        isolation_info.vcek_cert_ = vcek_cert;
-    }
-
-#endif // !AZURE_LOCAL
-
     return result;
 }
+#endif // AZURE_LOCAL
 
 AttestationResult AttestationClientImpl::CreatePayload(const AttestationParameters& params,
                                                        std::string& payload) {
