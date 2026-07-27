@@ -131,25 +131,6 @@ else
     echo "[MISSING] ${CERTS_BUNDLE}"
 fi
 
-# Deploy script (bundle into artifacts folder)
-DEPLOY_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Deploy-Artifacts.ps1"
-if [ -f "${DEPLOY_SCRIPT}" ]; then
-    cp "${DEPLOY_SCRIPT}" "${OUTPUT_DIR}/"
-    echo "[OK] Deploy-Artifacts.ps1"
-else
-    echo "[MISSING] ${DEPLOY_SCRIPT}"
-fi
-
-# Install script (bundle into artifacts folder)
-INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Install-Artifacts.sh"
-if [ -f "${INSTALL_SCRIPT}" ]; then
-    cp "${INSTALL_SCRIPT}" "${OUTPUT_DIR}/"
-    chmod +x "${OUTPUT_DIR}/Install-Artifacts.sh"
-    echo "[OK] Install-Artifacts.sh"
-else
-    echo "[MISSING] ${INSTALL_SCRIPT}"
-fi
-
 echo ""
 echo "=== Artifacts ==="
 ls -lh "${OUTPUT_DIR}/"
