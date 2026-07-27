@@ -41,6 +41,51 @@ static RsaPaddingScheme GetPaddingScheme(PolicyEvaluator& pe) {
     return RsaPaddingScheme::Rsaes;
 }
 
+// SigningOnly mode (DPS/CPS DpsV2 SigningOnly, PR 16451516):
+//   - JWT header advertises  "protectionSettings": { "mode": "SigningOnly" }
+//   - Payload carries ONLY the "signedData" claim (plus iat/exp); none of the
+//     encryption claims (encryptedSecret, salt, ...) are present.
+//   - The JWT is signed (verified via the x5c cert chain during ParseToken),
+//     but nothing is encrypted, so decrypt_secret() must NOT be called.
+// Returns true when the token is a SigningOnly token; on true, signedData is
+// set to the value of the "signedData" claim verbatim (an arbitrary caller-
+// supplied string, non-empty and bounded by the DPS MaxSignValueLength).
+static bool IsSigningOnly(PolicyEvaluator& pe, std::string& signedData) {
+    if (pe.IsLegacy()) {
+        return false;
+    }
+
+    // Primary signal: explicit mode in the JWT header.
+    const json& header = pe.GetHeader();
+    bool modeIsSigningOnly = false;
+    if (header.contains("protectionSettings") &&
+        header["protectionSettings"].is_object() &&
+        header["protectionSettings"].contains("mode") &&
+        header["protectionSettings"]["mode"].is_string()) {
+        modeIsSigningOnly =
+            header["protectionSettings"]["mode"].get<std::string>() == "SigningOnly";
+    }
+
+    json claims = pe.GetClaims();
+    const bool hasSignedData =
+        claims.contains("signedData") && claims["signedData"].is_string();
+
+    // Accept either the explicit header mode, or (defensively) a token that has
+    // the signedData claim and none of the encryption claims.
+    if (!modeIsSigningOnly) {
+        if (!hasSignedData || claims.contains("encryptedSecret")) {
+            return false;
+        }
+    }
+
+    if (!hasSignedData) {
+        return false;
+    }
+
+    signedData = claims["signedData"].get<std::string>();
+    return true;
+}
+
 static long decrypt_secret(const json& claims, RsaPaddingScheme paddingScheme, std::vector<unsigned char>& plaintextData) {
     std::unique_ptr<AesWrapper> aesWrapper;
     std::unique_ptr<AesCreator> aesCreator;
@@ -241,15 +286,22 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
 
 		// Get data
 		std::vector<unsigned char> data;
-		
+
 		if (pe.IsLegacy()) {
 			// Direct copy of input for legacy data
 			data.assign(jwt, jwt + jwtlen);
 		} else {
-			json claims = pe.GetClaims();
-			long result = decrypt_secret(claims, GetPaddingScheme(pe), data);
-			if (result != 0) {
-				return result;
+			std::string signedData;
+			if (IsSigningOnly(pe, signedData)) {
+				// SigningOnly: the verified payload IS the trusted value. No
+				// decryption is performed; return the signedData claim as-is.
+				data.assign(signedData.begin(), signedData.end());
+			} else {
+				json claims = pe.GetClaims();
+				long result = decrypt_secret(claims, GetPaddingScheme(pe), data);
+				if (result != 0) {
+					return result;
+				}
 			}
 		}
 		return marshal_output(data, reinterpret_cast<unsigned char**>(output_secret));
@@ -301,17 +353,22 @@ long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int polic
             // Direct copy of input for legacy data
             wide_data.assign(jwt, jwt + jwtlen);
         } else {
-            json claims = pe.GetClaims();
             std::vector<unsigned char> plaintextData;
-            
-            long result = decrypt_secret(claims, GetPaddingScheme(pe), plaintextData);
-            if (result != 0) {
-                return result;
+            std::string signedData;
+            if (IsSigningOnly(pe, signedData)) {
+                // SigningOnly: the verified payload IS the trusted value.
+                plaintextData.assign(signedData.begin(), signedData.end());
+            } else {
+                json claims = pe.GetClaims();
+                long result = decrypt_secret(claims, GetPaddingScheme(pe), plaintextData);
+                if (result != 0) {
+                    return result;
+                }
             }
-            
+
             // Convert to wide characters
             wide_data = utf8_sanitizer::utf8_to_wide(plaintextData);
-            
+
             if (wide_data.empty() && !plaintextData.empty()) {
                 LIBSECRETS_LOG(LogLevel::Error, "UTF-8 Conversion", 
                                "Failed to convert decrypted data to wide characters");

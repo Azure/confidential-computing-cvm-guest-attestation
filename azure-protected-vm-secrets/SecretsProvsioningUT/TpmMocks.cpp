@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-//#include "pch.h"
 #include "TpmMocks.h"
 #include "TpmError.h"
 #include <string.h>
@@ -8,56 +7,50 @@
 extern std::shared_ptr<TpmLibMock> tpmLibMockObj;
 
 extern "C" {
-    TSS2_RC Esys_TR_FromTPMPublic(ESYS_CONTEXT* esysContext,
-        TPM2_HANDLE tpm_handle,
-        ESYS_TR optionalSession1,
-        ESYS_TR optionalSession2,
-        ESYS_TR optionalSession3,
-        ESYS_TR* object)
-    {
-        return tpmLibMockObj->Esys_TR_FromTPMPublic(esysContext, tpm_handle, optionalSession1,
-            optionalSession2, optionalSession3, object);
-    }
-    TSS2_RC Esys_EvictControl(ESYS_CONTEXT* esysContext,
-        ESYS_TR auth,
-        ESYS_TR objectHandle,
-        ESYS_TR shandle1,
-        ESYS_TR shandle2,
-        ESYS_TR shandle3,
+    TSS2_RC Tss2_Sys_EvictControl(
+        TSS2_SYS_CONTEXT *sysContext,
+        TPMI_RH_PROVISION auth,
+        TPMI_DH_OBJECT objectHandle,
+        TSS2L_SYS_AUTH_COMMAND const *cmdAuthsArray,
         TPMI_DH_PERSISTENT persistentHandle,
-        ESYS_TR* newObjectHandle)
+        TSS2L_SYS_AUTH_RESPONSE *rspAuthsArray)
     {
-        return tpmLibMockObj->Esys_EvictControl(esysContext, auth, objectHandle, shandle1,
-            shandle2, shandle3, persistentHandle, newObjectHandle);
+        return tpmLibMockObj->Tss2_Sys_EvictControl(sysContext, auth, objectHandle,
+            cmdAuthsArray, persistentHandle, rspAuthsArray);
     }
 
-    TSS2_RC Esys_TR_SetAuth(
-        ESYS_CONTEXT* esysContext,
-        ESYS_TR handle,
-        TPM2B_AUTH const* authValue)
+    TSS2_RC Tss2_Sys_RSA_Decrypt(
+        TSS2_SYS_CONTEXT *sysContext,
+        TPMI_DH_OBJECT keyHandle,
+        TSS2L_SYS_AUTH_COMMAND const *cmdAuthsArray,
+        const TPM2B_PUBLIC_KEY_RSA *cipherText,
+        const TPMT_RSA_DECRYPT *inScheme,
+        const TPM2B_DATA *label,
+        TPM2B_PUBLIC_KEY_RSA *message,
+        TSS2L_SYS_AUTH_RESPONSE *rspAuthsArray)
     {
-        return tpmLibMockObj->Esys_TR_SetAuth(esysContext, handle, authValue);
-    }
-
-    TSS2_RC Esys_RSA_Decrypt(
-        ESYS_CONTEXT* esysContext,
-        ESYS_TR keyHandle,
-        ESYS_TR shandle1,
-        ESYS_TR shandle2,
-        ESYS_TR shandle3,
-        const TPM2B_PUBLIC_KEY_RSA* cipherText,
-        const TPMT_RSA_DECRYPT* inScheme,
-        const TPM2B_DATA* label,
-        TPM2B_PUBLIC_KEY_RSA** message)
-    {
-        auto rc = tpmLibMockObj->Esys_RSA_Decrypt(esysContext, keyHandle, shandle1, shandle2, shandle3,
-                        cipherText, inScheme, label, message);
-        TPM2B_PUBLIC_KEY_RSA *plain = (TPM2B_PUBLIC_KEY_RSA*)calloc(1, sizeof(TPM2B_PUBLIC_KEY_RSA));
-        plain->size = 0;
-        plain->buffer[0] = {};
-        *message = plain;
+        auto rc = tpmLibMockObj->Tss2_Sys_RSA_Decrypt(sysContext, keyHandle, cmdAuthsArray,
+                        cipherText, inScheme, label, message, rspAuthsArray);
+        if (message != nullptr) {
+            message->size = 0;
+            message->buffer[0] = {};
+        }
         return rc;
     }
+
+    TSS2_RC Tss2_Sys_ReadPublic(
+        TSS2_SYS_CONTEXT *sysContext,
+        TPMI_DH_OBJECT objectHandle,
+        TSS2L_SYS_AUTH_COMMAND const *cmdAuthsArray,
+        TPM2B_PUBLIC *outPublic,
+        TPM2B_NAME *name,
+        TPM2B_NAME *qualifiedName,
+        TSS2L_SYS_AUTH_RESPONSE *rspAuthsArray)
+    {
+        return tpmLibMockObj->Tss2_Sys_ReadPublic(sysContext, objectHandle, cmdAuthsArray,
+            outPublic, name, qualifiedName, rspAuthsArray);
+    }
+
 #ifdef PLATFORM_UNIX
     TSS2_RC Tss2_Tcti_Device_Init(TSS2_TCTI_CONTEXT* tctiContext, size_t* size, const char* conf)
 #else
@@ -81,16 +74,20 @@ extern "C" {
         return 0;
     }
 
-    TSS2_RC Esys_Initialize(ESYS_CONTEXT** esys_context, TSS2_TCTI_CONTEXT* tcti, TSS2_ABI_VERSION* abiVersion)
+    size_t Tss2_Sys_GetContextSize(size_t maxCommandResponseSize)
     {
-        // Give back a random handle, doesn't matter what it points to
-        *esys_context = (ESYS_CONTEXT*)malloc(sizeof(void*));
-        return 0;
+        // Return a reasonable size for the mock context
+        return sizeof(void*) * 16;
     }
 
-    void Esys_Finalize(ESYS_CONTEXT** esys_context)
+    TSS2_RC Tss2_Sys_Initialize(TSS2_SYS_CONTEXT* sysContext, size_t contextSize,
+        TSS2_TCTI_CONTEXT* tctiContext, TSS2_ABI_VERSION* abiVersion)
     {
-        free(*esys_context);
-        esys_context = nullptr;
+        return TSS2_RC_SUCCESS;
+    }
+
+    void Tss2_Sys_Finalize(TSS2_SYS_CONTEXT* sysContext)
+    {
+        // No-op for mock
     }
 }

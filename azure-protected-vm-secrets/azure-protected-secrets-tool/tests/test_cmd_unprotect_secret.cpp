@@ -19,6 +19,7 @@
 
 // ---------------------------------------------------------------------------
 // Stub the library symbols so we don't need the full shared library.
+// Declared static to avoid ODR conflicts when linked with other test files.
 // ---------------------------------------------------------------------------
 static std::string g_stub_input;       // last JWT seen by the stub
 static std::string g_stub_plaintext;   // what the stub "decrypts" to
@@ -43,14 +44,6 @@ long unprotect_secret(char* jwt, unsigned int jwtlen,
     std::memcpy(buf, g_stub_plaintext.c_str(), len);
     *output_secret = buf;
     return static_cast<long>(len);
-}
-
-void free_secret(char* p) { delete[] p; }
-
-const char* get_error_message(long code)
-{
-    if (code == -100) return "PolicyMismatchError";
-    return "UnknownError";
 }
 
 } // extern "C"

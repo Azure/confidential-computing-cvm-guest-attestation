@@ -27,7 +27,7 @@ set(TSS2_LIBRARIES ${TSS2_ESYS} ${TSS2_SYS} ${TSS2_MU} ${TSS2_TCTI_DEVICE} dl ${
 
 set(TSS2_INCLUDE_DIRS ${TSS2_INCLUDE_DIR})
 
-include_directories(${TSS2_INCLUDE_DIRS} ../)
+include_directories(${TSS2_INCLUDE_DIRS} ../ ${CMAKE_BINARY_DIR}/generated)
 
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
@@ -48,7 +48,12 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 include_directories("../SecretsProvisioningSample/")
-file(GLOB SOURCES "*.cpp" "../SecretsProvisioningSample/SecretsProvisioningSample.cpp")
+file(GLOB SOURCES
+    "*.cpp"
+    "../SecretsProvisioningSample/SecretsProvisioningSample.cpp"
+    "../SecretsProvisioningSample/cli_common.cpp"
+    "../SecretsProvisioningSample/cmd_validate_imds.cpp"
+)
 
 
 add_executable(${CMAKE_PROJECT_TARGET} ${SOURCES})

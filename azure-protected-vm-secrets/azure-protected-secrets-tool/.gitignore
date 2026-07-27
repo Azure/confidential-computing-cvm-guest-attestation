@@ -1,0 +1,10 @@
+# Local developer scratch scripts for the azure-protected-secrets-tool.
+# These are ad-hoc, workstation/CVM-specific helpers used during development of
+# the validate-imds-metadata / unprotect-secret flows. They are intentionally
+# NOT part of the PR. The reusable, reviewed test scripts live in test_scripts/.
+debug_hash.sh
+gen_imds_blob.sh
+run_cvm_test.sh
+run_live_check.sh
+run_unprotect_test.sh
+test_unprotect_secret.sh

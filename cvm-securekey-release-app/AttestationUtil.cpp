@@ -158,7 +158,7 @@ std::string Util::url_encode(const std::string &data)
     char *output = curl_easy_escape(curl, data.c_str(), data.length());
     if (output)
     {
-        encoded_str = data;
+        encoded_str = output;
         curl_free(output);
     }
 

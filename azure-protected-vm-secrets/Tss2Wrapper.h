@@ -17,7 +17,7 @@ public:
     std::vector<unsigned char> Tss2RsaEncrypt(std::vector<unsigned char> const&plaintextData,
                                               RsaPaddingScheme paddingScheme);
     std::vector<unsigned char> Tss2NvRead(TPM2_HANDLE nvIndex);
-    TPM2B_PUBLIC* GenerateGuestKey();
+    TPM2B_PUBLIC GenerateGuestKey();
     TPM2_RC RemoveKey();
     bool IsKeyPresent();
 

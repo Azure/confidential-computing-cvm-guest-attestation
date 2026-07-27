@@ -14,21 +14,21 @@
 
 static void print_usage(std::ostream& out)
 {
-    out << "Usage: azure-protected-secrets-tool <command> [options]\n"
-        << "\n"
-        << "Commands:\n"
-        << "  is-cvm                             Check if VM is a Confidential VM\n"
-        << "  is-secrets-provisioning-enabled    Check if secrets provisioning is enabled\n"
-        << "  unprotect-secret [TOKEN]           Decrypt a protected secret.\n"
-        << "                                     TOKEN may be passed as an inline argument\n"
-        << "                                     or piped via stdin.\n"
-        << "  validate-imds-metadata             Validate IMDS metadata signature\n"
-        << "\n"
-        << "Options:\n"
-        << "  --policy N   Set policy for unprotect-secret (0=RequireAll, 2=AllowUnsigned, 4=AllowLegacy)\n"
-        << "  --json       Output in JSON format\n"
-        << "  --help, -h   Print this help message\n"
-        << "  --version    Print tool and library version\n";
+	out << "Usage: azure-protected-secrets-tool <command> [options]\n"
+		<< "\n"
+		<< "Commands:\n"
+		<< "  is-cvm                             Check if VM is a Confidential VM\n"
+		<< "  is-secrets-provisioning-enabled    Check if secrets provisioning is enabled\n"
+		<< "  unprotect-secret [TOKEN]           Decrypt a protected secret.\n"
+		<< "                                     TOKEN may be passed as an inline argument\n"
+		<< "                                     or piped via stdin.\n"
+		<< "  validate-imds-metadata             Validate IMDS metadata signature\n"
+		<< "\n"
+		<< "Options:\n"
+		<< "  --policy N   Set policy for unprotect-secret (0=RequireAll, 2=AllowUnsigned, 4=AllowLegacy)\n"
+		<< "  --json       Output in JSON format\n"
+		<< "  --help, -h   Print this help message\n"
+		<< "  --version    Print tool and library version\n";
 }
 
 int main(int argc, char* argv[])
@@ -56,9 +56,9 @@ int main(int argc, char* argv[])
         return cmd_is_secrets_enabled(args);
     } else if (args.command == "unprotect-secret") {
         return cmd_unprotect_secret(args);
-    } else if (args.command == "validate-imds-metadata") {
-        return cmd_validate_imds(args);
-    } else if (!args.command.empty()) {
+	} else if (args.command == "validate-imds-metadata") {
+		return cmd_validate_imds(args);
+	} else if (!args.command.empty()) {
         std::cerr << "Unknown command: " << args.command << "\n";
         print_usage(std::cerr);
         return 1;
