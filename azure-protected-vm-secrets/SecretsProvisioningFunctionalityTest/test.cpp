@@ -248,7 +248,11 @@ TEST_F(FunctionalityTests, FailureInvalidEcdhPrivateKey) {
 		&output_secret, &eval_policy
 	);
 	ASSERT_LE(result, 0);
-	ASSERT_STREQ(get_error_message(result), "CryptographyError_AES_decryptError");
+	// AES-GCM tag mismatch. Windows (BCrypt) surfaces the granular child code,
+	// while Linux (OpenSSL) returns the generic parent CryptographyError.
+	std::string errMsg = get_error_message(result);
+	ASSERT_TRUE(errMsg == "CryptographyError_AES_decryptError" || errMsg == "CryptographyError")
+		<< "Unexpected error message: " << errMsg;
 	ASSERT_EQ(output_secret, nullptr);
 	if (output_secret) {
 		free_secret(output_secret);
@@ -450,7 +454,11 @@ TEST_F(FunctionalityTests, FailureEncryptDecryptWide) {
     
     // Verify failure
     ASSERT_LE(result, 0);
-    ASSERT_STREQ(get_error_message(result), "CryptographyError_AES_decryptError");
+    // AES-GCM tag mismatch. Windows (BCrypt) surfaces the granular child code,
+    // while Linux (OpenSSL) returns the generic parent CryptographyError.
+    std::string errMsg = get_error_message(result);
+    ASSERT_TRUE(errMsg == "CryptographyError_AES_decryptError" || errMsg == "CryptographyError")
+        << "Unexpected error message: " << errMsg;
     ASSERT_EQ(output_secret, nullptr);
     
     if (output_secret) {

@@ -187,7 +187,7 @@ static std::string canonical_public_keys(const json& arr)
 // The SignatureInfo.metadata catalog keys are the FLAT field names below
 // (NOT dotted paths like "compute.vmId").
 // ---------------------------------------------------------------------------
-static const char* kSignedFieldPublicKeys    = "publicKeys";
+static const char* kSignedFieldPublicKeys     = "publicKeys";
 static const char* kSignedFieldSubscriptionId = "subscriptionId";
 static const char* kSignedFieldUserData       = "userData";
 static const char* kSignedFieldVmId           = "vmId";
@@ -237,7 +237,7 @@ static bool compute_signed_field_hash(const json& imds,
 }
 
 // ---------------------------------------------------------------------------
-// Core implementation — accepts injected unprotect_fn for testability
+// Core implementation â€” accepts injected unprotect_fn for testability
 // ---------------------------------------------------------------------------
 int cmd_validate_imds_impl(const std::string& imds_json, UnprotectSecretFn unprotect_fn, unsigned int policy)
 {
@@ -396,22 +396,29 @@ int cmd_validate_imds_impl(const std::string& imds_json, UnprotectSecretFn unpro
     json output;
     output["validated"] = all_valid;
     output["fields"] = fields_result;
-    std::cout << output.dump() << "\n";
+    std::cout << "\n" << output.dump() << "\n";
     return all_valid ? 0 : 1;
 }
 
 // ---------------------------------------------------------------------------
-// CLI entry point — uses real unprotect_secret
+// CLI entry point â€” uses real unprotect_secret
 // ---------------------------------------------------------------------------
 #ifndef UNIT_TEST
-int cmd_validate_imds(const CliArgs& args)
+int cmd_validate_imds(const CliArgs& /*args*/)
 {
     std::string input = read_all_stdin();
     if (input.empty()) {
         std::cerr << "No input provided on stdin\n";
-    return 1;
-}
-    return cmd_validate_imds_impl(input, unprotect_secret, args.policy);
+        return 1;
+    }
+    
+    // IMDS signature validation always uses a SigningOnly token (signed, never
+    // encrypted). The policy is fixed internally to AllowUnencrypted so a valid
+    // signature is always required and no caller-supplied --policy can relax it
+    // (e.g. AllowUnsigned / AllowLegacy would defeat the whole verification).
+    // Value mirrors PolicyOption::AllowUnencrypted in Policy.h.
+    constexpr unsigned int kImdsValidationPolicy = 1u; // AllowUnencrypted
+    return cmd_validate_imds_impl(input, unprotect_secret, kImdsValidationPolicy);
 }
 #else
 int cmd_validate_imds(const CliArgs& /*args*/) { return 1; }

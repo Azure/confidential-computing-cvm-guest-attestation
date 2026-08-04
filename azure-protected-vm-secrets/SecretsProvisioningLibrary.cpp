@@ -41,6 +41,29 @@ static RsaPaddingScheme GetPaddingScheme(PolicyEvaluator& pe) {
     return RsaPaddingScheme::Rsaes;
 }
 
+// Maps a PolicyOption bitmask to a human-readable name for diagnostics.
+// RequireAll (0) has no bits set; any other value is a combination of the
+// Allow* flags joined with '|' (e.g. "AllowUnencrypted|AllowUnsigned").
+static std::string PolicyOptionToString(PolicyOption policy) {
+    if (policy == PolicyOption::RequireAll) {
+        return "RequireAll";
+    }
+
+    std::string name;
+    const auto append = [&name](const char* flag) {
+        if (!name.empty()) {
+            name += "|";
+        }
+        name += flag;
+    };
+
+    if (IS_POLICY_SET(policy, PolicyOption::AllowUnencrypted)) { append("AllowUnencrypted"); }
+    if (IS_POLICY_SET(policy, PolicyOption::AllowUnsigned))    { append("AllowUnsigned"); }
+    if (IS_POLICY_SET(policy, PolicyOption::AllowLegacy))      { append("AllowLegacy"); }
+
+    return name.empty() ? "Unknown" : name;
+}
+
 // SigningOnly mode (DPS/CPS DpsV2 SigningOnly, PR 16451516):
 //   - JWT header advertises  "protectionSettings": { "mode": "SigningOnly" }
 //   - Payload carries ONLY the "signedData" claim (plus iat/exp); none of the
@@ -281,6 +304,9 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
 		if (!pe.IsCompliant()) {
 			LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n", 
 						"Invalid policy %d does not match evaluated settings %d\n", policy, *eval_policy);
+			LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n",
+						"Input Policy was %s, but the token does not have the correct configuration.\n",
+						PolicyOptionToString(static_cast<PolicyOption>(policy)).c_str());
 			return (long)ErrorCode::PolicyMismatchError;
 		}
 
@@ -295,6 +321,7 @@ long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy, char*
 			if (IsSigningOnly(pe, signedData)) {
 				// SigningOnly: the verified payload IS the trusted value. No
 				// decryption is performed; return the signedData claim as-is.
+				LIBSECRETS_LOG(LogLevel::Info, "Unprotect Secret\n", "SigningOnly token verified; returning signed payload\n");
 				data.assign(signedData.begin(), signedData.end());
 			} else {
 				json claims = pe.GetClaims();
@@ -343,6 +370,9 @@ long unprotect_secret_wide(wchar_t* jwt, unsigned int jwtlen, unsigned int polic
         if (!pe.IsCompliant()) {
             LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n", 
                            "Invalid policy %d does not match evaluated settings %d\n", policy, *eval_policy);
+            LIBSECRETS_LOG(LogLevel::Error, "Unprotect Secret\n",
+                           "Input Policy was %s, but the token does not have the correct configuration.\n",
+                           PolicyOptionToString(static_cast<PolicyOption>(policy)).c_str());
             return (long)ErrorCode::PolicyMismatchError;
         }
         

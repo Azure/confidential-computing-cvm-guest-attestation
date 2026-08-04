@@ -18,7 +18,16 @@ CliArgs parse_args(int argc, char* argv[])
         } else if (std::strcmp(argv[i], "--version") == 0) {
             args.version = true;
         } else if (std::strcmp(argv[i], "--policy") == 0 && i + 1 < argc) {
-            args.policy = static_cast<unsigned int>(std::strtoul(argv[++i], nullptr, 10));
+            const char* value = argv[++i];
+            char* end = nullptr;
+            unsigned long parsed = std::strtoul(value, &end, 10);
+            // Reject empty/non-numeric input (end not advanced to the NUL
+            // terminator) and any value outside the supported range 0-4.
+            if (*value == '\0' || end == value || *end != '\0' || parsed > 4) {
+                args.policy_valid = false;
+            } else {
+                args.policy = static_cast<unsigned int>(parsed);
+            }
         } else if (argv[i][0] != '-') {
             if (args.command.empty()) {
                 args.command = argv[i];

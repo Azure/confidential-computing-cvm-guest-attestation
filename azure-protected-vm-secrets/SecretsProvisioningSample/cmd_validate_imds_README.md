@@ -9,10 +9,17 @@ the host.
 ```sh
 curl -s -H "Metadata:true" \
   "http://169.254.169.254/metadata/instance?api-version=2025-01-01" \
-  | azure-protected-secrets-tool validate-imds-metadata [--policy <N>]
+  | azure-protected-secrets-tool validate-imds-metadata
 ```
 
 Exit code `0` = all fields verified. Exit code `1` = any failure.
+
+The verification policy is fixed internally to `AllowUnencrypted` (a signature is
+always required; the IMDS SigningOnly token is signed but never encrypted). This
+command takes no arguments - the IMDS blob is read from stdin only - so the
+signature check cannot be relaxed by the caller. Passing any argument (including
+`--policy`) is rejected with the error
+`no arguments allowed for validate-imds-metadata` (exit code `1`).
 
 ---
 
@@ -28,7 +35,7 @@ on the signed-metadata API version:
     "vmId":     "abc12345-1234-1234-1234-abcdef123456",
     "location": "eastus",
     "vmSize":   "Standard_DC4as_v5",
-    "signatureInfo": "<base64-encoded signatureInfo JSON — see below>",
+    "signatureInfo": "<base64-encoded signatureInfo JSON â€” see below>",
     ...
   },
   "network": {
@@ -161,14 +168,14 @@ the base64-encoded envelope IMDS exposes for the signed-metadata feature.
 The `signature` JWT is signed **SigningOnly** (header
 `protectionSettings.mode = "SigningOnly"`). After `unprotect_secret()` verifies
 the signature it returns the `signedData` claim, which for the IMDS flow equals
-`SHA256(canonical_json(metadata))` — confirming the catalog was produced by CPS
+`SHA256(canonical_json(metadata))` â€” confirming the catalog was produced by CPS
 and not tampered with by the host.
 
 ---
 
 ## Two-Level Verification
 
-### Level 1 — Catalog Integrity (signature-backed)
+### Level 1 â€” Catalog Integrity (signature-backed)
 
 Proves the `metadata` hash catalog was produced by Azure CPS and not by the host.
 
@@ -180,12 +187,12 @@ assert trusted_hash == computed_hash
 
 `unprotect_secret()` verifies the JWT signature against the `x5c` cert chain
 (subject-suffix pinned to CPS) and, for a SigningOnly token, returns the
-`signedData` claim directly — no decryption. `signedData` is the caller-supplied
+`signedData` claim directly â€” no decryption. `signedData` is the caller-supplied
 value CPS signed verbatim; for the IMDS flow CRP sets it to the composite hash
 (bare lowercase hex) of the canonical `metadata` catalog, which is compared
 exactly to the recomputed hash.
 
-### Level 2 — Per-Field Verification
+### Level 2 â€” Per-Field Verification
 
 Proves each individual IMDS field value matches what CPS recorded. Catalog keys
 are the four flat CRP-signed field names; each value is read from `compute`.
@@ -208,7 +215,7 @@ for each flat field name in metadata (publicKeys, subscriptionId, userData, vmId
 | `fields[key]` value | Meaning |
 |---|---|
 | `"valid"` | Field hash matched |
-| `"invalid"` | Field hash did not match — value may have been tampered |
+| `"invalid"` | Field hash did not match â€” value may have been tampered |
 | `"not_found"` | Field listed in catalog but not present in IMDS JSON |
 | `"invalid_type"` | Catalog entry for this field is not a string |
 
@@ -218,14 +225,14 @@ for each flat field name in metadata (publicKeys, subscriptionId, userData, vmId
 
 Both CRP (when producing the SignatureInfo) and the guest (when verifying) must
 agree on the same serialization. **RFC 8785 (JCS)** is the confirmed canonical
-form — compact (no extra whitespace), keys sorted alphabetically at every level
+form â€” compact (no extra whitespace), keys sorted alphabetically at every level
 of nesting.
 
 `cmd_validate_imds.cpp` implements this via `rfc8785_sort()` which recursively
 rebuilds JSON objects with alphabetically sorted keys before calling
 `nlohmann::json::dump()`. This is safe because `nlohmann::json` uses `std::map`
 internally (alphabetical by default when parsed), but programmatically
-constructed objects may have insertion-ordered keys — the sort makes it
+constructed objects may have insertion-ordered keys â€” the sort makes it
 explicit and correct in all cases.
 
 The mock CRP script (`test_scripts/gen_imds_blob.sh`) mirrors this by using
@@ -245,7 +252,7 @@ Field values are hashed as their **JSON serialization**, not as raw strings:
 **Arrays in general** RFC 8785 preserve element order (only object keys are
 sorted). **`publicKeys` is a special case:** to match CRP
 (`CanonicalJsonHelper.BuildCanonicalPublicKeyBytes`), the guest treats the
-`publicKeys` array as **order-INDEPENDENT** — each element is projected to
+`publicKeys` array as **order-INDEPENDENT** â€” each element is projected to
 `{keyData, path}`, its keys sorted, and the elements are then **sorted by their
 canonical UTF-8 bytes** before hashing. This makes the `publicKeys` hash
 identical regardless of the element order IMDS happens to serve.
@@ -253,11 +260,11 @@ identical regardless of the element order IMDS happens to serve.
 Concretely for `compute.publicKeys`:
 
 ```json
-// SAME hash — only key order within each object differs:
+// SAME hash â€” only key order within each object differs:
 [{"path":"/home/u","keyData":"ssh-rsa AAA..."}]
 [{"keyData":"ssh-rsa AAA...","path":"/home/u"}]
 
-// ALSO the SAME hash — element order differs but publicKeys elements are sorted:
+// ALSO the SAME hash â€” element order differs but publicKeys elements are sorted:
 [{"keyData":"AAA...","path":"/home/azureuser"},{"keyData":"222...","path":"/home/111"}]
 [{"keyData":"222...","path":"/home/111"},{"keyData":"AAA...","path":"/home/azureuser"}]
 ```
@@ -285,7 +292,7 @@ SHA-256 is implemented cross-platform:
 - `UnprotectSecretFn` typedef in `cmd_validate_imds.h` mirrors the real C API
   signature of `unprotect_secret()` in `SecretsProvisioningLibrary.h` exactly.
   It exists solely to allow mock injection in unit tests without TPM dependency.
-- `certChain` is accepted but ignored — CRP sets it to the empty string `""`
+- `certChain` is accepted but ignored â€” CRP sets it to the empty string `""`
   because the cert chain is carried inside the JWT `x5c` header, which is what
   the library verifies during `unprotect_secret`.
 - `signature` is a JSON map of CPS-issued JWT token(s) (keyed by CRP's

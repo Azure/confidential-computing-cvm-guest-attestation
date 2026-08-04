@@ -25,7 +25,12 @@ static void print_usage(std::ostream& out)
 		<< "  validate-imds-metadata             Validate IMDS metadata signature\n"
 		<< "\n"
 		<< "Options:\n"
-		<< "  --policy N   Set policy for unprotect-secret (0=RequireAll, 2=AllowUnsigned, 4=AllowLegacy)\n"
+		<< "  --policy N   Set policy for unprotect-secret:\n"
+		<< "                 0 = RequireAll (require signed + encrypted)\n"
+		<< "                 1 = AllowUnencrypted\n"
+		<< "                 2 = AllowUnsigned\n"
+		<< "                 3 = AllowUnencrypted + AllowUnsigned (1|2)\n"
+		<< "                 4 = AllowLegacy\n"
 		<< "  --json       Output in JSON format\n"
 		<< "  --help, -h   Print this help message\n"
 		<< "  --version    Print tool and library version\n";
@@ -45,6 +50,11 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (!args.policy_valid) {
+        std::cerr << "invalid --policy value (allowed: 0-4)\n";
+        return 1;
+    }
+
     if (args.version) {
         std::cout << secrets_library_version() << "\n";
         return 0;
@@ -57,6 +67,13 @@ int main(int argc, char* argv[])
     } else if (args.command == "unprotect-secret") {
         return cmd_unprotect_secret(args);
 	} else if (args.command == "validate-imds-metadata") {
+		// This command takes no options; it only reads the IMDS blob from stdin
+		// and always validates with a fixed internal policy. Reject any extra
+		// argument (e.g. --policy) so callers cannot influence verification.
+		if (argc > 2) {
+			std::cerr << "no arguments allowed for validate-imds-metadata\n";
+			return 1;
+		}
 		return cmd_validate_imds(args);
 	} else if (!args.command.empty()) {
         std::cerr << "Unknown command: " << args.command << "\n";

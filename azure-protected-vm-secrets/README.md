@@ -60,7 +60,7 @@ TODO:
         with the provisioned Guest Secret Key. 
     @param jwt: the jwt token to unprotect 
     @param jwtlen: the length of the jwt token 
-    @param policy: Flags to designate configuration settings. 0 – allow unsigned & unencrypted, 1 allow unencrypted & require signed, 2 require encrypted & allow unsigned, 3 require signed & require encrypted.
+    @param policy: PolicyOption flags to designate configuration settings. 0 (RequireAll) – require signed & encrypted; 1 (AllowUnencrypted) – allow unencrypted & require signed; 2 (AllowUnsigned) – require encrypted & allow unsigned; 3 (AllowUnencrypted+AllowUnsigned, 1|2) – allow unsigned & unencrypted; 4 (AllowLegacy) – allow legacy non-JWT payloads.
     @param output_secret: the pointer to the secret extracted from the jwt    token. Allocated by the function, must be freed by the caller. 
     @param eval_policy: a pointer to an unsigned integer (size_t) provided by reference by the caller to return the type of protected payload. This is a bitfield where 1 designates the protection is enabled and 0 designates that it lacks that protection. The current fields are encrypted (bit 0) and signed (bit 1).
     @return: non-negative length of the secret on success. On failure 
@@ -304,6 +304,18 @@ A test flow for a new application using the library:
 | `validate-imds-metadata` | Validate IMDS blob SignatureInfo | `{"validated":true,"fields":{...}}` |
 
 Options: `--policy N`, `--json`, `--help`, `--version`
+
+`--policy N` selects a `PolicyOption` configuration. The CLI accepts **only the values 0-4**; any value `≥ 5` or a non-numeric argument is rejected with `invalid --policy value (allowed: 0-4)`. If `--policy` is omitted (or given without a value) it defaults to `0`.
+
+| N | Meaning |
+|---|---|
+| `0` | `RequireAll` — require signed **and** encrypted (default) |
+| `1` | `AllowUnencrypted` |
+| `2` | `AllowUnsigned` |
+| `3` | `AllowUnencrypted + AllowUnsigned` (`1｜2`) |
+| `4` | `AllowLegacy` |
+
+> **Note:** Although the underlying library's `policy` parameter is a bitmask of `PolicyOption` flags, the CLI deliberately restricts `--policy` to the discrete values 0-4 above. `parse_args` argument handling — including each valid value and the out-of-range/non-numeric rejection paths — is covered by the GTest suite under `azure-protected-secrets-tool/tests/`.
 
 ```sh
 # Example: decrypt a protected secret (inline argument)

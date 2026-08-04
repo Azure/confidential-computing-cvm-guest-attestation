@@ -60,7 +60,7 @@ static std::string test_base64_encode(const std::vector<unsigned char>& in)
 }
 
 // ---------------------------------------------------------------------------
-// SHA256 helper — cross-platform, no dependency on impl internals
+// SHA256 helper â€” cross-platform, no dependency on impl internals
 // ---------------------------------------------------------------------------
 #ifdef _WIN32
 static std::string test_sha256_hex(const std::string& data)
@@ -112,13 +112,15 @@ static std::string test_sha256_hex(const std::string& data)
 // ---------------------------------------------------------------------------
 // Mock unprotect_secret state
 // ---------------------------------------------------------------------------
-static std::string g_mock_output;
-static long        g_mock_retval;
+static std::string  g_mock_output;
+static long         g_mock_retval;
+static unsigned int g_mock_seen_policy;
 
 static long mock_unprotect_secret(char* /*jwt*/, unsigned int /*jwtlen*/,
-                                   unsigned int /*policy*/,
+                                   unsigned int policy,
                                    char** output_secret, unsigned int* eval_policy)
 {
+    g_mock_seen_policy = policy;
     *eval_policy = 0;
     if (g_mock_retval <= 0) {
         *output_secret = nullptr;
@@ -232,7 +234,7 @@ static std::string build_valid_imds(
 }
 
 // ---------------------------------------------------------------------------
-// Test fixture — suppresses std::cerr during each test so intentional
+// Test fixture â€” suppresses std::cerr during each test so intentional
 // error-path messages from cmd_validate_imds_impl do not pollute output.
 // ---------------------------------------------------------------------------
 class ValidateImdsTest : public ::testing::Test {
@@ -242,6 +244,7 @@ protected:
     void SetUp() override {
         g_mock_output = "";
         g_mock_retval = 0;
+        g_mock_seen_policy = 0;
         m_old_cerr = std::cerr.rdbuf(m_null_buf.rdbuf());
     }
 
@@ -266,7 +269,7 @@ TEST_F(ValidateImdsTest, SuccessAllFieldsValid)
     std::string imds = build_valid_imds(fields);
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 0);
 }
 
@@ -283,7 +286,7 @@ TEST_F(ValidateImdsTest, FailUnprotectSecretError)
     g_mock_retval = -1;
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -300,7 +303,7 @@ TEST_F(ValidateImdsTest, FailMetadataHashMismatch)
     g_mock_retval = static_cast<long>(g_mock_output.size() + 1);
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -320,7 +323,7 @@ TEST_F(ValidateImdsTest, FailFieldHashMismatch)
     std::string imds = build_imds_json(fields, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -339,7 +342,7 @@ TEST_F(ValidateImdsTest, FailFieldNotFoundInImds)
     std::string imds = build_imds_json(fields, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -349,21 +352,21 @@ TEST_F(ValidateImdsTest, FailMissingSignatureInfo)
     imds["compute"]["vmId"] = "abc123";
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
 TEST_F(ValidateImdsTest, FailMalformedJson)
 {
     int rc = cmd_validate_imds_impl("not valid json {{", mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
 TEST_F(ValidateImdsTest, FailEmptyInput)
 {
     int rc = cmd_validate_imds_impl("", mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -374,7 +377,7 @@ TEST_F(ValidateImdsTest, FailSignatureInfoNotString)
     imds["compute"]["signatureInfo"] = 12345;
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -390,7 +393,7 @@ TEST_F(ValidateImdsTest, FailMissingSignatureField)
     imds["compute"]["signatureInfo"] = test_base64_encode(bytes);
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -406,13 +409,13 @@ TEST_F(ValidateImdsTest, FailMissingMetadataField)
     imds["compute"]["signatureInfo"] = test_base64_encode(bytes);
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
 TEST_F(ValidateImdsTest, FailMetadataValueNotString)
 {
-    // metadata entry is an integer, not a string hash — should return invalid_type
+    // metadata entry is an integer, not a string hash ï¿½ should return invalid_type
     std::vector<std::pair<std::string, json>> fields = {
         {"compute.vmId", json("abc123")}
     };
@@ -425,7 +428,7 @@ TEST_F(ValidateImdsTest, FailMetadataValueNotString)
     std::string imds = build_imds_json(fields, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -438,7 +441,7 @@ TEST_F(ValidateImdsTest, SuccessEmptyMetadata)
     std::string imds = build_imds_json({}, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 0);
 }
 
@@ -471,10 +474,10 @@ TEST_F(ValidateImdsTest, SuccessPublicKeysArrayKeyOrderIndependent)
     std::string imds_b = build_valid_imds(fields_b);
 
     int rc_a = cmd_validate_imds_impl(imds_a, mock_unprotect_secret,
-                                      static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                      static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     // Re-arm the mock for the second call (build_valid_imds set it for imds_b).
     int rc_b = cmd_validate_imds_impl(imds_b, mock_unprotect_secret,
-                                      static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                      static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
 
     EXPECT_EQ(rc_a, 0) << "publicKeys with path-first key order should validate";
     EXPECT_EQ(rc_b, 0) << "publicKeys with keyData-first key order should validate";
@@ -505,9 +508,9 @@ TEST_F(ValidateImdsTest, SuccessPublicKeysArrayElementOrderIndependent)
     std::string imds2 = build_valid_imds(fields2);
 
     int rc1 = cmd_validate_imds_impl(imds1, mock_unprotect_secret,
-                                     static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                     static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     int rc2 = cmd_validate_imds_impl(imds2, mock_unprotect_secret,
-                                     static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                     static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
 
     EXPECT_EQ(rc1, 0);
     EXPECT_EQ(rc2, 0);
@@ -533,7 +536,7 @@ TEST_F(ValidateImdsTest, SuccessUserDataAbsentTreatedAsEmpty)
     std::string imds = build_imds_json(fields, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 0) << "Absent userData must hash as empty string, not fail as not_found";
 }
 
@@ -544,7 +547,7 @@ TEST_F(ValidateImdsTest, FailMissingComputeObject)
     imds["network"] = json::object();
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -556,7 +559,7 @@ TEST_F(ValidateImdsTest, FailEmptySignatureInfo)
     imds["compute"]["signatureInfo"] = "";
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -568,7 +571,7 @@ TEST_F(ValidateImdsTest, FailSignatureInfoNotBase64)
     imds["compute"]["signatureInfo"] = "!!!not-base64!!!";
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -582,7 +585,7 @@ TEST_F(ValidateImdsTest, FailSignatureInfoNotJson)
     imds["compute"]["signatureInfo"] = test_base64_encode(bytes);
 
     int rc = cmd_validate_imds_impl(imds.dump(), mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1);
 }
 
@@ -604,7 +607,7 @@ TEST_F(ValidateImdsTest, SuccessSignatureTokenMap)
     std::string imds = build_imds_json(fields, metadata_map, token_map.dump());
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 0) << "signature as a single-entry token map should be accepted";
 }
 
@@ -623,7 +626,25 @@ TEST_F(ValidateImdsTest, FailPublicKeysWrongType)
     std::string imds = build_imds_json(fields, metadata_map, "mock.jwt.token");
 
     int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
-                                    static_cast<unsigned int>(PolicyOption::AllowUnsigned));
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
     EXPECT_EQ(rc, 1) << "publicKeys present but not an array must fail as invalid_type";
+}
+
+// cmd_validate_imds_impl must forward the caller-supplied policy verbatim to
+// unprotect_secret. This guards the one behavior the policy parameter controls.
+TEST_F(ValidateImdsTest, ForwardsPolicyToUnprotectSecret)
+{
+    std::vector<std::pair<std::string, json>> fields = {
+        {"compute.vmId",     json("abc12345-1234-1234-1234-abcdef123456")},
+        {"compute.location", json("eastus")}
+    };
+    std::string imds = build_valid_imds(fields);
+
+    int rc = cmd_validate_imds_impl(imds, mock_unprotect_secret,
+                                    static_cast<unsigned int>(PolicyOption::AllowUnencrypted));
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(g_mock_seen_policy,
+              static_cast<unsigned int>(PolicyOption::AllowUnencrypted))
+        << "policy must be passed through to unprotect_secret unchanged";
 }
 

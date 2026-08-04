@@ -5,7 +5,7 @@
 #ifndef UNIT_TEST
 #include "SecretsProvisioningLibrary.h"
 #else
-// Forward declarations for unit test stubs — avoids pulling in TPM/crypto headers
+// Forward declarations for unit test stubs â€” avoids pulling in TPM/crypto headers
 extern "C" {
     long unprotect_secret(char* jwt, unsigned int jwtlen, unsigned int policy,
                           char** output_secret, unsigned int* eval_policy);
@@ -46,7 +46,7 @@ int cmd_unprotect_secret(const CliArgs& args)
 
     if (result > 0) {
         size_t write_len = static_cast<size_t>(result);
-        // Trim trailing null byte if present — the library returns length
+        // Trim trailing null byte if present â€” the library returns length
         // including the null terminator from the encrypted string.
         if (write_len > 0 && output[write_len - 1] == '\0')
             write_len--;
@@ -94,5 +94,3 @@ int cmd_unprotect_secret(const CliArgs& args)
     }
     return 1;
 }
-
-

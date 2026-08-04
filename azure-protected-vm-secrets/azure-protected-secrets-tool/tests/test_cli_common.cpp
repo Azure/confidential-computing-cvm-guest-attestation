@@ -37,11 +37,45 @@ TEST(ParseArgsTest, PolicyWithoutValue) {
     EXPECT_EQ(args.policy, 0u);
 }
 
-TEST(ParseArgsTest, CombinedPolicyFlags) {
-    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"6" };
+TEST(ParseArgsTest, PolicyZero) {
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"0" };
     CliArgs args = parse_args(4, argv);
-    EXPECT_EQ(args.command, "unprotect-secret");
-    EXPECT_EQ(args.policy, 6u);
+    EXPECT_EQ(args.policy, 0u);
+    EXPECT_TRUE(args.policy_valid);
+}
+
+TEST(ParseArgsTest, PolicyOne) {
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"1" };
+    CliArgs args = parse_args(4, argv);
+    EXPECT_EQ(args.policy, 1u);
+    EXPECT_TRUE(args.policy_valid);
+}
+
+TEST(ParseArgsTest, PolicyThree) {
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"3" };
+    CliArgs args = parse_args(4, argv);
+    EXPECT_EQ(args.policy, 3u);
+    EXPECT_TRUE(args.policy_valid);
+}
+
+TEST(ParseArgsTest, PolicyFourIsMaxValid) {
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"4" };
+    CliArgs args = parse_args(4, argv);
+    EXPECT_EQ(args.policy, 4u);
+    EXPECT_TRUE(args.policy_valid);
+}
+
+TEST(ParseArgsTest, PolicyAboveMaxRejected) {
+    // 5 is outside the supported 0-4 range and must be rejected.
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"5" };
+    CliArgs args = parse_args(4, argv);
+    EXPECT_FALSE(args.policy_valid);
+}
+
+TEST(ParseArgsTest, PolicyNonNumericRejected) {
+    char* argv[] = { (char*)"azure-protected-secrets-tool", (char*)"unprotect-secret", (char*)"--policy", (char*)"abc" };
+    CliArgs args = parse_args(4, argv);
+    EXPECT_FALSE(args.policy_valid);
 }
 
 TEST(ParseArgsTest, UnknownCommand) {
