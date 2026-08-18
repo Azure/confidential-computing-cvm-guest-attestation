@@ -81,6 +81,9 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
 
 #else // AZURE_LOCAL
 
+// Note: This Azure Local GetVCekCert implementation is no longer called.
+// Evidence gathering (including endorsements) is now handled directly
+// in AttestationClientImpl::GetIsolationInfo via the evidence SDK.
 attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
 
@@ -119,10 +122,7 @@ attest::AttestationResult ImdsOperations::GetVCekCert(std::string& vcek_cert) {
     }
 
 
-    // Convert endorsements to null-terminated string
-    endorsements.push_back('\0');
-    std::string endorsements_str(reinterpret_cast<const char*>(endorsements.data()));
-    vcek_cert = attest::base64::base64_encode(endorsements_str);
+    vcek_cert = attest::base64::binary_to_base64(endorsements);
 
     return result;
 }

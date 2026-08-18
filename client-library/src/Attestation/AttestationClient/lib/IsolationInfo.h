@@ -11,7 +11,8 @@
 namespace attest {
     enum class IsolationType {
         TRUSTED_LAUNCH,
-        SEV_SNP
+        SEV_SNP,
+        TDX
     };
 
     /**
@@ -25,7 +26,11 @@ namespace attest {
 
         IsolationType isolation_type_ = IsolationType::TRUSTED_LAUNCH;
         Buffer snp_report_;
-        Buffer runtime_data_;
         std::string vcek_cert_;
+        Buffer tdx_quote_;
+        Buffer runtime_data_;
+    private:
+        Json::Value CreateSevSnpEvidence() const;
+        Json::Value CreateTdxEvidence() const;
     };
 }// attest
