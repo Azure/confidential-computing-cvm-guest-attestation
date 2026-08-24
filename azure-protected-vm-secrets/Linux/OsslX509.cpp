@@ -44,8 +44,8 @@ std::string printBIO(BIO* bio) {
 // Format certificate subject and issuer details
 std::string printCertInfo(X509* cert, const std::string& label) {
     std::ostringstream ss;
-    X509_NAME* subject = X509_get_subject_name(cert);
-    X509_NAME* issuer = X509_get_issuer_name(cert);
+    const X509_NAME* subject = X509_get_subject_name(cert);
+    const X509_NAME* issuer = X509_get_issuer_name(cert);
     unsigned char md[EVP_MAX_MD_SIZE];
     unsigned int n;
     if (X509_digest(cert, EVP_sha256(), md, &n)) {
@@ -534,7 +534,7 @@ std::string OsslX509::GetSubjectName() const {
         return "";
     }
 
-    X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
+    const X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
     if (!subject) {
         LIBSECRETS_LOG(LogLevel::Error, "Security Certificate Subject Parse", 
                       "Failed to get subject name");
@@ -568,7 +568,7 @@ std::string OsslX509::GetCommonName() const {
         return "";
     }
 
-    X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
+    const X509_NAME* subject = X509_get_subject_name(leaf_cert.get());
     if (!subject) {
         return "";
     }
@@ -579,12 +579,12 @@ std::string OsslX509::GetCommonName() const {
         return "";
     }
 
-    X509_NAME_ENTRY* entry = X509_NAME_get_entry(subject, pos);
+    const X509_NAME_ENTRY* entry = X509_NAME_get_entry(subject, pos);
     if (!entry) {
         return "";
     }
 
-    ASN1_STRING* asn1_str = X509_NAME_ENTRY_get_data(entry);
+    const ASN1_STRING* asn1_str = X509_NAME_ENTRY_get_data(entry);
     if (!asn1_str) {
         return "";
     }
@@ -634,8 +634,8 @@ bool OsslX509::VerifyChainTerminatesAtRoot(X509_STORE_CTX *ctx)
     }
 
     // Check if self-signed
-    X509_NAME* subject = X509_get_subject_name(actualRoot);
-    X509_NAME* issuer = X509_get_issuer_name(actualRoot);
+    const X509_NAME* subject = X509_get_subject_name(actualRoot);
+    const X509_NAME* issuer = X509_get_issuer_name(actualRoot);
     if (!subject || !issuer || X509_NAME_cmp(subject, issuer) != 0) {
         LIBSECRETS_LOG(LogLevel::Error, "Root certificate is not self-signed", "");
         return false;

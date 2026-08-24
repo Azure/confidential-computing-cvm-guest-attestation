@@ -3,13 +3,19 @@ project(azure-protected-secrets-tool-tests)
 
 add_definitions(-DPLATFORM_UNIX -DUNIT_TEST)
 
-include(FetchContent)
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# GoogleTest: prefer system package, fall back to FetchContent. See
+# SecretsProvsioningUT/CMakeLists.txt for the rationale (Fedora rule:
+# index.adoc §Bundling, §Build Time Network Access).
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
 include(GoogleTest)
 
 # nlohmann_json is fetched by the parent CMakeLists.txt via FetchContent when
@@ -45,3 +51,8 @@ target_link_libraries(azure-protected-secrets-tool-tests
     crypto
     nlohmann_json::nlohmann_json
 )
+
+# Register the (mock-based, TPM-free) tool tests with CTest so the Fedora
+# spec's %check / %ctest actually runs them during the RPM build. These tests
+# use injected mocks (no TPM / vTPM), so they are safe in the mock chroot.
+gtest_discover_tests(azure-protected-secrets-tool-tests)

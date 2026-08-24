@@ -24,8 +24,12 @@ target_include_directories(azure-protected-secrets-tool PRIVATE
     ${CMAKE_BINARY_DIR}/generated
 )
 
-target_link_libraries(azure-protected-secrets-tool DynamicSecretsProvisioningLibrary)
+# Link the SHARED library. Renamed from `DynamicSecretsProvisioningLibrary`
+# -> `azure_protected_vm_secrets`; see
+# DynamicSecretsProvisioningLibrary/CMakeLists.txt for the rationale.
+target_link_libraries(azure-protected-secrets-tool azure_protected_vm_secrets)
 
-install(TARGETS azure-protected-secrets-tool RUNTIME DESTINATION bin)
+include(GNUInstallDirs)
+install(TARGETS azure-protected-secrets-tool RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(tests)

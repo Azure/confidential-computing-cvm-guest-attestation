@@ -32,19 +32,27 @@ include_directories(${TSS2_INCLUDE_DIRS} ../ ${CMAKE_BINARY_DIR}/generated)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
-# Find Google Test package
-# find_package(GTest REQUIRED)
-# include_directories(${GTEST_INCLUDE_DIRS})
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-)
-# For Windows: Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-# find_package(GTest REQUIRED)
-# include_directories(${GTEST_INCLUDE_DIRS})
+# GoogleTest: prefer system packages (Fedora ships gtest-devel and gmock-devel
+# as separate packages). Fall back to FetchContent for build environments
+# without them. Fedora guidelines forbid bundling system libraries:
+# index.adoc §Bundling, §Build Time Network Access.
+find_package(GTest QUIET)
+if(GTest_FOUND AND NOT TARGET GTest::gmock_main)
+    find_package(GMock QUIET)
+    if(NOT TARGET GTest::gmock_main)
+        set(GTest_FOUND FALSE)
+    endif()
+endif()
+if(NOT GTest_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+    )
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
 include(GoogleTest)
 
 include_directories("../SecretsProvisioningSample/")

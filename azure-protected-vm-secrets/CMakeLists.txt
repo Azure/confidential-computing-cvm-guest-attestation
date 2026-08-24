@@ -18,6 +18,13 @@ list(GET VERSION_PARTS 2 SECRETS_LIB_VERSION_PATCH)
 
 set(SECRETS_LIB_VERSION "${SECRETS_LIB_VERSION_MAJOR}.${SECRETS_LIB_VERSION_MINOR}.${SECRETS_LIB_VERSION_PATCH}")
 
+# Propagate version vars to subdirectories (DynamicSecretsProvisioningLibrary needs
+# these for SOVERSION on the shared library; see Fedora SOVERSION guideline).
+set(SECRETS_LIB_VERSION       "${SECRETS_LIB_VERSION}"       CACHE INTERNAL "")
+set(SECRETS_LIB_VERSION_MAJOR "${SECRETS_LIB_VERSION_MAJOR}" CACHE INTERNAL "")
+set(SECRETS_LIB_VERSION_MINOR "${SECRETS_LIB_VERSION_MINOR}" CACHE INTERNAL "")
+set(SECRETS_LIB_VERSION_PATCH "${SECRETS_LIB_VERSION_PATCH}" CACHE INTERNAL "")
+
 # 2. Generate version header
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/Linux/Version.h.in
@@ -73,16 +80,32 @@ include_directories(
   ${Boost_INCLUDE_DIRS} 
   ${ATTESTATION_INCLUDE_DIRS}
 )
-set(OPENSSL_USE_STATIC_LIBS TRUE)
+# Prefer static OpenSSL when libcrypto.a is actually available (e.g., Azure
+# Linux / Mariner ship static libs). On distros that ship only shared libs
+# (e.g., Fedora's openssl-devel), fall back to dynamic linking — the runtime
+# loader resolves OpenSSL symbols. This replaces the older unconditional
+# `set(OPENSSL_USE_STATIC_LIBS TRUE)` which would cause find_package(OpenSSL)
+# to fail on Fedora-style systems.
+find_library(_openssl_static_crypto NAMES libcrypto.a
+    HINTS /usr/lib64 /usr/lib NO_DEFAULT_PATH)
+if(_openssl_static_crypto)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+endif()
+mark_as_advanced(_openssl_static_crypto)
 find_package(OpenSSL REQUIRED)
 
 file(GLOB SOURCES "*.cpp" "Linux/*.cpp" "CvmHelper/src/*.cpp")
 
-# Add nlohmann/json.hpp using FetchContent
-include(FetchContent)
-FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
-FetchContent_MakeAvailable(json)
-# find_package(nlohmann_json REQUIRED)
+# nlohmann/json: prefer system package (Fedora ships nlohmann-json-devel), fall
+# back to FetchContent for build environments without it (e.g., the OneBranch
+# Azure Linux image used for PMC builds). Fedora guidelines forbid bundling
+# system libraries: index.adoc §Bundling, §Build Time Network Access.
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+    FetchContent_MakeAvailable(json)
+endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SYSTEMD libsystemd)
@@ -118,14 +141,17 @@ target_link_libraries(${CMAKE_PROJECT_TARGET} nlohmann_json::nlohmann_json)
 target_link_libraries(${CMAKE_PROJECT_TARGET} Boost::boost)
 set_property(TARGET ${CMAKE_PROJECT_TARGET} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-# Shared lib SONAME (only meaningful for SHARED)
-set_target_properties(SecretsProvisioningLibrary PROPERTIES
-  VERSION   ${SECRETS_LIB_VERSION}
-  SOVERSION ${SECRETS_LIB_VERSION_MAJOR}
-)
+# NOTE: VERSION/SOVERSION on a STATIC archive has no effect; SOVERSION lives
+# on the SHARED target in DynamicSecretsProvisioningLibrary/CMakeLists.txt.
 
 # Prevent GoogleTest from installing its files into the package
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+# Enable CTest so `ctest` (the spec's %check / %ctest) discovers registered
+# tests. Only the mock-safe tool tests register themselves (see
+# azure-protected-secrets-tool/tests/CMakeLists.txt); the TPM-dependent suites
+# do not, so they are skipped in the Fedora build chroot.
+enable_testing()
 
 add_subdirectory(SecretsProvsioningUT)
 add_subdirectory(SecretsProvisioningFunctionalityTest)
