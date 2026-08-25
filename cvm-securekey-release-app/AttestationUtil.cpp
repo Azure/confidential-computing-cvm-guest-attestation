@@ -1244,7 +1244,7 @@ void handleErrors()
 
 // A function that encrypts a message with a public key using EVP_PKEY_encrypt
 /// @brief Map a hash algorithm name to an OpenSSL EVP_MD.
-/// Supported names (case-insensitive): sha1, sha256, sha384, sha512.
+/// Supported names (case-insensitive): sha256, sha384, sha512.
 static const EVP_MD *get_evp_md_by_name(const std::string &name)
 {
     std::string lower = name;
@@ -1252,12 +1252,11 @@ static const EVP_MD *get_evp_md_by_name(const std::string &name)
     // Strip optional dashes (e.g. "sha-256" -> "sha256")
     lower.erase(std::remove(lower.begin(), lower.end(), '-'), lower.end());
 
-    if (lower == "sha1")   return EVP_sha1();
     if (lower == "sha256") return EVP_sha256();
     if (lower == "sha384") return EVP_sha384();
     if (lower == "sha512") return EVP_sha512();
     throw std::runtime_error("Unsupported hash algorithm: " + name +
-                             ". Supported: sha1, sha256, sha384, sha512");
+                             ". Supported: sha256, sha384, sha512");
 }
 
 int rsa_encrypt(EVP_PKEY *pkey, const PBYTE msg, size_t msglen, PBYTE *enc, size_t *enclen)

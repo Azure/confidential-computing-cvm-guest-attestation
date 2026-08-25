@@ -140,8 +140,8 @@ void usage(char *programName)
     printf("\t  { \"results\": [ { \"id\": \"label\", \"unwrapped\": \"plaintext\" }, ... ] }\n");
     printf("\n");
     printf("\tHash algorithm options (for -u/-B unwrap only):\n");
-    printf("\t\t-H <hash>  OAEP hash algorithm: sha1, sha256, sha384, sha512 (default: sha256)\n");
-    printf("\t\t-G <hash>  MGF1 hash algorithm: sha1, sha256, sha384, sha512 (default: same as -H)\n");
+    printf("\t\t-H <hash>  OAEP hash algorithm: sha256, sha384, sha512 (default: sha256)\n");
+    printf("\t\t-G <hash>  MGF1 hash algorithm: sha256, sha384, sha512 (default: same as -H)\n");
 }
 
 enum class Operation

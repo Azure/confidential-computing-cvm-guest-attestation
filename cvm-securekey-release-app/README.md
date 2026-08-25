@@ -261,15 +261,12 @@ sudo ./AzureAttestSKR -a <attestation-url> -k <kek-url> -c imds \
 
 For unwrap operations (`-u` and `-B`), the OAEP and MGF1 hash algorithms can be specified:
 
-- `-H <hash>` — OAEP hash algorithm: `sha1`, `sha256`, `sha384`, `sha512` (default: `sha256`, i.e. RSA-OAEP-256)
+- `-H <hash>` — OAEP hash algorithm: `sha256`, `sha384`, `sha512` (default: `sha256`, i.e. RSA-OAEP-256)
 - `-G <hash>` — MGF1 hash algorithm (default: same as `-H`)
 
 ```sh
 # Unwrap with SHA-256 for both OAEP and MGF1 (default — AKV standard)
 sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u
-
-# Legacy RSA-OAEP (SHA-1)
-sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u -H sha1
 ```
 
 ### Structured Exit Codes
