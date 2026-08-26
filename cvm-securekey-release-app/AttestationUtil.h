@@ -321,7 +321,7 @@ public:
     /// <param name="cipherText">Wrapped symmetric key</param>
     /// <param name="key_enc_key">KEK</param>
     /// <param name="akv_credential_source">AkvCredentialSource type for accessing Key Vault</param>
-    /// <param name="oaep_hash_alg">OAEP hash algorithm: sha1, sha256, sha384, sha512 (default: sha256)</param>
+    /// <param name="oaep_hash_alg">OAEP hash algorithm: sha256, sha384, sha512 (default: sha256)</param>
     /// <param name="mgf1_hash_alg">MGF1 hash algorithm (default: same as oaep_hash_alg)</param>
     /// <returns>Plain text symmetric key</returns>
     static std::string UnwrapKey(const std::string &attestation_url,
