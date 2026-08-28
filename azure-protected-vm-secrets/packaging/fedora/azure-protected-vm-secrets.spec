@@ -42,13 +42,26 @@ Requires:       %{name}-libs%{?_isa} = %{version}-%{release}
 # single expanded value; a raw multi-line %%description can be mangled/truncated.
 # (Per reviewer feedback; common Fedora idiom.)
 %global _description %{expand:
-azure-protected-vm-secrets provisions and decrypts host-protected secrets on
-Azure Confidential VMs (AMD SEV-SNP, Intel TDX). The package contains the
+azure-protected-vm-secrets detects the confidential-computing environment and
+decrypts host-provisioned secrets on Azure Confidential VMs (AMD SEV-SNP,
+Intel TDX). The package contains the
 azure-protected-secrets-tool CLI for invoking the supported operations
 (is-cvm, is-secrets-provisioning-enabled, unprotect-secret,
 validate-imds-metadata); the runtime shared library is in the -libs
 subpackage and the C header for linking against it is in the -devel
 subpackage.}
+
+# Same %%{expand} wrapping for the subpackage descriptions so their multi-line
+# paragraphs are passed as single expanded values (avoids mangling/truncation).
+%global _libs_description %{expand:
+Shared library implementing the host-protected-secret unprotect and
+secrets-provisioning helpers consumed by azure-protected-vm-secrets and any
+third-party application that links directly against
+libazure_protected_vm_secrets.}
+
+%global _devel_description %{expand:
+C header file and unversioned shared-library symlink for building software
+that links against libazure_protected_vm_secrets.}
 
 %description %{_description}
 
@@ -61,10 +74,7 @@ Summary:        Runtime shared library for %{name}
 # consuming subpackages (main, -devel) that use %{?_isa}-qualified, fully
 # versioned Requires below.
 
-%description libs
-Shared library implementing the host-secret unprotect and CVM-attestation
-helpers consumed by azure-protected-vm-secrets and any third-party
-application that links directly against libazure_protected_vm_secrets.
+%description libs %{_libs_description}
 
 %package devel
 Summary:        Development files for %{name}
@@ -72,9 +82,7 @@ Summary:        Development files for %{name}
 # Fedora Packaging Guidelines for -devel subpackages.
 Requires:       %{name}-libs%{?_isa} = %{version}-%{release}
 
-%description devel
-C header file and unversioned shared-library symlink for building software
-that links against libazure_protected_vm_secrets.
+%description devel %{_devel_description}
 
 %prep
 # The tarball expands to confidential-computing-cvm-guest-attestation-<tag>/;
