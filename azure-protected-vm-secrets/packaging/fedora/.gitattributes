@@ -1,2 +1,4 @@
 *.spec text eol=lf
 *.1 text eol=lf
+*.sh text eol=lf
+*.tar.gz binary
