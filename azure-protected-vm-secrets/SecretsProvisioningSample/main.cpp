@@ -38,6 +38,7 @@ static void print_usage(std::ostream& out)
 
 int main(int argc, char* argv[])
 {
+    // No command supplied: print usage and exit with a non-zero status.
     if (argc < 2) {
         print_usage(std::cerr);
         return 1;
