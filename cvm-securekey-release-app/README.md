@@ -87,6 +87,35 @@ $ make
 }
 ```
 
+The policy above matches AMD SEV-SNP confidential VM claims (`x-ms-isolation-tee.*`). A **Trusted Launch** VM (Gen2 with Secure Boot + vTPM) is not a confidential VM, so it does not emit `x-ms-isolation-tee.*` claims. Instead, its MAA token carries vTPM measured-boot claims — `secureboot` and `x-ms-azurevm-attested-pcr-values.pcrN` — and a release policy can gate on those. This app releases keys to Trusted Launch VMs unchanged; only the policy differs. Use the following SKR sample policy for a Trusted Launch VM:
+
+```json
+{
+  "version": "1.0.0",
+  "anyOf": [
+    {
+      "authority": "https://<MAA_PROVIDER>.<region>.attest.azure.net",
+      "allOf": [
+        {
+          "claim": "secureboot",
+          "equals": true
+        },
+        {
+          "claim": "x-ms-azurevm-attested-pcr-values.pcr4",
+          "equals": "<BASE64_PCR4>"
+        },
+        {
+          "claim": "x-ms-azurevm-attested-pcr-values.pcr7",
+          "equals": "<BASE64_PCR7>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> Obtain the expected PCR values by attesting a known-good instance of your image once (the MAA token returned by `AzureAttestSKR` contains `x-ms-azurevm-attested-pcr-values.pcr0` through `pcr7`), then pin the PCRs your boot chain measures — commonly `pcr4` (boot loader / kernel) and `pcr7` (Secure Boot state). A tampered, reimaged, or disk-swapped VM produces different PCR values and the release returns `AccessDenied`.
+
 For Azure Local, use the following SKR sample policy:
 
 ```json
