@@ -64,11 +64,16 @@ trap 'rm -rf "${WORKDIR}"' EXIT
 OUT_ABS="$(pwd)/${OUT}"
 git -C "${WORKDIR}" init -q
 git -C "${WORKDIR}" remote add origin "${UPSTREAM}"
-git -C "${WORKDIR}" fetch -q --depth 1 origin "${REF}"
-git -C "${WORKDIR}" archive --format=tar.gz \
-    --prefix="${PREFIX}/" \
-    FETCH_HEAD:"${SUBDIR}" \
-    -o "${OUT_ABS}"
+git -C "${WORKDIR}" fetch -q --depth 1 origin "refs/tags/${REF}:refs/tags/${REF}"
+git -C "${WORKDIR}" checkout -q "${REF}"
+cp -p "${WORKDIR}/LICENSE" "$PWD/LICENSE"
+COMMIT_TIME=$(git -C "${WORKDIR}" log -1 --format=%ct)
+tar --sort=name --mtime="@$COMMIT_TIME" \
+    --owner=0 --group=0 --numeric-owner \
+    --transform="s/^${SUBDIR}/${SUBDIR}-${VERSION}/" \
+    -C "${WORKDIR}" \
+    -cf - "${SUBDIR}" \
+| gzip -n > "${OUT_ABS}"
 
 echo "Wrote ${OUT}"
 sha256sum "${OUT}" 2>/dev/null || shasum -a 256 "${OUT}"
