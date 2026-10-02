@@ -313,7 +313,7 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    TRACE_OUT("IMDS HTTP status: %ld, Response: %s", http_code, Util::reduct_log(responseStr).c_str());
+    TRACE_OUT("IMDS HTTP status: %ld", http_code);
 
     if (http_code != 200)
     {
@@ -341,7 +341,7 @@ std::string Util::GetIMDSToken(const std::string &KEKUrl)
     }
     std::string access_token = json_object["access_token"].get<std::string>();
 
-    TRACE_OUT("Access Token: %s", Util::reduct_log(access_token).c_str());
+    TRACE_OUT("IMDS access token acquired");
     TRACE_OUT("Exiting Util::GetIMDSToken()");
 
     return access_token;
@@ -399,13 +399,13 @@ std::string Util::GetAADToken(const std::string &KEKUrl)
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    TRACE_OUT("AAD HTTP status: %ld, Response: %s", http_code, Util::reduct_log(response).c_str());
+    TRACE_OUT("AAD HTTP status: %ld", http_code);
 
     json jsonResponse = json::parse(response);
     if (jsonResponse.contains("access_token"))
     {
         std::string token = jsonResponse["access_token"].get<std::string>();
-        TRACE_OUT("Response: %s", Util::reduct_log(token).c_str());
+        TRACE_OUT("AAD access token acquired");
         TRACE_OUT("Exiting Util::GetAADToken()");
         return token;
     }
@@ -1039,8 +1039,6 @@ bool Util::doSKR(const std::string &attestation_url,
         {
             access_token = std::move(Util::GetIMDSToken(KEKUrl));
         }
-
-        TRACE_OUT("AkvMsiAccessToken: %s", Util::reduct_log(access_token).c_str());
 
         std::string requestUri = Util::GetKeyVaultSKRurl(KEKUrl);
         std::string responseStr = Util::GetKeyVaultResponse(requestUri, access_token, attest_token, nonce);

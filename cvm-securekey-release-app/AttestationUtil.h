@@ -134,6 +134,11 @@ public:
 
     inline static std::string reduct_log(const std::string &str)
     {
+        if (str.find("Authorization: Bearer ") != std::string::npos)
+        {
+            return "[REDACTED]";
+        }
+
         std::string retStr(str);
         if (traceLevel == 1)
         {
