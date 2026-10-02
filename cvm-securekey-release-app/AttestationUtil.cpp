@@ -637,11 +637,14 @@ static std::string GetKeyVaultResponseWinHttp(const std::string &requestUri,
 
         WCHAR szHostName[256] = {0};
         WCHAR szUrlPath[1024] = {0};
+        WCHAR szExtraInfo[1024] = {0};
 
         urlComp.lpszHostName = szHostName;
         urlComp.dwHostNameLength = sizeof(szHostName) / sizeof(WCHAR);
         urlComp.lpszUrlPath = szUrlPath;
         urlComp.dwUrlPathLength = sizeof(szUrlPath) / sizeof(WCHAR);
+        urlComp.lpszExtraInfo = szExtraInfo;
+        urlComp.dwExtraInfoLength = sizeof(szExtraInfo) / sizeof(WCHAR);
 
         // Convert URI to wide string
         std::wstring wRequestUri(requestUri.begin(), requestUri.end());
@@ -677,7 +680,9 @@ static std::string GetKeyVaultResponseWinHttp(const std::string &requestUri,
 
         // Create an HTTP POST request
         DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
-        hRequest = WinHttpOpenRequest(hConnect, L"POST", szUrlPath, NULL,
+        std::wstring requestPath(szUrlPath, urlComp.dwUrlPathLength);
+        requestPath.append(szExtraInfo, urlComp.dwExtraInfoLength);
+        hRequest = WinHttpOpenRequest(hConnect, L"POST", requestPath.c_str(), NULL,
                                       WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags);
         if (!hRequest)
         {
@@ -1421,6 +1426,175 @@ static void rsa_decrypt_safe(EVP_PKEY *pkey, const PBYTE msg, size_t msglen,
         throw;
     }
     cleanup();
+}
+
+std::vector<BYTE> Util::SecureUnwrapKey(
+    const std::string &attestation_url,
+    const std::string &nonce,
+    const std::string &wrapped_key_base64url,
+    const std::string &key_enc_key_url,
+    const std::string &algorithm,
+    const Util::AkvCredentialSource &akv_credential_source)
+{
+    TRACE_OUT("Entering Util::SecureUnwrapKey()");
+
+    if (key_enc_key_url.find(Constants::MHSM_URL_SUFFIX) == std::string::npos)
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a Managed HSM key URL");
+    }
+    if (wrapped_key_base64url.empty())
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a base64url-encoded wrapped key");
+    }
+    if (algorithm.empty())
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires an algorithm");
+    }
+
+    std::vector<BYTE> wrapped_key;
+    try
+    {
+        wrapped_key = Util::base64url_to_binary(wrapped_key_base64url);
+    }
+    catch (const std::exception &e)
+    {
+        throw skr_error(EXIT_USAGE, std::string("Invalid wrapped key encoding: ") + e.what());
+    }
+    if (wrapped_key.empty())
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey decoded an empty wrapped key");
+    }
+
+    const std::string attestation_token = Util::GetMAAToken(attestation_url, nonce);
+    if (attestation_token.empty())
+    {
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+    }
+
+#ifdef AZURE_LOCAL
+    throw skr_error(EXIT_USAGE, "SecureUnwrapKey is not implemented for Azure Local");
+#else
+    std::string access_token;
+    if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
+    {
+        access_token = Util::GetAADToken(key_enc_key_url);
+    }
+    else
+    {
+        access_token = Util::GetIMDSToken(key_enc_key_url);
+    }
+
+    const std::string request_uri =
+        key_enc_key_url + "/secureunwrapkey?api-version=" + Constants::SECURE_UNWRAP_API_VERSION;
+    json request_body = {
+        {"alg", algorithm},
+        {"value", Util::binary_to_base64url(wrapped_key)},
+        {"target", attestation_token},
+    };
+
+    std::string response_str;
+#ifdef _WIN32
+    response_str = GetKeyVaultResponseWinHttp(request_uri, access_token, request_body.dump());
+#else
+    response_str = GetKeyVaultResponseCurl(request_uri, access_token, request_body.dump());
+#endif
+
+    json response;
+    try
+    {
+        response = json::parse(response_str);
+    }
+    catch (const json::exception &e)
+    {
+        throw skr_error(EXIT_SKR_FAIL, std::string("Invalid secure unwrap response JSON: ") + e.what());
+    }
+
+    if (!response.contains("value") || !response["value"].is_string())
+    {
+        throw skr_error(EXIT_SKR_FAIL, "Secure unwrap response does not contain a string value");
+    }
+    if (response.contains("alg") &&
+        (!response["alg"].is_string() || response["alg"].get<std::string>() != algorithm))
+    {
+        throw skr_error(EXIT_SKR_FAIL, "Secure unwrap response algorithm does not match the request");
+    }
+
+    std::vector<BYTE> transport_ciphertext;
+    try
+    {
+        transport_ciphertext =
+            Util::base64url_to_binary(response["value"].get<std::string>());
+    }
+    catch (const std::exception &e)
+    {
+        throw skr_error(EXIT_SKR_FAIL,
+                        std::string("Invalid secure unwrap response encoding: ") + e.what());
+    }
+
+    constexpr size_t TransportRsaSizeBytes = 2048 / 8;
+    if (transport_ciphertext.size() != TransportRsaSizeBytes)
+    {
+        std::ostringstream oss;
+        oss << "Unexpected secure unwrap transport ciphertext size: "
+            << transport_ciphertext.size() << " bytes; expected "
+            << TransportRsaSizeBytes;
+        throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
+    }
+
+    AttestationClient *attestation_client = nullptr;
+    AttestationLogger *log_handle = new Logger(Util::get_trace());
+    if (!Initialize(log_handle, &attestation_client))
+    {
+        Uninitialize();
+        throw skr_error(EXIT_CRYPTO_FAIL,
+                        "Failed to create attestation client for transport-key decryption");
+    }
+
+    uint8_t *plaintext = nullptr;
+    uint32_t plaintext_size = 0;
+    attest::AttestationResult decrypt_result = attestation_client->Decrypt(
+        attest::EncryptionType::NONE,
+        transport_ciphertext.data(),
+        static_cast<uint32_t>(transport_ciphertext.size()),
+        nullptr,
+        0,
+        &plaintext,
+        &plaintext_size,
+        attest::RsaScheme::RsaOaep,
+        attest::RsaHashAlg::RsaSha256);
+
+    if (decrypt_result.code_ != attest::AttestationResult::ErrorCode::SUCCESS)
+    {
+        std::ostringstream oss;
+        oss << "Failed to decrypt secure unwrap transport value: error code "
+            << static_cast<int>(decrypt_result.code_)
+            << ", TPM error code=" << decrypt_result.tpm_error_code_
+            << ", Desc=" << decrypt_result.description_;
+        Uninitialize();
+        throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
+    }
+    if (plaintext == nullptr || plaintext_size == 0)
+    {
+        if (plaintext != nullptr)
+        {
+            attestation_client->Free(plaintext);
+        }
+        Uninitialize();
+        throw skr_error(EXIT_CRYPTO_FAIL, "Transport-key decryption returned no plaintext");
+    }
+
+    std::vector<BYTE> unwrapped(plaintext, plaintext + plaintext_size);
+    OPENSSL_cleanse(plaintext, plaintext_size);
+    attestation_client->Free(plaintext);
+    Uninitialize();
+
+    OPENSSL_cleanse(wrapped_key.data(), wrapped_key.size());
+    OPENSSL_cleanse(transport_ciphertext.data(), transport_ciphertext.size());
+
+    TRACE_OUT("Secure unwrap succeeded: %zu bytes recovered", unwrapped.size());
+    TRACE_OUT("Exiting Util::SecureUnwrapKey()");
+    return unwrapped;
+#endif
 }
 
 std::string Util::WrapKey(const std::string &attestation_url,

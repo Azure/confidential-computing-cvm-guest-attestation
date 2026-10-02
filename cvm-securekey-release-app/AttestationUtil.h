@@ -333,6 +333,25 @@ public:
                                  const std::string &mgf1_hash_alg = "");
 
     /// <summary>
+    /// Securely unwrap a key in Managed HSM and decrypt the result with the
+    /// TPM-bound transport key represented in the MAA token.
+    /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">Unique nonce per attestation request.</param>
+    /// <param name="wrapped_key_base64url">Base64url-encoded wrapped key.</param>
+    /// <param name="key_enc_key">Managed HSM wrapping-key URL.</param>
+    /// <param name="algorithm">Managed HSM secure unwrap algorithm.</param>
+    /// <param name="akv_credential_source">Credential source for Managed HSM.</param>
+    /// <returns>Unwrapped bytes decrypted inside the attested VM.</returns>
+    static std::vector<BYTE> SecureUnwrapKey(
+        const std::string &attestation_url,
+        const std::string &nonce,
+        const std::string &wrapped_key_base64url,
+        const std::string &key_enc_key,
+        const std::string &algorithm,
+        const Util::AkvCredentialSource &akv_credential_source);
+
+    /// <summary>
     /// Batch-unwrap multiple wrapped keys in a single SKR call.
     /// </summary>
     /// <param name="attestation_url">Attestation service URL.</param>

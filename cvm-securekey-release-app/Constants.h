@@ -32,6 +32,9 @@ public:
     // IMDS api version
     static inline const std::string IMDS_API_VERSION = "2018-02-01";
 
+    // Managed HSM API version for secure wrap and unwrap operations
+    static inline const std::string SECURE_UNWRAP_API_VERSION = "2026-07-01-preview";
+
     // Default Nonce
     static inline const std::string NONCE = "ADE0101";
 };

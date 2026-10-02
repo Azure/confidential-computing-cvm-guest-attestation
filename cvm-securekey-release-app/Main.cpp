@@ -131,6 +131,10 @@ void usage(char *programName)
     printf("\tRelease RSA key and unwrap symmetric key:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64(wrappedSymKey) -u [-H oaep_hash] [-G mgf1_hash]\n", programName);
     printf("\n");
+    printf("\tSecurely unwrap with a non-exportable Managed HSM key into this attested VM:\n");
+    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -U [-A algorithm]\n", programName);
+    printf("\t\t-A <algorithm>  Secure unwrap algorithm (default: A256KWPAD)\n");
+    printf("\n");
     printf("\tBatch unwrap from JSON file (one SKR, many unwraps):\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -B <json-file|-|inline> [-H oaep_hash] [-G mgf1_hash]\n", programName);
     printf("\n");
@@ -149,6 +153,7 @@ enum class Operation
     None,
     WrapKey,
     UnwrapKey,
+    SecureUnwrapKey,
     BatchUnwrap,
     ReleaseKey,
     Undefined
@@ -162,7 +167,7 @@ void set_tracing(void)
     {
         if(strcmp(skr_trace_flag, "1") ==0 || strcmp(skr_trace_flag, "2") ==0)
         {
-            std::cout<< "Tracing is enabled" <<std::endl;
+            std::cerr<< "Tracing is enabled" <<std::endl;
             Util::set_trace(true);
             Util::set_trace_level(atoi(skr_trace_flag));
         }
@@ -187,12 +192,13 @@ int main(int argc, char *argv[])
     std::string key_enc_key_url;
     std::string oaep_hash = "sha256"; // default OAEP hash
     std::string mgf1_hash;            // empty = same as oaep_hash
+    std::string secure_unwrap_algorithm = "A256KWPAD";
     std::string batch_input;           // -B: JSON file path, "-" for stdin, or inline JSON
     Operation op = Operation::None;
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uwrB:H:G:")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uUwrB:H:G:A:")) != -1)
     {
         switch (opt)
         {
@@ -223,6 +229,10 @@ int main(int argc, char *argv[])
             op = Operation::UnwrapKey;
             TRACE_OUT("op: %d", static_cast<int>(op));
             break;
+        case 'U':
+            op = Operation::SecureUnwrapKey;
+            TRACE_OUT("op: %d", static_cast<int>(op));
+            break;
         case 'w':
             op = Operation::WrapKey;
             TRACE_OUT("op: %d", static_cast<int>(op));
@@ -247,6 +257,10 @@ int main(int argc, char *argv[])
         case 'G':
             mgf1_hash.assign(optarg);
             TRACE_OUT("mgf1_hash: %s", mgf1_hash.c_str());
+            break;
+        case 'A':
+            secure_unwrap_algorithm.assign(optarg);
+            TRACE_OUT("secure_unwrap_algorithm: %s", secure_unwrap_algorithm.c_str());
             break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
@@ -273,6 +287,17 @@ int main(int argc, char *argv[])
                                     oaep_hash, mgf1_hash);
             std::cout << result << std::endl;
             break;
+        case Operation::SecureUnwrapKey:
+        {
+            std::vector<BYTE> unwrapped = Util::SecureUnwrapKey(
+                attestation_url, nonce, sym_key, key_enc_key_url,
+                secure_unwrap_algorithm, akv_credential_source);
+            std::cout.write(reinterpret_cast<const char *>(unwrapped.data()),
+                            static_cast<std::streamsize>(unwrapped.size()));
+            std::cout.flush();
+            OPENSSL_cleanse(unwrapped.data(), unwrapped.size());
+            break;
+        }
         case Operation::BatchUnwrap:
         {
             // Read batch JSON: from file, stdin ("-"), or inline JSON string

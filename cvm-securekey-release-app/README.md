@@ -305,6 +305,43 @@ sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u 2>/dev/null | my
   sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "sp" -s "<copy_base64_from_previous_run>" -u
   ```
 
+### Managed HSM Secure Key Unwrap
+
+The `-U` operation uses the Managed HSM `secureunwrapkey` API to unwrap a
+key with a non-exportable HSM key and release the result only to the attested
+VM represented by the MAA token. The returned transport ciphertext is
+decrypted by the VM's TPM-bound ephemeral private key.
+
+The Managed HSM key must:
+
+- be non-exportable;
+- have the `secureUnwrapKey` operation;
+- have a release policy that accepts the target VM's MAA claims.
+
+The caller must have Managed HSM data-plane permission to unwrap with the key.
+The input to `-s` is the base64url value returned by a prior wrap operation.
+
+```sh
+sudo ./AzureAttestSKR \
+  -a "https://sharedeus2.eus2.attest.azure.net" \
+  -k "https://myhsm.managedhsm.azure.net/keys/my-oct-key/version_GUID" \
+  -c imds \
+  -s "<base64url-wrapped-key>" \
+  -U \
+  -A A256KWPAD
+```
+
+`-A` defaults to `A256KWPAD`. The command writes the exact unwrapped bytes to
+stdout without adding a newline, so it can be piped directly to a consumer:
+
+```sh
+sudo ./AzureAttestSKR ... -U -A A256KWPAD 2>/dev/null | my-consumer
+```
+
+Secure unwrap requires Managed HSM API version `2026-07-01-preview`. It is a
+separate flow from `-u`: the existing `-u` operation first releases an
+exportable RSA key and then performs RSA-OAEP decryption locally.
+
 ## Debugging
 
 To enable debug trace output, set the `SKR_TRACE_ON` environment variable at runtime. Use `-E` with `sudo` to preserve the environment variable (if using Service Principle environment vars).
