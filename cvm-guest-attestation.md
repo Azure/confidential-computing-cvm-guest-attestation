@@ -66,10 +66,9 @@ The mechanism to fetch the report is described below.
        zipped archive and follow instructions in INSTALL.md)
     - Install tpm2-tools (sudo apt install tpm2-tools)
 2. Obtain the VCEK certificate by running the following command – it obtains the cert from a [well-known IMDS endpoint](https://learn.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service?tabs=windows):
-    % curl -H Metadata:true
-    [http://169.254.169.254/metadata/THIM/amd/certification](http://169.254.169.254/metadata/THIM/amd/certification) > vcek
 
 ```
+% curl -H Metadata:true http://169.254.169.254/metadata/THIM/amd/certification > vcek
 % cat ./vcek | jq -r '.vcekCert , .certificateChain' > ./vcek.pem
 ```
 
