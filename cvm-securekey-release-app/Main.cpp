@@ -135,6 +135,9 @@ void usage(char *programName)
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -U [-A algorithm]\n", programName);
     printf("\t\t-A <algorithm>  Secure unwrap algorithm (default: A256KWPAD)\n");
     printf("\n");
+    printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");
+    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -L [-A algorithm]\n", programName);
+    printf("\n");
     printf("\tBatch unwrap from JSON file (one SKR, many unwraps):\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -B <json-file|-|inline> [-H oaep_hash] [-G mgf1_hash]\n", programName);
     printf("\n");
@@ -154,6 +157,7 @@ enum class Operation
     WrapKey,
     UnwrapKey,
     SecureUnwrapKey,
+    LocalAesUnwrap,
     BatchUnwrap,
     ReleaseKey,
     Undefined
@@ -198,7 +202,7 @@ int main(int argc, char *argv[])
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uUwrB:H:G:A:")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:")) != -1)
     {
         switch (opt)
         {
@@ -231,6 +235,10 @@ int main(int argc, char *argv[])
             break;
         case 'U':
             op = Operation::SecureUnwrapKey;
+            TRACE_OUT("op: %d", static_cast<int>(op));
+            break;
+        case 'L':
+            op = Operation::LocalAesUnwrap;
             TRACE_OUT("op: %d", static_cast<int>(op));
             break;
         case 'w':
@@ -290,6 +298,17 @@ int main(int argc, char *argv[])
         case Operation::SecureUnwrapKey:
         {
             std::vector<BYTE> unwrapped = Util::SecureUnwrapKey(
+                attestation_url, nonce, sym_key, key_enc_key_url,
+                secure_unwrap_algorithm, akv_credential_source);
+            std::cout.write(reinterpret_cast<const char *>(unwrapped.data()),
+                            static_cast<std::streamsize>(unwrapped.size()));
+            std::cout.flush();
+            OPENSSL_cleanse(unwrapped.data(), unwrapped.size());
+            break;
+        }
+        case Operation::LocalAesUnwrap:
+        {
+            std::vector<BYTE> unwrapped = Util::UnwrapKeyWithReleasedAesKey(
                 attestation_url, nonce, sym_key, key_enc_key_url,
                 secure_unwrap_algorithm, akv_credential_source);
             std::cout.write(reinterpret_cast<const char *>(unwrapped.data()),

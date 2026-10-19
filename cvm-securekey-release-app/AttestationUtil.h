@@ -301,7 +301,8 @@ public:
                       const std::string &nonce,
                       std::string KEKUrl,
                       EVP_PKEY **pkey,
-                      const Util::AkvCredentialSource &akv_credential_source);
+                      const Util::AkvCredentialSource &akv_credential_source,
+                      std::vector<BYTE> *released_key = nullptr);
 
     /// <summary>
     /// Wrap the symmetric key with the public key of the key encryption key (KEK).
@@ -349,6 +350,25 @@ public:
     /// <param name="akv_credential_source">Credential source for Managed HSM.</param>
     /// <returns>Unwrapped bytes decrypted inside the attested VM.</returns>
     static std::vector<BYTE> SecureUnwrapKey(
+        const std::string &attestation_url,
+        const std::string &nonce,
+        const std::string &wrapped_key_base64url,
+        const std::string &key_enc_key,
+        const std::string &algorithm,
+        const Util::AkvCredentialSource &akv_credential_source);
+
+    /// <summary>
+    /// Release an exportable Managed HSM AES key into the attested VM and use
+    /// it to unwrap a value locally.
+    /// </summary>
+    /// <param name="attestation_url">Attestation service URL.</param>
+    /// <param name="nonce">Unique nonce per attestation request.</param>
+    /// <param name="wrapped_key_base64url">Base64url-encoded wrapped value.</param>
+    /// <param name="key_enc_key">Exportable Managed HSM AES key URL.</param>
+    /// <param name="algorithm">Local unwrap algorithm.</param>
+    /// <param name="akv_credential_source">Credential source for Managed HSM.</param>
+    /// <returns>Locally unwrapped bytes.</returns>
+    static std::vector<BYTE> UnwrapKeyWithReleasedAesKey(
         const std::string &attestation_url,
         const std::string &nonce,
         const std::string &wrapped_key_base64url,

@@ -342,6 +342,28 @@ Secure unwrap requires Managed HSM API version `2026-07-01-preview`. It is a
 separate flow from `-u`: the existing `-u` operation first releases an
 exportable RSA key and then performs RSA-OAEP decryption locally.
 
+### Managed HSM AES Release and Local Unwrap
+
+The `-L` compatibility operation uses traditional Secure Key Release to
+release an exportable `oct-HSM` key into the attested VM, then performs
+`A256KWPAD` unwrap locally. It accepts the same base64url-wrapped input as
+`-U` and writes the exact unwrapped bytes to stdout.
+
+```sh
+sudo ./AzureAttestSKR \
+  -a "https://sharedeus2.eus2.attest.azure.net" \
+  -k "https://myhsm.managedhsm.azure.net/keys/my-exportable-oct-key/version_GUID" \
+  -c imds \
+  -s "<base64url-wrapped-key>" \
+  -L \
+  -A A256KWPAD
+```
+
+The key must be an exportable 256-bit `oct-HSM` key with a release policy
+that accepts the VM's MAA claims. Unlike `-U`, this operation makes the AES
+key material available in CVM memory, so `-U` remains preferable when local
+key release is not required for compatibility.
+
 ## Debugging
 
 To enable debug trace output, set the `SKR_TRACE_ON` environment variable at runtime. Use `-E` with `sudo` to preserve the environment variable (if using Service Principle environment vars).

@@ -555,22 +555,22 @@ static int decrypt_aes_key_unwrap(PBYTE key, PBYTE ciphertext, int ciphertext_le
 {
     TRACE_OUT("Entering decrypt_aes_key_unwrap()");
 
-    EVP_CIPHER_CTX *ctx;
-
     int len;
 
     int plaintext_len;
 
     /* Create and initialise the context */
-    if (!(ctx = EVP_CIPHER_CTX_new()))
+    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(
+        EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+    if (!ctx)
         handle_openssl_errors();
 
-    EVP_CIPHER_CTX_set_flags(ctx, EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
+    EVP_CIPHER_CTX_set_flags(ctx.get(), EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
 
     /* Initialise the decryption operation. */
-    if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_wrap_pad(), NULL, NULL, NULL))
+    if (1 != EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_wrap_pad(), NULL, NULL, NULL))
         handle_openssl_errors();
-    if (1 != EVP_DecryptInit_ex(ctx, NULL, NULL, key, NULL))
+    if (1 != EVP_DecryptInit_ex(ctx.get(), NULL, NULL, key, NULL))
         handle_openssl_errors();
 
     // Set padding to PKCS#8
@@ -578,15 +578,13 @@ static int decrypt_aes_key_unwrap(PBYTE key, PBYTE ciphertext, int ciphertext_le
         handle_openssl_errors();
     }*/
 
-    if (1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
+    if (1 != EVP_DecryptUpdate(ctx.get(), plaintext, &len, ciphertext, ciphertext_len))
         handle_openssl_errors();
     plaintext_len = len;
 
-    if (1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len))
+    if (1 != EVP_DecryptFinal_ex(ctx.get(), plaintext + len, &len))
         handle_openssl_errors();
     plaintext_len += len;
-
-    EVP_CIPHER_CTX_free(ctx);
 
     TRACE_OUT("Exiting decrypt_aes_key_unwrap()");
     return plaintext_len;
@@ -1013,7 +1011,8 @@ bool Util::doSKR(const std::string &attestation_url,
                  const std::string &nonce,
                  std::string KEKUrl,
                  EVP_PKEY **pkey,
-                 const Util::AkvCredentialSource &akv_credential_source)
+                 const Util::AkvCredentialSource &akv_credential_source,
+                 std::vector<BYTE> *released_key)
 {
     TRACE_OUT("Entering Util::doSKR()");
 
@@ -1173,6 +1172,21 @@ bool Util::doSKR(const std::string &attestation_url,
         }
 
         TRACE_OUT("CMK private key has length=%d", private_key_len);
+
+        if (released_key != nullptr)
+        {
+            released_key->assign(private_key, private_key + private_key_len);
+            OPENSSL_cleanse(private_key, sizeof(private_key));
+            Uninitialize();
+            TRACE_OUT("Exiting Util::doSKR() with raw released key material");
+            return true;
+        }
+        if (pkey == nullptr)
+        {
+            OPENSSL_cleanse(private_key, sizeof(private_key));
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL, "No output was provided for the released key");
+        }
 
         // PKCS#8: parse the decrypted private key material
         BIO *bio_key = BIO_new_mem_buf(private_key, private_key_len);
@@ -1593,6 +1607,114 @@ std::vector<BYTE> Util::SecureUnwrapKey(
     TRACE_OUT("Exiting Util::SecureUnwrapKey()");
     return unwrapped;
 #endif
+}
+
+std::vector<BYTE> Util::UnwrapKeyWithReleasedAesKey(
+    const std::string &attestation_url,
+    const std::string &nonce,
+    const std::string &wrapped_key_base64url,
+    const std::string &key_enc_key_url,
+    const std::string &algorithm,
+    const Util::AkvCredentialSource &akv_credential_source)
+{
+    TRACE_OUT("Entering Util::UnwrapKeyWithReleasedAesKey()");
+
+    if (algorithm != "A256KWPAD")
+    {
+        throw skr_error(EXIT_USAGE,
+                        "Local AES unwrap currently supports only A256KWPAD");
+    }
+    if (wrapped_key_base64url.empty())
+    {
+        throw skr_error(EXIT_USAGE,
+                        "Local AES unwrap requires a base64url-encoded wrapped value");
+    }
+
+    std::vector<BYTE> wrapped_key;
+    try
+    {
+        wrapped_key = Util::base64url_to_binary(wrapped_key_base64url);
+    }
+    catch (const std::exception &e)
+    {
+        throw skr_error(EXIT_USAGE, std::string("Invalid wrapped value encoding: ") + e.what());
+    }
+    if (wrapped_key.size() < 16 || wrapped_key.size() % 8 != 0)
+    {
+        throw skr_error(EXIT_USAGE,
+                        "A256KWPAD input must be at least 16 bytes and a multiple of 8 bytes");
+    }
+
+    std::vector<BYTE> released_material;
+    if (!Util::doSKR(attestation_url, nonce, key_enc_key_url, nullptr,
+                     akv_credential_source, &released_material))
+    {
+        throw skr_error(EXIT_SKR_FAIL, "Failed to release the AES wrapping key");
+    }
+
+    std::vector<BYTE> aes_key;
+    if (released_material.size() == 32)
+    {
+        aes_key = released_material;
+    }
+    else
+    {
+        try
+        {
+            const json released_jwk = json::parse(
+                std::string(released_material.begin(), released_material.end()));
+            if (!released_jwk.contains("k") || !released_jwk["k"].is_string())
+            {
+                throw std::runtime_error("released octet JWK does not contain a string k value");
+            }
+            aes_key = Util::base64url_to_binary(released_jwk["k"].get<std::string>());
+        }
+        catch (const std::exception &e)
+        {
+            OPENSSL_cleanse(released_material.data(), released_material.size());
+            throw skr_error(
+                EXIT_CRYPTO_FAIL,
+                std::string("Unsupported released AES key representation (") +
+                    std::to_string(released_material.size()) + " bytes): " + e.what());
+        }
+    }
+    OPENSSL_cleanse(released_material.data(), released_material.size());
+
+    if (aes_key.size() != 32)
+    {
+        OPENSSL_cleanse(aes_key.data(), aes_key.size());
+        throw skr_error(EXIT_CRYPTO_FAIL,
+                        "A256KWPAD requires a released 256-bit AES key");
+    }
+
+    std::vector<BYTE> plaintext(wrapped_key.size());
+    int plaintext_size = 0;
+    try
+    {
+        plaintext_size = decrypt_aes_key_unwrap(
+            aes_key.data(), wrapped_key.data(),
+            static_cast<int>(wrapped_key.size()), plaintext.data());
+    }
+    catch (...)
+    {
+        OPENSSL_cleanse(aes_key.data(), aes_key.size());
+        OPENSSL_cleanse(wrapped_key.data(), wrapped_key.size());
+        OPENSSL_cleanse(plaintext.data(), plaintext.size());
+        throw;
+    }
+
+    OPENSSL_cleanse(aes_key.data(), aes_key.size());
+    OPENSSL_cleanse(wrapped_key.data(), wrapped_key.size());
+    if (plaintext_size <= 0)
+    {
+        OPENSSL_cleanse(plaintext.data(), plaintext.size());
+        throw skr_error(EXIT_CRYPTO_FAIL, "Local A256KWPAD unwrap returned no plaintext");
+    }
+
+    plaintext.resize(static_cast<size_t>(plaintext_size));
+    TRACE_OUT("Local AES unwrap succeeded: %zu bytes recovered", plaintext.size());
+    TRACE_OUT("Exiting Util::UnwrapKeyWithReleasedAesKey()");
+    return plaintext;
 }
 
 std::string Util::WrapKey(const std::string &attestation_url,
