@@ -22,6 +22,7 @@
 #   OUT           output batch JSON path (default ./secure-unwrap-batch.json)
 #   API_VERSION   key create/wrap API version (default 2026-07-01-preview)
 #   SKIP_CREATE   1 to reuse an existing key
+#   TOKEN         pre-fetched data-plane access token (default: from `az`)
 set -euo pipefail
 
 : "${VAULT_URL:?Set VAULT_URL, e.g. https://myakv.vault.azure.net}"
@@ -56,7 +57,7 @@ fi
 
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
-TOKEN="$(az account get-access-token --resource "$RESOURCE" --query accessToken -o tsv)"
+TOKEN="${TOKEN:-$(az account get-access-token --resource "$RESOURCE" --query accessToken -o tsv)}"
 kv_post() { # path body
     curl -sS --fail-with-body -X POST "$VAULT_URL$1" \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$2"
@@ -89,7 +90,7 @@ if [[ "$SKIP_CREATE" != "1" ]]; then
     fi
     CREATE_BODY="$(jq -cn --arg kty "$KEY_TYPE" --arg policy "$POLICY_B64URL" --argjson size "$SIZE_FIELD" '
         {kty: $kty,
-         key_ops: ["wrapKey", "unwrapKey", "secureUnwrapKey"],
+         key_ops: ["wrapKey", "secureUnwrapKey"],
          attributes: {enabled: true, exportable: false},
          release_policy: {contentType: "application/json; charset=utf-8", data: $policy}} + $size')"
 
