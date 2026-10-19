@@ -56,9 +56,7 @@ $secureboot        = $true
 $vtpm              = $true
 
 # Windows logon credentials.
-$StrongPass = [System.Guid]::NewGuid()
-Write-Host "Passwd in plain text (copy to notepad): $StrongPass"
-$StrongPassSec = $StrongPass | ConvertTo-SecureString -AsPlainText -Force
+$StrongPassSec = Read-Host "Enter the Windows VM administrator password" -AsSecureString
 $cred = New-Object System.Management.Automation.PSCredential ($user, $StrongPassSec)
 
 #### End of step 1
@@ -158,8 +156,7 @@ Update-AzVM -VM $vm -ResourceGroupName $resourceGroup -IdentityType UserAssigned
 $ipAddress = $publicIP.IpAddress
 Write-Host "mstsc $user@$ipAddress"
 Write-Host "User: .\$user"
-Write-Host "Passwd: $StrongPass"
-Write-Host "Enter password above"
+Write-Host "Use the administrator password entered in Step 1."
 Write-Host "Open Cmd elevated"
 Write-Host "diskmgmt.msc"
 Write-Host "Initialize the data disk"

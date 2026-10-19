@@ -11,3 +11,5 @@ The code in this directory is to demonstrate how to turn on confidential temp an
 - Otherwise, to create the resources, go with CVM-create-confdatadiskenc-*.ps1
 
 3. Update the place holders in the script file and follow the comments to execute in Powershell ISE or Azure Cloud Shell in portal.
+
+The Windows creation script securely prompts for the VM administrator password in Step 1. Retain that password securely for RDP; the script does not print it. The Linux creation script disables password authentication and uses the SSH public key you provide in Step 1; retain the corresponding private key for SSH.

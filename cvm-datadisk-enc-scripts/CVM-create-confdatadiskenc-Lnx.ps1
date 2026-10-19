@@ -58,9 +58,8 @@ $PublicIPName      = $cvmName+ "-ip"
 $secureboot        = $true
 $vtpm              = $true
 
-# Linux SSH credentials.
-$dummyPass = [System.Guid]::NewGuid().ToString() | ConvertTo-SecureString -AsPlainText -Force  # Linux does not use passwd
-$cred = New-Object System.Management.Automation.PSCredential ($user, $dummyPass)
+# Linux uses SSH-key authentication; no password is configured.
+$cred = New-Object System.Management.Automation.PSCredential ($user, [System.Security.SecureString]::new())
 # Replace below with your ssh pub key. This is in the format of ssh-rsa AAAAB3NzaC1y..... For more info: https://learn.microsoft.com/en-us/azure/virtual-machines/linux/ssh-from-windows
 $sshPubKeyRSA = "ssh-rsa __SSH_RSA_PUB_KEY_HERE__"
 
@@ -116,7 +115,7 @@ $nic = New-AzNetworkInterface -Name $NICName -ResourceGroupName $resourceGroup -
 
 # VM creation
 $vmConfig = New-AzVMConfig -VMName $cvmName -VMSize $VMSize
-Set-AzVMOperatingSystem -VM $vmConfig -Linux -ComputerName $cvmName -Credential $cred
+Set-AzVMOperatingSystem -VM $vmConfig -Linux -ComputerName $cvmName -Credential $cred -DisablePasswordAuthentication
 
 Add-AzVmSshPublicKey -VM $vmConfig -KeyData $sshPubKeyRSA -Path "/home/$user/.ssh/authorized_keys"
 
