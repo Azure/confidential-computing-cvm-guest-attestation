@@ -317,10 +317,13 @@ Supported key/algorithm combinations:
 | Backend | Key type | `-A` algorithm |
 |---|---|---|
 | Managed HSM | `oct-HSM` (AES-256) | `A256KWPAD` (default) |
-| Managed HSM or AKV Premium | `RSA-HSM` | `RSA-OAEP-256` |
+| Managed HSM | `RSA-HSM` | `RSA-OAEP-256` |
 
-> Availability of the `secureunwrapkey` preview API on AKV Premium vaults must
-> be confirmed with the Key Vault team before relying on it.
+> Azure Key Vault (Standard/Premium) does not support `secureunwrapkey`: it
+> rejects the `secureUnwrapKey` key operation, rejects release policies on
+> non-exportable keys, and returns `Method POST does not allow operation
+> 'secureunwrapkey'`. Managed HSM keys must have `secureUnwrapKey` *without*
+> `unwrapKey` in `key_ops`.
 
 The key must:
 
@@ -394,8 +397,8 @@ retries, and failures. Per-iteration and per-key detail is in `iterations`.
 
 Helper scripts in [`perf/`](perf/):
 
-- `setup-secure-unwrap-key.sh` creates a non-exportable key (AKV Premium
-  `RSA-HSM` or Managed HSM `RSA-HSM`/`oct-HSM`) with a CVM release policy, wraps
+- `setup-secure-unwrap-key.sh` creates a non-exportable Managed HSM key
+  (`RSA-HSM` or `oct-HSM`) with a CVM release policy, wraps
   N random test DEKs, and writes the batch JSON (DEK SHA-256 only, never the DEKs).
 - `run-secure-unwrap-perf.sh` sweeps disk counts × concurrency × connection
   reuse on the CVM and writes `summary.csv`. It can optionally time the
