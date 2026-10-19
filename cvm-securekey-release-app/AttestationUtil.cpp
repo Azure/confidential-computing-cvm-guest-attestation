@@ -21,6 +21,13 @@
 #include <sstream>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <map>
+#include <mutex>
+#include <numeric>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
@@ -611,6 +618,192 @@ std::string Util::GetKeyVaultSKRurl(const std::string &KEKUrl)
 }
 
 #ifdef _WIN32
+struct WinHttpHandleCloser
+{
+    void operator()(void *handle) const
+    {
+        if (handle)
+        {
+            WinHttpCloseHandle(handle);
+        }
+    }
+};
+using WinHttpHandle = std::unique_ptr<void, WinHttpHandleCloser>;
+
+/// <summary>
+/// Open a WinHTTP session. WinHTTP pools keep-alive connections per session,
+/// so reusing one session across requests to the same host avoids repeated
+/// TCP/TLS handshakes.
+/// </summary>
+static WinHttpHandle OpenKeyVaultWinHttpSession()
+{
+    WinHttpHandle hSession(WinHttpOpen(L"AzureDiskEncryption/1.0",
+                                       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                       WINHTTP_NO_PROXY_NAME,
+                                       WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!hSession)
+    {
+        std::ostringstream oss;
+        oss << "WinHttpOpen failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+    return hSession;
+}
+
+/// <summary>
+/// POST a JSON body to Key Vault / Managed HSM over an existing WinHTTP session.
+/// Returns the HTTP status code; the caller decides how to handle non-200.
+/// Transport failures throw.
+/// </summary>
+static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
+                                 const std::string &requestUri,
+                                 const std::string &access_token,
+                                 const std::string &requestBodyStr,
+                                 std::string &responseStr)
+{
+    TRACE_OUT("Entering KeyVaultPostWinHttp()");
+    responseStr.clear();
+
+    // Parse the URL to extract host and path components
+    URL_COMPONENTS urlComp = {0};
+    urlComp.dwStructSize = sizeof(urlComp);
+
+    WCHAR szHostName[256] = {0};
+    WCHAR szUrlPath[1024] = {0};
+    WCHAR szExtraInfo[1024] = {0};
+
+    urlComp.lpszHostName = szHostName;
+    urlComp.dwHostNameLength = sizeof(szHostName) / sizeof(WCHAR);
+    urlComp.lpszUrlPath = szUrlPath;
+    urlComp.dwUrlPathLength = sizeof(szUrlPath) / sizeof(WCHAR);
+    urlComp.lpszExtraInfo = szExtraInfo;
+    urlComp.dwExtraInfoLength = sizeof(szExtraInfo) / sizeof(WCHAR);
+
+    // Convert URI to wide string
+    std::wstring wRequestUri(requestUri.begin(), requestUri.end());
+    TRACE_OUT("Cracking URL: %s", requestUri.c_str());
+
+    if (!WinHttpCrackUrl(wRequestUri.c_str(), (DWORD)wRequestUri.length(), 0, &urlComp))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpCrackUrl failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    // Connect to the server
+    WinHttpHandle hConnect(WinHttpConnect(hSession, szHostName, urlComp.nPort, 0));
+    if (!hConnect)
+    {
+        std::ostringstream oss;
+        oss << "WinHttpConnect failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    // Create an HTTP POST request
+    DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+    std::wstring requestPath(szUrlPath, urlComp.dwUrlPathLength);
+    requestPath.append(szExtraInfo, urlComp.dwExtraInfoLength);
+    WinHttpHandle hRequest(WinHttpOpenRequest(hConnect.get(), L"POST", requestPath.c_str(), NULL,
+                                              WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags));
+    if (!hRequest)
+    {
+        std::ostringstream oss;
+        oss << "WinHttpOpenRequest failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    // Add headers individually to avoid issues with very long bearer tokens
+    std::string authHeader = "Authorization: Bearer " + access_token;
+    std::wstring wAuthHeader(authHeader.begin(), authHeader.end());
+    if (!WinHttpAddRequestHeaders(hRequest.get(), wAuthHeader.c_str(), (DWORD)wAuthHeader.length(), WINHTTP_ADDREQ_FLAG_ADD))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpAddRequestHeaders (Authorization) failed: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    if (!WinHttpAddRequestHeaders(hRequest.get(), L"Content-Type: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpAddRequestHeaders (Content-Type) failed: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    if (!WinHttpAddRequestHeaders(hRequest.get(), L"Accept: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpAddRequestHeaders (Accept) failed: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    if (!WinHttpAddRequestHeaders(hRequest.get(), L"User-Agent: AzureDiskEncryption", -1, WINHTTP_ADDREQ_FLAG_ADD))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpAddRequestHeaders (User-Agent) failed: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    TRACE_OUT("HTTP headers added, sending request with body length: %d", (int)requestBodyStr.length());
+
+    // Send the request
+    BOOL bResults = WinHttpSendRequest(hRequest.get(),
+                                       WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                       (LPVOID)requestBodyStr.c_str(), (DWORD)requestBodyStr.length(),
+                                       (DWORD)requestBodyStr.length(), 0);
+    if (!bResults)
+    {
+        std::ostringstream oss;
+        oss << "WinHttpSendRequest failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    // Wait for the response
+    bResults = WinHttpReceiveResponse(hRequest.get(), NULL);
+    if (!bResults)
+    {
+        std::ostringstream oss;
+        oss << "WinHttpReceiveResponse failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+
+    // Check the HTTP status code
+    DWORD dwStatusCode = 0;
+    DWORD dwSize = sizeof(dwStatusCode);
+    WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
+
+    // Read the response body
+    DWORD dwDownloaded = 0;
+    do
+    {
+        dwSize = 0;
+        if (!WinHttpQueryDataAvailable(hRequest.get(), &dwSize))
+        {
+            std::ostringstream oss;
+            oss << "WinHttpQueryDataAvailable failed with error: " << GetLastError();
+            TRACE_ERROR_EXIT(oss.str().c_str())
+        }
+
+        if (dwSize > 0)
+        {
+            char szBuffer[8192] = {0};
+            DWORD dwToRead = (dwSize < sizeof(szBuffer) - 1) ? dwSize : (DWORD)(sizeof(szBuffer) - 1);
+            if (!WinHttpReadData(hRequest.get(), szBuffer, dwToRead, &dwDownloaded))
+            {
+                std::ostringstream oss;
+                oss << "WinHttpReadData failed with error: " << GetLastError();
+                TRACE_ERROR_EXIT(oss.str().c_str())
+            }
+            szBuffer[dwDownloaded] = '\0';
+            responseStr.append(szBuffer, dwDownloaded);
+        }
+    } while (dwSize > 0);
+
+    TRACE_OUT("HTTP status=%d, response: %s", dwStatusCode, Util::reduct_log(responseStr).c_str());
+    TRACE_OUT("Exiting KeyVaultPostWinHttp()");
+    return dwStatusCode;
+}
+
 /// <summary>
 /// Windows-specific implementation of the SKR HTTP POST using WinHTTP.
 /// WinHTTP is the preferred HTTP client on Windows — it supports system proxy
@@ -622,182 +815,16 @@ static std::string GetKeyVaultResponseWinHttp(const std::string &requestUri,
 {
     TRACE_OUT("Entering GetKeyVaultResponseWinHttp()");
 
-    HINTERNET hSession = NULL;
-    HINTERNET hConnect = NULL;
-    HINTERNET hRequest = NULL;
+    WinHttpHandle hSession = OpenKeyVaultWinHttpSession();
     std::string responseStr;
-
-    try
+    DWORD dwStatusCode = KeyVaultPostWinHttp(hSession.get(), requestUri, access_token,
+                                             requestBodyStr, responseStr);
+    if (dwStatusCode != 200)
     {
-        // Parse the URL to extract host and path components
-        URL_COMPONENTS urlComp = {0};
-        urlComp.dwStructSize = sizeof(urlComp);
-
-        WCHAR szHostName[256] = {0};
-        WCHAR szUrlPath[1024] = {0};
-        WCHAR szExtraInfo[1024] = {0};
-
-        urlComp.lpszHostName = szHostName;
-        urlComp.dwHostNameLength = sizeof(szHostName) / sizeof(WCHAR);
-        urlComp.lpszUrlPath = szUrlPath;
-        urlComp.dwUrlPathLength = sizeof(szUrlPath) / sizeof(WCHAR);
-        urlComp.lpszExtraInfo = szExtraInfo;
-        urlComp.dwExtraInfoLength = sizeof(szExtraInfo) / sizeof(WCHAR);
-
-        // Convert URI to wide string
-        std::wstring wRequestUri(requestUri.begin(), requestUri.end());
-        TRACE_OUT("Cracking URL: %s", requestUri.c_str());
-
-        if (!WinHttpCrackUrl(wRequestUri.c_str(), (DWORD)wRequestUri.length(), 0, &urlComp))
-        {
-            std::ostringstream oss;
-            oss << "WinHttpCrackUrl failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Initialize WinHTTP session
-        hSession = WinHttpOpen(L"AzureDiskEncryption/1.0",
-                               WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                               WINHTTP_NO_PROXY_NAME,
-                               WINHTTP_NO_PROXY_BYPASS, 0);
-        if (!hSession)
-        {
-            std::ostringstream oss;
-            oss << "WinHttpOpen failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Connect to the server
-        hConnect = WinHttpConnect(hSession, szHostName, urlComp.nPort, 0);
-        if (!hConnect)
-        {
-            std::ostringstream oss;
-            oss << "WinHttpConnect failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Create an HTTP POST request
-        DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
-        std::wstring requestPath(szUrlPath, urlComp.dwUrlPathLength);
-        requestPath.append(szExtraInfo, urlComp.dwExtraInfoLength);
-        hRequest = WinHttpOpenRequest(hConnect, L"POST", requestPath.c_str(), NULL,
-                                      WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags);
-        if (!hRequest)
-        {
-            std::ostringstream oss;
-            oss << "WinHttpOpenRequest failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Add headers individually to avoid issues with very long bearer tokens
-        std::string authHeader = "Authorization: Bearer " + access_token;
-        std::wstring wAuthHeader(authHeader.begin(), authHeader.end());
-        if (!WinHttpAddRequestHeaders(hRequest, wAuthHeader.c_str(), (DWORD)wAuthHeader.length(), WINHTTP_ADDREQ_FLAG_ADD))
-        {
-            std::ostringstream oss;
-            oss << "WinHttpAddRequestHeaders (Authorization) failed: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        if (!WinHttpAddRequestHeaders(hRequest, L"Content-Type: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
-        {
-            std::ostringstream oss;
-            oss << "WinHttpAddRequestHeaders (Content-Type) failed: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        if (!WinHttpAddRequestHeaders(hRequest, L"Accept: application/json", -1, WINHTTP_ADDREQ_FLAG_ADD))
-        {
-            std::ostringstream oss;
-            oss << "WinHttpAddRequestHeaders (Accept) failed: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        if (!WinHttpAddRequestHeaders(hRequest, L"User-Agent: AzureDiskEncryption", -1, WINHTTP_ADDREQ_FLAG_ADD))
-        {
-            std::ostringstream oss;
-            oss << "WinHttpAddRequestHeaders (User-Agent) failed: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        TRACE_OUT("HTTP headers added, sending request with body length: %d", (int)requestBodyStr.length());
-
-        // Send the request
-        BOOL bResults = WinHttpSendRequest(hRequest,
-                                           WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                           (LPVOID)requestBodyStr.c_str(), (DWORD)requestBodyStr.length(),
-                                           (DWORD)requestBodyStr.length(), 0);
-        if (!bResults)
-        {
-            std::ostringstream oss;
-            oss << "WinHttpSendRequest failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Wait for the response
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
-        if (!bResults)
-        {
-            std::ostringstream oss;
-            oss << "WinHttpReceiveResponse failed with error: " << GetLastError();
-            TRACE_ERROR_EXIT(oss.str().c_str())
-        }
-
-        // Check the HTTP status code
-        DWORD dwStatusCode = 0;
-        DWORD dwSize = sizeof(dwStatusCode);
-        WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                            WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
-
-        // Read the response body
-        DWORD dwDownloaded = 0;
-        do
-        {
-            dwSize = 0;
-            if (!WinHttpQueryDataAvailable(hRequest, &dwSize))
-            {
-                std::ostringstream oss;
-                oss << "WinHttpQueryDataAvailable failed with error: " << GetLastError();
-                TRACE_ERROR_EXIT(oss.str().c_str())
-            }
-
-            if (dwSize > 0)
-            {
-                char szBuffer[8192] = {0};
-                DWORD dwToRead = (dwSize < sizeof(szBuffer) - 1) ? dwSize : (DWORD)(sizeof(szBuffer) - 1);
-                if (!WinHttpReadData(hRequest, szBuffer, dwToRead, &dwDownloaded))
-                {
-                    std::ostringstream oss;
-                    oss << "WinHttpReadData failed with error: " << GetLastError();
-                    TRACE_ERROR_EXIT(oss.str().c_str())
-                }
-                szBuffer[dwDownloaded] = '\0';
-                responseStr.append(szBuffer, dwDownloaded);
-            }
-        } while (dwSize > 0);
-
-        TRACE_OUT("HTTP status=%d, response: %s", dwStatusCode, Util::reduct_log(responseStr).c_str());
-
-        if (dwStatusCode != 200)
-        {
-            std::ostringstream oss;
-            oss << "SKR HTTP request failed: HTTP " << dwStatusCode << ": " << responseStr;
-            throw skr_error(EXIT_SKR_FAIL, oss.str());
-        }
+        std::ostringstream oss;
+        oss << "SKR HTTP request failed: HTTP " << dwStatusCode << ": " << responseStr;
+        throw skr_error(EXIT_SKR_FAIL, oss.str());
     }
-    catch (...)
-    {
-        // Cleanup on exception and re-throw
-        if (hRequest) WinHttpCloseHandle(hRequest);
-        if (hConnect) WinHttpCloseHandle(hConnect);
-        if (hSession) WinHttpCloseHandle(hSession);
-        throw;
-    }
-
-    // Cleanup
-    if (hRequest) WinHttpCloseHandle(hRequest);
-    if (hConnect) WinHttpCloseHandle(hConnect);
-    if (hSession) WinHttpCloseHandle(hSession);
 
     TRACE_OUT("Exiting GetKeyVaultResponseWinHttp()");
     return responseStr;
@@ -805,20 +832,44 @@ static std::string GetKeyVaultResponseWinHttp(const std::string &requestUri,
 #endif // _WIN32
 
 #ifndef _WIN32
-/// <summary>
-/// Linux (and non-Windows) implementation of the SKR HTTP POST using libcurl.
-/// </summary>
-static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
-                                           const std::string &access_token,
-                                           const std::string &requestBodyStr)
+struct CurlEasyCleanup
 {
-    TRACE_OUT("Entering GetKeyVaultResponseCurl()");
-
-    CURL *curl = curl_easy_init();
-    if (!curl)
+    void operator()(CURL *curl) const
     {
-        TRACE_ERROR_EXIT("curl_easy_init() failed")
+        if (curl)
+        {
+            curl_easy_cleanup(curl);
+        }
     }
+};
+using CurlEasyHandle = std::unique_ptr<CURL, CurlEasyCleanup>;
+
+struct CurlSlistFree
+{
+    void operator()(curl_slist *list) const
+    {
+        if (list)
+        {
+            curl_slist_free_all(list);
+        }
+    }
+};
+
+/// <summary>
+/// POST a JSON body to Key Vault / Managed HSM using an existing curl easy
+/// handle. curl_easy_reset() keeps the handle's connection cache, so reusing
+/// one handle across requests to the same host reuses the TLS connection.
+/// Returns the HTTP status code; transport failures throw.
+/// </summary>
+static long KeyVaultPostCurl(CURL *curl,
+                             const std::string &requestUri,
+                             const std::string &access_token,
+                             const std::string &requestBodyStr,
+                             std::string &responseStr)
+{
+    TRACE_OUT("Entering KeyVaultPostCurl()");
+    responseStr.clear();
+    curl_easy_reset(curl);
 
     CURLcode curlRet = curl_easy_setopt(curl, CURLOPT_URL, requestUri.c_str());
     if (curlRet != CURLE_OK)
@@ -836,6 +887,9 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed for HTTP_VERSION")
     }
+
+    // Required for safe use of curl from multiple threads.
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
 #ifdef PLATFORM_UNIX
     // Resolve the CA bundle path - curl's compiled-in default may not exist on all distros.
@@ -875,15 +929,16 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
     }
 #endif
 
-    struct curl_slist *headers = NULL;
+    curl_slist *raw_headers = NULL;
     std::ostringstream bearerToken;
     bearerToken << "Authorization: Bearer " << access_token;
-    headers = curl_slist_append(headers, bearerToken.str().c_str());
-    TRACE_OUT("Bearer token: %s", Util::reduct_log(bearerToken.str()).c_str());
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, "Accept: application/json");
-    headers = curl_slist_append(headers, "User-Agent: AzureDiskEncryption");
-    curlRet = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    raw_headers = curl_slist_append(raw_headers, bearerToken.str().c_str());
+    TRACE_OUT("****** %s", Util::reduct_log(bearerToken.str()).c_str());
+    raw_headers = curl_slist_append(raw_headers, "Content-Type: application/json");
+    raw_headers = curl_slist_append(raw_headers, "Accept: application/json");
+    raw_headers = curl_slist_append(raw_headers, "User-Agent: AzureDiskEncryption");
+    std::unique_ptr<curl_slist, CurlSlistFree> headers(raw_headers);
+    curlRet = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers.get());
     if (curlRet != CURLE_OK)
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
@@ -919,7 +974,6 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
     }
 
-    std::string responseStr;
     curlRet = curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStr);
     if (curlRet != CURLE_OK)
     {
@@ -930,26 +984,43 @@ static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
 
     // Perform the request
     curlRet = curl_easy_perform(curl);
+    // The error buffer is a local; detach it before returning.
     if (curlRet != CURLE_OK)
     {
         std::string msg = std::string("SKR curl_easy_perform() failed: ") + curl_easy_strerror(curlRet);
         if (strlen(errbuf))
             msg += std::string(" (") + errbuf + ")";
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
+        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, NULL);
         throw skr_error(EXIT_NETWORK_FAIL, msg);
     }
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, NULL);
 
-    // Check HTTP status — AKV/MHSM errors (403, 404, etc.) come back as valid HTTP responses
+    // AKV/MHSM errors (403, 404, 429, etc.) come back as valid HTTP responses
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-    // Cleanup curl
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
     TRACE_OUT("SKR HTTP status: %ld, response: %s", http_code, Util::reduct_log(responseStr).c_str());
+    TRACE_OUT("Exiting KeyVaultPostCurl()");
+    return http_code;
+}
 
+/// <summary>
+/// Linux (and non-Windows) implementation of the SKR HTTP POST using libcurl.
+/// </summary>
+static std::string GetKeyVaultResponseCurl(const std::string &requestUri,
+                                           const std::string &access_token,
+                                           const std::string &requestBodyStr)
+{
+    TRACE_OUT("Entering GetKeyVaultResponseCurl()");
+
+    CurlEasyHandle curl(curl_easy_init());
+    if (!curl)
+    {
+        TRACE_ERROR_EXIT("curl_easy_init() failed")
+    }
+
+    std::string responseStr;
+    long http_code = KeyVaultPostCurl(curl.get(), requestUri, access_token, requestBodyStr, responseStr);
     if (http_code != 200)
     {
         std::ostringstream oss;
@@ -1440,27 +1511,34 @@ static void rsa_decrypt_safe(EVP_PKEY *pkey, const PBYTE msg, size_t msglen,
     cleanup();
 }
 
-std::vector<BYTE> Util::SecureUnwrapKey(
-    const std::string &attestation_url,
-    const std::string &nonce,
-    const std::string &wrapped_key_base64url,
-    const std::string &key_enc_key_url,
-    const std::string &algorithm,
-    const Util::AkvCredentialSource &akv_credential_source)
+namespace
 {
-    TRACE_OUT("Entering Util::SecureUnwrapKey()");
+using SteadyClock = std::chrono::steady_clock;
 
-    if (key_enc_key_url.find(Constants::MHSM_URL_SUFFIX) == std::string::npos)
+double ElapsedMs(SteadyClock::time_point start)
+{
+    return std::chrono::duration<double, std::milli>(SteadyClock::now() - start).count();
+}
+
+void ValidateSecureUnwrapArgs(const std::string &key_enc_key_url, const std::string &algorithm)
+{
+    if (key_enc_key_url.find(Constants::MHSM_URL_SUFFIX) == std::string::npos &&
+        key_enc_key_url.find(Constants::AKV_URL_SUFFIX) == std::string::npos)
     {
-        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a Managed HSM key URL");
-    }
-    if (wrapped_key_base64url.empty())
-    {
-        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a base64url-encoded wrapped key");
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires an Azure Key Vault or Managed HSM key URL");
     }
     if (algorithm.empty())
     {
         throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires an algorithm");
+    }
+}
+
+/// Validate a base64url wrapped key and return it in canonical base64url form.
+std::string NormalizeWrappedKey(const std::string &wrapped_key_base64url)
+{
+    if (wrapped_key_base64url.empty())
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a base64url-encoded wrapped key");
     }
 
     std::vector<BYTE> wrapped_key;
@@ -1477,40 +1555,42 @@ std::vector<BYTE> Util::SecureUnwrapKey(
         throw skr_error(EXIT_USAGE, "SecureUnwrapKey decoded an empty wrapped key");
     }
 
-    const std::string attestation_token = Util::GetMAAToken(attestation_url, nonce);
-    if (attestation_token.empty())
-    {
-        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
-    }
+    std::string normalized = Util::binary_to_base64url(wrapped_key);
+    OPENSSL_cleanse(wrapped_key.data(), wrapped_key.size());
+    return normalized;
+}
 
-#ifdef AZURE_LOCAL
-    throw skr_error(EXIT_USAGE, "SecureUnwrapKey is not implemented for Azure Local");
-#else
-    std::string access_token;
-    if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
-    {
-        access_token = Util::GetAADToken(key_enc_key_url);
-    }
-    else
-    {
-        access_token = Util::GetIMDSToken(key_enc_key_url);
-    }
+#ifndef AZURE_LOCAL
+std::string BuildSecureUnwrapRequestUri(const std::string &key_enc_key_url)
+{
+    return key_enc_key_url + "/secureunwrapkey?api-version=" + Constants::SECURE_UNWRAP_API_VERSION;
+}
 
-    const std::string request_uri =
-        key_enc_key_url + "/secureunwrapkey?api-version=" + Constants::SECURE_UNWRAP_API_VERSION;
+std::string BuildSecureUnwrapRequestBody(const std::string &algorithm,
+                                         const std::string &wrapped_key_base64url,
+                                         const std::string &attestation_token)
+{
     json request_body = {
         {"alg", algorithm},
-        {"value", Util::binary_to_base64url(wrapped_key)},
+        {"value", wrapped_key_base64url},
         {"target", attestation_token},
     };
+    return request_body.dump();
+}
 
-    std::string response_str;
-#ifdef _WIN32
-    response_str = GetKeyVaultResponseWinHttp(request_uri, access_token, request_body.dump());
-#else
-    response_str = GetKeyVaultResponseCurl(request_uri, access_token, request_body.dump());
-#endif
+std::string GetKeyVaultAccessToken(const std::string &key_enc_key_url,
+                                   const Util::AkvCredentialSource &akv_credential_source)
+{
+    if (akv_credential_source == Util::AkvCredentialSource::EnvServicePrincipal)
+    {
+        return Util::GetAADToken(key_enc_key_url);
+    }
+    return Util::GetIMDSToken(key_enc_key_url);
+}
 
+/// Parse the secureunwrapkey response and return the TPM transport ciphertext.
+std::vector<BYTE> ParseSecureUnwrapResponse(const std::string &response_str, const std::string &algorithm)
+{
     json response;
     try
     {
@@ -1552,16 +1632,37 @@ std::vector<BYTE> Util::SecureUnwrapKey(
             << TransportRsaSizeBytes;
         throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
     }
+    return transport_ciphertext;
+}
 
-    AttestationClient *attestation_client = nullptr;
-    AttestationLogger *log_handle = new Logger(Util::get_trace());
-    if (!Initialize(log_handle, &attestation_client))
+/// RAII wrapper around the global attestation client Initialize()/Uninitialize().
+class AttestationClientSession
+{
+public:
+    AttestationClientSession()
     {
-        Uninitialize();
-        throw skr_error(EXIT_CRYPTO_FAIL,
-                        "Failed to create attestation client for transport-key decryption");
+        AttestationLogger *log_handle = new Logger(Util::get_trace());
+        if (!Initialize(log_handle, &client_))
+        {
+            Uninitialize();
+            throw skr_error(EXIT_CRYPTO_FAIL,
+                            "Failed to create attestation client for transport-key decryption");
+        }
     }
+    ~AttestationClientSession() { Uninitialize(); }
+    AttestationClientSession(const AttestationClientSession &) = delete;
+    AttestationClientSession &operator=(const AttestationClientSession &) = delete;
 
+    AttestationClient *get() const { return client_; }
+
+private:
+    AttestationClient *client_ = nullptr;
+};
+
+/// Decrypt the secure unwrap transport value with the VM's TPM-bound ephemeral key.
+std::vector<BYTE> DecryptTransportCiphertext(AttestationClient *attestation_client,
+                                             std::vector<BYTE> &transport_ciphertext)
+{
     uint8_t *plaintext = nullptr;
     uint32_t plaintext_size = 0;
     attest::AttestationResult decrypt_result = attestation_client->Decrypt(
@@ -1582,7 +1683,6 @@ std::vector<BYTE> Util::SecureUnwrapKey(
             << static_cast<int>(decrypt_result.code_)
             << ", TPM error code=" << decrypt_result.tpm_error_code_
             << ", Desc=" << decrypt_result.description_;
-        Uninitialize();
         throw skr_error(EXIT_CRYPTO_FAIL, oss.str());
     }
     if (plaintext == nullptr || plaintext_size == 0)
@@ -1591,21 +1691,627 @@ std::vector<BYTE> Util::SecureUnwrapKey(
         {
             attestation_client->Free(plaintext);
         }
-        Uninitialize();
         throw skr_error(EXIT_CRYPTO_FAIL, "Transport-key decryption returned no plaintext");
     }
 
     std::vector<BYTE> unwrapped(plaintext, plaintext + plaintext_size);
     OPENSSL_cleanse(plaintext, plaintext_size);
     attestation_client->Free(plaintext);
-    Uninitialize();
-
-    OPENSSL_cleanse(wrapped_key.data(), wrapped_key.size());
     OPENSSL_cleanse(transport_ciphertext.data(), transport_ciphertext.size());
+    return unwrapped;
+}
+
+struct SecureUnwrapInputKey
+{
+    std::string id;
+    std::string wrapped;         // canonical base64url
+    std::string expected_sha256; // optional, lowercase hex
+};
+
+std::vector<SecureUnwrapInputKey> ParseSecureUnwrapBatchInput(const std::string &batch_json,
+                                                              size_t replicate_to)
+{
+    json input;
+    try
+    {
+        input = json::parse(batch_json);
+    }
+    catch (const json::parse_error &e)
+    {
+        throw skr_error(EXIT_USAGE, std::string("Secure unwrap batch: invalid JSON input: ") + e.what());
+    }
+    if (!input.contains("keys") || !input["keys"].is_array() || input["keys"].empty())
+    {
+        throw skr_error(EXIT_USAGE, "Secure unwrap batch: JSON must contain a non-empty \"keys\" array");
+    }
+
+    std::vector<SecureUnwrapInputKey> keys;
+    const auto &keys_array = input["keys"];
+    for (size_t i = 0; i < keys_array.size(); ++i)
+    {
+        const auto &entry = keys_array[i];
+        SecureUnwrapInputKey key;
+        key.id = entry.value("id", std::to_string(i));
+        if (!entry.contains("wrapped") || !entry["wrapped"].is_string())
+        {
+            throw skr_error(EXIT_USAGE, "Secure unwrap batch: key [" + key.id +
+                                            "] is missing a string \"wrapped\" field");
+        }
+        key.wrapped = NormalizeWrappedKey(entry["wrapped"].get<std::string>());
+        if (entry.contains("sha256") && entry["sha256"].is_string())
+        {
+            key.expected_sha256 = boost::algorithm::to_lower_copy(entry["sha256"].get<std::string>());
+        }
+        keys.push_back(std::move(key));
+    }
+
+    // Replicate the input cyclically to simulate N disks from fewer wrapped keys.
+    if (replicate_to > 0 && replicate_to != keys.size())
+    {
+        std::vector<SecureUnwrapInputKey> replicated;
+        replicated.reserve(replicate_to);
+        for (size_t i = 0; i < replicate_to; ++i)
+        {
+            SecureUnwrapInputKey key = keys[i % keys.size()];
+            key.id += "#" + std::to_string(i);
+            replicated.push_back(std::move(key));
+        }
+        keys = std::move(replicated);
+    }
+    return keys;
+}
+
+std::string Sha256Hex(const std::vector<BYTE> &data)
+{
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    if (EVP_Digest(data.data(), data.size(), digest, &digest_len, EVP_sha256(), nullptr) != 1)
+    {
+        throw skr_error(EXIT_CRYPTO_FAIL, "SHA-256 digest failed");
+    }
+    std::ostringstream oss;
+    for (unsigned int i = 0; i < digest_len; ++i)
+    {
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(digest[i]);
+    }
+    return oss.str();
+}
+
+constexpr size_t MaxSecureUnwrapWorkers = 64;
+
+size_t ResolveWorkerCount(unsigned concurrency, size_t key_count)
+{
+    size_t workers = (concurrency == 0) ? key_count : static_cast<size_t>(concurrency);
+    workers = (std::min)(workers, key_count);
+    return (std::min)(workers, MaxSecureUnwrapWorkers);
+}
+
+bool IsRetryableStatus(long status)
+{
+    return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
+}
+
+/// Per-worker HTTP client. With reuse enabled the underlying connection
+/// (curl handle / WinHTTP session) is kept alive across requests.
+class KeyVaultHttpClient
+{
+public:
+    explicit KeyVaultHttpClient(bool reuse_connection) : reuse_(reuse_connection) {}
+
+    long Post(const std::string &uri, const std::string &access_token,
+              const std::string &body, std::string &response)
+    {
+#ifdef _WIN32
+        if (!reuse_ || !session_)
+        {
+            session_ = OpenKeyVaultWinHttpSession();
+        }
+        long status = static_cast<long>(
+            KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response));
+        if (!reuse_)
+        {
+            session_.reset();
+        }
+        return status;
+#else
+        if (!reuse_ || !curl_)
+        {
+            curl_.reset(curl_easy_init());
+            if (!curl_)
+            {
+                throw skr_error(EXIT_NETWORK_FAIL, "curl_easy_init() failed");
+            }
+        }
+        long status = KeyVaultPostCurl(curl_.get(), uri, access_token, body, response);
+        if (!reuse_)
+        {
+            curl_.reset();
+        }
+        return status;
+#endif
+    }
+
+private:
+    bool reuse_;
+#ifdef _WIN32
+    WinHttpHandle session_;
+#else
+    CurlEasyHandle curl_;
+#endif
+};
+
+struct SecureUnwrapItemResult
+{
+    std::string id;
+    std::vector<BYTE> plaintext;
+    bool ok = false;
+    std::string error;
+    long http_status = 0;
+    unsigned attempts = 0;
+    double http_ms = 0;     // sum of HTTP round trips, excluding backoff
+    double backoff_ms = 0;  // time slept between retries
+    double tpm_wait_ms = 0; // time waiting for the serialized TPM decrypt
+    double tpm_ms = 0;      // TPM RSA-OAEP transport decrypt
+    double total_ms = 0;
+};
+
+struct SecureUnwrapBatchRun
+{
+    double maa_ms = 0;
+    double access_token_ms = 0;
+    double client_init_ms = 0;
+    double unwrap_phase_ms = 0;
+    double total_ms = 0;
+    size_t workers = 0;
+    std::vector<SecureUnwrapItemResult> items;
+};
+
+/// One attestation + one access token, then N secureunwrapkey calls fanned
+/// out across a bounded worker pool. TPM decrypts are serialized.
+SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
+                                          const std::string &nonce,
+                                          const std::vector<SecureUnwrapInputKey> &keys,
+                                          const std::string &key_enc_key_url,
+                                          const std::string &algorithm,
+                                          const Util::AkvCredentialSource &akv_credential_source,
+                                          const SecureUnwrapBatchOptions &options)
+{
+#ifndef _WIN32
+    static std::once_flag curl_init_flag;
+    std::call_once(curl_init_flag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+#endif
+
+    SecureUnwrapBatchRun run;
+    const auto run_start = SteadyClock::now();
+
+    auto phase_start = SteadyClock::now();
+    const std::string attestation_token = Util::GetMAAToken(attestation_url, nonce);
+    if (attestation_token.empty())
+    {
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+    }
+    run.maa_ms = ElapsedMs(phase_start);
+
+    phase_start = SteadyClock::now();
+    const std::string access_token = GetKeyVaultAccessToken(key_enc_key_url, akv_credential_source);
+    run.access_token_ms = ElapsedMs(phase_start);
+
+    phase_start = SteadyClock::now();
+    AttestationClientSession attestation_session;
+    run.client_init_ms = ElapsedMs(phase_start);
+
+    const std::string request_uri = BuildSecureUnwrapRequestUri(key_enc_key_url);
+    run.items.resize(keys.size());
+    run.workers = ResolveWorkerCount(options.concurrency, keys.size());
+
+    std::atomic<size_t> next_index{0};
+    std::mutex tpm_mutex;
+
+    auto worker = [&]()
+    {
+        KeyVaultHttpClient http(options.reuse_connections);
+        for (;;)
+        {
+            const size_t idx = next_index.fetch_add(1);
+            if (idx >= keys.size())
+            {
+                break;
+            }
+            const SecureUnwrapInputKey &key = keys[idx];
+            SecureUnwrapItemResult &item = run.items[idx];
+            item.id = key.id;
+            const auto item_start = SteadyClock::now();
+            try
+            {
+                const std::string body =
+                    BuildSecureUnwrapRequestBody(algorithm, key.wrapped, attestation_token);
+                std::string response;
+                for (;;)
+                {
+                    ++item.attempts;
+                    const auto http_start = SteadyClock::now();
+                    item.http_status = http.Post(request_uri, access_token, body, response);
+                    item.http_ms += ElapsedMs(http_start);
+                    if (item.http_status == 200)
+                    {
+                        break;
+                    }
+                    if (!IsRetryableStatus(item.http_status) || item.attempts > options.max_retries)
+                    {
+                        std::ostringstream oss;
+                        oss << "Secure unwrap HTTP request failed: HTTP " << item.http_status
+                            << ": " << response;
+                        throw skr_error(EXIT_SKR_FAIL, oss.str());
+                    }
+                    const auto backoff =
+                        std::chrono::milliseconds(200u << (std::min)(item.attempts - 1, 4u));
+                    std::this_thread::sleep_for(backoff);
+                    item.backoff_ms += static_cast<double>(backoff.count());
+                }
+
+                std::vector<BYTE> transport_ciphertext = ParseSecureUnwrapResponse(response, algorithm);
+                {
+                    const auto wait_start = SteadyClock::now();
+                    std::lock_guard<std::mutex> lock(tpm_mutex);
+                    item.tpm_wait_ms = ElapsedMs(wait_start);
+                    const auto tpm_start = SteadyClock::now();
+                    item.plaintext = DecryptTransportCiphertext(attestation_session.get(), transport_ciphertext);
+                    item.tpm_ms = ElapsedMs(tpm_start);
+                }
+
+                if (!key.expected_sha256.empty() && Sha256Hex(item.plaintext) != key.expected_sha256)
+                {
+                    OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+                    item.plaintext.clear();
+                    throw skr_error(EXIT_CRYPTO_FAIL, "Unwrapped key SHA-256 does not match expected value");
+                }
+                item.ok = true;
+            }
+            catch (const std::exception &e)
+            {
+                item.ok = false;
+                item.error = e.what();
+                TRACE_OUT("Secure unwrap key [%s] failed: %s", item.id.c_str(), e.what());
+            }
+            item.total_ms = ElapsedMs(item_start);
+        }
+    };
+
+    phase_start = SteadyClock::now();
+    if (run.workers <= 1)
+    {
+        worker();
+    }
+    else
+    {
+        std::vector<std::thread> threads;
+        threads.reserve(run.workers);
+        try
+        {
+            for (size_t i = 0; i < run.workers; ++i)
+            {
+                threads.emplace_back(worker);
+            }
+        }
+        catch (...)
+        {
+            // Stop already-running workers before unwinding their captured state.
+            next_index.store(keys.size());
+            for (auto &t : threads)
+            {
+                t.join();
+            }
+            throw;
+        }
+        for (auto &t : threads)
+        {
+            t.join();
+        }
+    }
+    run.unwrap_phase_ms = ElapsedMs(phase_start);
+    run.total_ms = ElapsedMs(run_start);
+    return run;
+}
+
+double RoundMs(double value)
+{
+    return std::round(value * 1000.0) / 1000.0;
+}
+
+/// Nearest-rank percentile summary.
+json SummarizeMs(std::vector<double> values)
+{
+    json out;
+    out["count"] = values.size();
+    if (values.empty())
+    {
+        return out;
+    }
+    std::sort(values.begin(), values.end());
+    auto percentile = [&values](double p)
+    {
+        size_t rank = static_cast<size_t>(std::ceil(p / 100.0 * values.size()));
+        rank = (std::max)(rank, static_cast<size_t>(1));
+        return values[(std::min)(rank, values.size()) - 1];
+    };
+    const double sum = std::accumulate(values.begin(), values.end(), 0.0);
+    out["min"] = RoundMs(values.front());
+    out["p50"] = RoundMs(percentile(50));
+    out["p90"] = RoundMs(percentile(90));
+    out["p95"] = RoundMs(percentile(95));
+    out["p99"] = RoundMs(percentile(99));
+    out["max"] = RoundMs(values.back());
+    out["mean"] = RoundMs(sum / values.size());
+    return out;
+}
+
+std::string HostFromUrl(const std::string &url)
+{
+    size_t start = url.find("://");
+    start = (start == std::string::npos) ? 0 : start + 3;
+    const size_t end = url.find('/', start);
+    return url.substr(start, end == std::string::npos ? std::string::npos : end - start);
+}
+#endif // !AZURE_LOCAL
+} // namespace
+
+std::vector<BYTE> Util::SecureUnwrapKey(
+    const std::string &attestation_url,
+    const std::string &nonce,
+    const std::string &wrapped_key_base64url,
+    const std::string &key_enc_key_url,
+    const std::string &algorithm,
+    const Util::AkvCredentialSource &akv_credential_source)
+{
+    TRACE_OUT("Entering Util::SecureUnwrapKey()");
+
+    ValidateSecureUnwrapArgs(key_enc_key_url, algorithm);
+    const std::string wrapped_value = NormalizeWrappedKey(wrapped_key_base64url);
+
+    const std::string attestation_token = Util::GetMAAToken(attestation_url, nonce);
+    if (attestation_token.empty())
+    {
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+    }
+
+#ifdef AZURE_LOCAL
+    throw skr_error(EXIT_USAGE, "SecureUnwrapKey is not implemented for Azure Local");
+#else
+    const std::string access_token = GetKeyVaultAccessToken(key_enc_key_url, akv_credential_source);
+    const std::string request_uri = BuildSecureUnwrapRequestUri(key_enc_key_url);
+    const std::string request_body =
+        BuildSecureUnwrapRequestBody(algorithm, wrapped_value, attestation_token);
+
+    std::string response_str;
+#ifdef _WIN32
+    response_str = GetKeyVaultResponseWinHttp(request_uri, access_token, request_body);
+#else
+    response_str = GetKeyVaultResponseCurl(request_uri, access_token, request_body);
+#endif
+
+    std::vector<BYTE> transport_ciphertext = ParseSecureUnwrapResponse(response_str, algorithm);
+
+    AttestationClientSession attestation_session;
+    std::vector<BYTE> unwrapped =
+        DecryptTransportCiphertext(attestation_session.get(), transport_ciphertext);
 
     TRACE_OUT("Secure unwrap succeeded: %zu bytes recovered", unwrapped.size());
     TRACE_OUT("Exiting Util::SecureUnwrapKey()");
     return unwrapped;
+#endif
+}
+
+std::string Util::SecureUnwrapKeyBatch(
+    const std::string &attestation_url,
+    const std::string &nonce,
+    const std::string &batch_json,
+    const std::string &key_enc_key_url,
+    const std::string &algorithm,
+    const Util::AkvCredentialSource &akv_credential_source,
+    const SecureUnwrapBatchOptions &options)
+{
+    TRACE_OUT("Entering Util::SecureUnwrapKeyBatch()");
+    ValidateSecureUnwrapArgs(key_enc_key_url, algorithm);
+
+#ifdef AZURE_LOCAL
+    throw skr_error(EXIT_USAGE, "SecureUnwrapKeyBatch is not implemented for Azure Local");
+#else
+    const auto keys = ParseSecureUnwrapBatchInput(batch_json, options.replicate_to);
+    SecureUnwrapBatchRun run = RunSecureUnwrapBatch(attestation_url, nonce, keys, key_enc_key_url,
+                                                    algorithm, akv_credential_source, options);
+
+    json results = json::array();
+    size_t failures = 0;
+    for (auto &item : run.items)
+    {
+        json entry;
+        entry["id"] = item.id;
+        if (item.ok)
+        {
+            entry["unwrapped"] = Util::binary_to_base64url(item.plaintext);
+            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+        }
+        else
+        {
+            entry["error"] = item.error;
+            ++failures;
+        }
+        results.push_back(entry);
+    }
+
+    TRACE_OUT("Secure unwrap batch complete: %zu keys, %zu failed, %zu workers, %.1f ms",
+              run.items.size(), failures, run.workers, run.total_ms);
+    TRACE_OUT("Exiting Util::SecureUnwrapKeyBatch()");
+
+    json output;
+    output["results"] = results;
+    return output.dump(2);
+#endif
+}
+
+std::string Util::SecureUnwrapPerf(
+    const std::string &attestation_url,
+    const std::string &nonce,
+    const std::string &batch_json,
+    const std::string &key_enc_key_url,
+    const std::string &algorithm,
+    const Util::AkvCredentialSource &akv_credential_source,
+    const SecureUnwrapBatchOptions &options,
+    unsigned iterations,
+    unsigned warmup)
+{
+    TRACE_OUT("Entering Util::SecureUnwrapPerf()");
+    ValidateSecureUnwrapArgs(key_enc_key_url, algorithm);
+    if (iterations == 0)
+    {
+        throw skr_error(EXIT_USAGE, "SecureUnwrapPerf requires at least one iteration");
+    }
+
+#ifdef AZURE_LOCAL
+    throw skr_error(EXIT_USAGE, "SecureUnwrapPerf is not implemented for Azure Local");
+#else
+    const auto keys = ParseSecureUnwrapBatchInput(batch_json, options.replicate_to);
+    const size_t workers = ResolveWorkerCount(options.concurrency, keys.size());
+
+    std::vector<double> total_ms, maa_ms, token_ms, client_init_ms, unwrap_phase_ms;
+    std::vector<double> http_ms, tpm_ms, tpm_wait_ms, item_total_ms;
+    std::map<std::string, unsigned> status_counts;
+    unsigned run_failures = 0;
+    unsigned key_failures = 0;
+    unsigned retries = 0;
+    json errors = json::array();
+    json iteration_rows = json::array();
+    constexpr size_t MaxReportedErrors = 20;
+
+    for (unsigned i = 0; i < warmup + iterations; ++i)
+    {
+        const bool measured = i >= warmup;
+        const unsigned iteration = measured ? i - warmup + 1 : i + 1;
+        SecureUnwrapBatchRun run;
+        try
+        {
+            run = RunSecureUnwrapBatch(attestation_url, nonce, keys, key_enc_key_url,
+                                       algorithm, akv_credential_source, options);
+        }
+        catch (const std::exception &e)
+        {
+            fprintf(stderr, "%s %u: run failed: %s\n", measured ? "iteration" : "warmup",
+                    iteration, e.what());
+            if (measured)
+            {
+                ++run_failures;
+                if (errors.size() < MaxReportedErrors)
+                {
+                    errors.push_back({{"iteration", iteration}, {"error", e.what()}});
+                }
+            }
+            continue;
+        }
+
+        unsigned iteration_failures = 0;
+        json key_rows = json::array();
+        for (auto &item : run.items)
+        {
+            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+            if (!measured)
+            {
+                continue;
+            }
+            status_counts[std::to_string(item.http_status)]++;
+            retries += item.attempts > 0 ? item.attempts - 1 : 0;
+            http_ms.push_back(item.http_ms);
+            item_total_ms.push_back(item.total_ms);
+            if (item.ok)
+            {
+                tpm_ms.push_back(item.tpm_ms);
+                tpm_wait_ms.push_back(item.tpm_wait_ms);
+            }
+            else
+            {
+                ++iteration_failures;
+                if (errors.size() < MaxReportedErrors)
+                {
+                    errors.push_back({{"iteration", iteration}, {"id", item.id}, {"error", item.error}});
+                }
+            }
+            key_rows.push_back({
+                {"id", item.id},
+                {"ok", item.ok},
+                {"http_status", item.http_status},
+                {"attempts", item.attempts},
+                {"http_ms", RoundMs(item.http_ms)},
+                {"backoff_ms", RoundMs(item.backoff_ms)},
+                {"tpm_wait_ms", RoundMs(item.tpm_wait_ms)},
+                {"tpm_ms", RoundMs(item.tpm_ms)},
+                {"total_ms", RoundMs(item.total_ms)},
+            });
+        }
+
+        fprintf(stderr, "%s %u: total=%.1fms maa=%.1fms token=%.1fms unwrap_phase=%.1fms failures=%u\n",
+                measured ? "iteration" : "warmup", iteration, run.total_ms, run.maa_ms,
+                run.access_token_ms, run.unwrap_phase_ms,
+                measured ? iteration_failures : 0u);
+
+        if (!measured)
+        {
+            continue;
+        }
+        key_failures += iteration_failures;
+        total_ms.push_back(run.total_ms);
+        maa_ms.push_back(run.maa_ms);
+        token_ms.push_back(run.access_token_ms);
+        client_init_ms.push_back(run.client_init_ms);
+        unwrap_phase_ms.push_back(run.unwrap_phase_ms);
+        iteration_rows.push_back({
+            {"iteration", iteration},
+            {"total_ms", RoundMs(run.total_ms)},
+            {"maa_ms", RoundMs(run.maa_ms)},
+            {"access_token_ms", RoundMs(run.access_token_ms)},
+            {"client_init_ms", RoundMs(run.client_init_ms)},
+            {"unwrap_phase_ms", RoundMs(run.unwrap_phase_ms)},
+            {"failures", iteration_failures},
+            {"keys", key_rows},
+        });
+    }
+
+    json output;
+    output["config"] = {
+        {"keys", keys.size()},
+        {"concurrency", options.concurrency},
+        {"workers", workers},
+        {"reuse_connections", options.reuse_connections},
+        {"max_retries", options.max_retries},
+        {"iterations", iterations},
+        {"warmup", warmup},
+        {"algorithm", algorithm},
+        {"key_host", HostFromUrl(key_enc_key_url)},
+        {"api_version", Constants::SECURE_UNWRAP_API_VERSION},
+#ifdef _WIN32
+        {"platform", "windows"},
+#else
+        {"platform", "linux"},
+#endif
+    };
+    output["summary"] = {
+        {"run_failures", run_failures},
+        {"key_failures", key_failures},
+        {"retries", retries},
+        {"http_status_counts", status_counts},
+        {"total_ms", SummarizeMs(total_ms)},
+        {"maa_ms", SummarizeMs(maa_ms)},
+        {"access_token_ms", SummarizeMs(token_ms)},
+        {"client_init_ms", SummarizeMs(client_init_ms)},
+        {"unwrap_phase_ms", SummarizeMs(unwrap_phase_ms)},
+        {"per_key_http_ms", SummarizeMs(http_ms)},
+        {"per_key_tpm_ms", SummarizeMs(tpm_ms)},
+        {"per_key_tpm_wait_ms", SummarizeMs(tpm_wait_ms)},
+        {"per_key_total_ms", SummarizeMs(item_total_ms)},
+    };
+    output["errors"] = errors;
+    output["iterations"] = iteration_rows;
+
+    TRACE_OUT("Exiting Util::SecureUnwrapPerf()");
+    return output.dump(2);
 #endif
 }
 

@@ -131,9 +131,21 @@ void usage(char *programName)
     printf("\tRelease RSA key and unwrap symmetric key:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64(wrappedSymKey) -u [-H oaep_hash] [-G mgf1_hash]\n", programName);
     printf("\n");
-    printf("\tSecurely unwrap with a non-exportable Managed HSM key into this attested VM:\n");
+    printf("\tSecurely unwrap with a non-exportable Key Vault / Managed HSM key into this attested VM:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -U [-A algorithm]\n", programName);
-    printf("\t\t-A <algorithm>  Secure unwrap algorithm (default: A256KWPAD)\n");
+    printf("\t\t-A <algorithm>  Secure unwrap algorithm (default: A256KWPAD; use RSA-OAEP-256 for RSA-HSM keys)\n");
+    printf("\n");
+    printf("\tSecurely unwrap a batch (one attestation, one secureunwrapkey call per key):\n");
+    printf("\t\t%s -a <attestation-endpoint> -k KEYURL -c (imds|sp) -S <json-file|-|inline> [-A algorithm] [-j concurrency] [-N count] [-X] [-R retries]\n", programName);
+    printf("\n");
+    printf("\tSecure unwrap performance test (emits latency JSON, never key material):\n");
+    printf("\t\t%s -a <attestation-endpoint> -k KEYURL -c (imds|sp) -P <json-file|-|inline> [-A algorithm] [-j concurrency] [-N count] [-i iterations] [-W warmup] [-X] [-R retries]\n", programName);
+    printf("\t\t-j <n>  Max parallel secureunwrapkey calls (default: 8; 1 = sequential; 0 = one per key; capped at 64)\n");
+    printf("\t\t-N <n>  Replicate input keys cyclically to n keys (simulate n disks)\n");
+    printf("\t\t-i <n>  Measured iterations (default: 10)\n");
+    printf("\t\t-W <n>  Warmup iterations (default: 1)\n");
+    printf("\t\t-X      Disable HTTP connection reuse (new TLS connection per call)\n");
+    printf("\t\t-R <n>  Max retries on 429/5xx (default: 3)\n");
     printf("\n");
     printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -L [-A algorithm]\n", programName);
@@ -157,6 +169,8 @@ enum class Operation
     WrapKey,
     UnwrapKey,
     SecureUnwrapKey,
+    SecureUnwrapBatch,
+    SecureUnwrapPerf,
     LocalAesUnwrap,
     BatchUnwrap,
     ReleaseKey,
@@ -183,6 +197,52 @@ void set_tracing(void)
     }
 }
 
+// Read batch JSON: from file, stdin ("-"), or inline JSON string.
+static bool read_batch_input(const std::string &batch_input, std::string &batch_json)
+{
+    if (batch_input == "-")
+    {
+        std::ostringstream ss;
+        ss << std::cin.rdbuf();
+        batch_json = ss.str();
+        return true;
+    }
+    if (!batch_input.empty() && batch_input[0] == '{')
+    {
+        batch_json = batch_input; // inline JSON on command line
+        return true;
+    }
+    std::ifstream ifs(batch_input);
+    if (!ifs.is_open())
+    {
+        std::cerr << "Failed to open batch JSON file: " << batch_input << std::endl;
+        return false;
+    }
+    std::ostringstream ss;
+    ss << ifs.rdbuf();
+    batch_json = ss.str();
+    return true;
+}
+
+static bool parse_unsigned(const char *value, unsigned &out)
+{
+    try
+    {
+        size_t pos = 0;
+        unsigned long parsed = std::stoul(value, &pos);
+        if (pos != strlen(value) || parsed > 100000)
+        {
+            return false;
+        }
+        out = static_cast<unsigned>(parsed);
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef PLATFORM_UNIX
@@ -197,12 +257,15 @@ int main(int argc, char *argv[])
     std::string oaep_hash = "sha256"; // default OAEP hash
     std::string mgf1_hash;            // empty = same as oaep_hash
     std::string secure_unwrap_algorithm = "A256KWPAD";
-    std::string batch_input;           // -B: JSON file path, "-" for stdin, or inline JSON
+    std::string batch_input;           // -B/-S/-P: JSON file path, "-" for stdin, or inline JSON
+    SecureUnwrapBatchOptions secure_batch_options;
+    unsigned perf_iterations = 10;
+    unsigned perf_warmup = 1;
     Operation op = Operation::None;
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:S:P:j:N:i:W:XR:")) != -1)
     {
         switch (opt)
         {
@@ -270,6 +333,43 @@ int main(int argc, char *argv[])
             secure_unwrap_algorithm.assign(optarg);
             TRACE_OUT("secure_unwrap_algorithm: %s", secure_unwrap_algorithm.c_str());
             break;
+        case 'S':
+            batch_input.assign(optarg);
+            op = Operation::SecureUnwrapBatch;
+            TRACE_OUT("op: SecureUnwrapBatch, input: %s", batch_input.c_str());
+            break;
+        case 'P':
+            batch_input.assign(optarg);
+            op = Operation::SecureUnwrapPerf;
+            TRACE_OUT("op: SecureUnwrapPerf, input: %s", batch_input.c_str());
+            break;
+        case 'j':
+        case 'N':
+        case 'i':
+        case 'W':
+        case 'R':
+        {
+            unsigned value = 0;
+            if (!parse_unsigned(optarg, value))
+            {
+                std::cerr << "Invalid numeric value for -" << static_cast<char>(opt) << ": " << optarg << std::endl;
+                return EXIT_USAGE;
+            }
+            if (opt == 'j')
+                secure_batch_options.concurrency = value;
+            else if (opt == 'N')
+                secure_batch_options.replicate_to = value;
+            else if (opt == 'i')
+                perf_iterations = value;
+            else if (opt == 'W')
+                perf_warmup = value;
+            else
+                secure_batch_options.max_retries = value;
+            break;
+        }
+        case 'X':
+            secure_batch_options.reuse_connections = false;
+            break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
             return EXIT_FAILURE;
@@ -319,33 +419,42 @@ int main(int argc, char *argv[])
         }
         case Operation::BatchUnwrap:
         {
-            // Read batch JSON: from file, stdin ("-"), or inline JSON string
             std::string batch_json;
-            if (batch_input == "-")
+            if (!read_batch_input(batch_input, batch_json))
             {
-                std::ostringstream ss;
-                ss << std::cin.rdbuf();
-                batch_json = ss.str();
-            }
-            else if (!batch_input.empty() && batch_input[0] == '{')
-            {
-                batch_json = batch_input; // inline JSON on command line
-            }
-            else
-            {
-                std::ifstream ifs(batch_input);
-                if (!ifs.is_open())
-                {
-                    std::cerr << "Failed to open batch JSON file: " << batch_input << std::endl;
-                    return EXIT_FAILURE;
-                }
-                std::ostringstream ss;
-                ss << ifs.rdbuf();
-                batch_json = ss.str();
+                return EXIT_FAILURE;
             }
             result = Util::UnwrapKeyBatch(attestation_url, nonce, batch_json,
                                           key_enc_key_url, akv_credential_source,
                                           oaep_hash, mgf1_hash);
+            std::cout << result << std::endl;
+            break;
+        }
+        case Operation::SecureUnwrapBatch:
+        {
+            std::string batch_json;
+            if (!read_batch_input(batch_input, batch_json))
+            {
+                return EXIT_FAILURE;
+            }
+            result = Util::SecureUnwrapKeyBatch(attestation_url, nonce, batch_json,
+                                                key_enc_key_url, secure_unwrap_algorithm,
+                                                akv_credential_source, secure_batch_options);
+            std::cout << result << std::endl;
+            OPENSSL_cleanse(&result[0], result.size());
+            break;
+        }
+        case Operation::SecureUnwrapPerf:
+        {
+            std::string batch_json;
+            if (!read_batch_input(batch_input, batch_json))
+            {
+                return EXIT_FAILURE;
+            }
+            result = Util::SecureUnwrapPerf(attestation_url, nonce, batch_json,
+                                            key_enc_key_url, secure_unwrap_algorithm,
+                                            akv_credential_source, secure_batch_options,
+                                            perf_iterations, perf_warmup);
             std::cout << result << std::endl;
             break;
         }

@@ -89,6 +89,15 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
         throw skr_error((code), _skr_msg);                                                               \
     } while (0);
 
+/// Options for batched secure unwrap (one attestation, N secureunwrapkey calls).
+struct SecureUnwrapBatchOptions
+{
+    unsigned concurrency = 8;      // max parallel secureunwrapkey calls; 1 = sequential, 0 = one per key
+    bool reuse_connections = true; // keep HTTP/TLS connections alive per worker
+    unsigned max_retries = 3;      // retries on 429/5xx with exponential backoff
+    size_t replicate_to = 0;       // replicate input keys cyclically to this count (0 = as-is)
+};
+
 #define TRACE_OUT Util::trace_out
 #define OSSL_BN_TRACE_OUT Util::ossl_bn_trace_out
 
@@ -339,15 +348,15 @@ public:
                                  const std::string &mgf1_hash_alg = "");
 
     /// <summary>
-    /// Securely unwrap a key in Managed HSM and decrypt the result with the
-    /// TPM-bound transport key represented in the MAA token.
+    /// Securely unwrap a key in Key Vault / Managed HSM and decrypt the result
+    /// with the TPM-bound transport key represented in the MAA token.
     /// </summary>
     /// <param name="attestation_url">Attestation service URL.</param>
     /// <param name="nonce">Unique nonce per attestation request.</param>
     /// <param name="wrapped_key_base64url">Base64url-encoded wrapped key.</param>
-    /// <param name="key_enc_key">Managed HSM wrapping-key URL.</param>
-    /// <param name="algorithm">Managed HSM secure unwrap algorithm.</param>
-    /// <param name="akv_credential_source">Credential source for Managed HSM.</param>
+    /// <param name="key_enc_key">Key Vault or Managed HSM wrapping-key URL.</param>
+    /// <param name="algorithm">Secure unwrap algorithm (e.g. A256KWPAD, RSA-OAEP-256).</param>
+    /// <param name="akv_credential_source">Credential source for Key Vault / Managed HSM.</param>
     /// <returns>Unwrapped bytes decrypted inside the attested VM.</returns>
     static std::vector<BYTE> SecureUnwrapKey(
         const std::string &attestation_url,
@@ -356,6 +365,38 @@ public:
         const std::string &key_enc_key,
         const std::string &algorithm,
         const Util::AkvCredentialSource &akv_credential_source);
+
+    /// <summary>
+    /// Securely unwrap a batch of keys: one MAA attestation and one access token,
+    /// then one secureunwrapkey call per key fanned out across a bounded worker pool.
+    /// </summary>
+    /// <param name="batch_json">{"keys":[{"id":"label","wrapped":"base64url","sha256":"optional hex"},...]}</param>
+    /// <returns>{"results":[{"id":"label","unwrapped":"base64url"} or {"id":"label","error":"msg"},...]}</returns>
+    static std::string SecureUnwrapKeyBatch(
+        const std::string &attestation_url,
+        const std::string &nonce,
+        const std::string &batch_json,
+        const std::string &key_enc_key,
+        const std::string &algorithm,
+        const Util::AkvCredentialSource &akv_credential_source,
+        const SecureUnwrapBatchOptions &options);
+
+    /// <summary>
+    /// Run the batched secure unwrap repeatedly and report per-phase latency
+    /// statistics as JSON. Unwrapped key material is never emitted.
+    /// </summary>
+    /// <param name="iterations">Measured iterations.</param>
+    /// <param name="warmup">Unmeasured warmup iterations.</param>
+    static std::string SecureUnwrapPerf(
+        const std::string &attestation_url,
+        const std::string &nonce,
+        const std::string &batch_json,
+        const std::string &key_enc_key,
+        const std::string &algorithm,
+        const Util::AkvCredentialSource &akv_credential_source,
+        const SecureUnwrapBatchOptions &options,
+        unsigned iterations,
+        unsigned warmup);
 
     /// <summary>
     /// Release an exportable Managed HSM AES key into the attested VM and use
