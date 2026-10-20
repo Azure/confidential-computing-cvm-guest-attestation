@@ -363,6 +363,14 @@ Key Vault / Managed HSM `secureunwrapkey` accepts one wrapped value per call.
 per-key `secureunwrapkey` calls out across a bounded worker pool. Each worker
 keeps its HTTP/TLS connection alive. TPM transport decrypts are serialized.
 
+On Linux, the batch creates the attestation ephemeral TPM key **once** and
+reuses it for every transport decrypt (`TpmBatchDecrypt.cpp`). The guest
+attestation library's `Decrypt()` re-creates that key (`TPM2_CreatePrimary`,
+~200 ms on a vTPM) on every call; reusing it cuts per-key TPM time from
+~207 ms to ~25 ms. The key template and PCR policy mirror the client library
+exactly, so the TPM derives the same key MAA certified. `-K` disables reuse
+and falls back to the library `Decrypt()` per key (always used on Windows).
+
 ```sh
 sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
   -S batch.json -j 8
@@ -377,6 +385,7 @@ Output: `{"results":[{"id":"disk00","unwrapped":"<base64url>"} | {"id":"...","er
 | `-j <n>` | Max parallel `secureunwrapkey` calls (default 8; `1` = sequential; `0` = one per key; capped at 64) |
 | `-N <n>` | Replicate input keys cyclically to `n` keys (simulate `n` disks) |
 | `-X` | Disable connection reuse (new TLS connection per call) |
+| `-K` | Disable TPM ephemeral-key reuse (library `Decrypt()` per key) |
 | `-R <n>` | Max retries on 429/5xx with exponential backoff (default 3) |
 
 #### Secure Unwrap Performance Test (`-P`)
@@ -403,6 +412,10 @@ Helper scripts in [`perf/`](perf/):
 - `run-secure-unwrap-perf.sh` sweeps disk counts × concurrency × connection
   reuse on the CVM and writes `summary.csv`. It can optionally time the
   existing `-B` flow (one SKR release + local unwrap) as a baseline.
+- `run-extension-compare.sh` times `AzureAttestSKR` exactly as the CDE
+  extension invokes it (one process per batch, JSON on stdin,
+  `IMDS_MSI_RES_ID`) for today's SKR flow (`-B -`) vs secure unwrap
+  (`-S -`, with and without TPM key reuse), verifying every key.
 
 ### Managed HSM AES Release and Local Unwrap
 
