@@ -19,6 +19,7 @@
 #   ITERATIONS    measured iterations per cell (default 20)
 #   WARMUP        warmup iterations per cell (default 2)
 #   OUT_DIR       results directory (default ./perf-results-<timestamp>)
+#   EXTRA_ARGS    extra AzureAttestSKR flags for every -P run (e.g. "-K")
 #
 # Baseline (existing flow: one SKR release + local unwrap of N keys), optional:
 #   BASELINE_KEK_URL  exportable RSA key URL for `-B`
@@ -41,7 +42,7 @@ OUT_DIR="${OUT_DIR:-./perf-results-$(date +%Y%m%d-%H%M%S)}"
 command -v jq > /dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$OUT_DIR"
 CSV="$OUT_DIR/summary.csv"
-echo "mode,disks,concurrency,reuse,iterations,run_failures,key_failures,retries,http_429,total_p50,total_p95,total_p99,total_max,maa_p50,token_p50,unwrap_phase_p50,unwrap_phase_p95,key_http_p50,key_http_p95,key_tpm_p50,key_tpm_wait_p50" > "$CSV"
+echo "mode,disks,concurrency,reuse,iterations,run_failures,key_failures,retries,http_429,total_p50,total_p95,total_p99,total_max,maa_p50,token_p50,unwrap_phase_p50,unwrap_phase_p95,key_http_p50,key_http_p95,key_tpm_p50,key_tpm_wait_p50,tpm_key_create_p50" > "$CSV"
 
 {
     echo "host=$(hostname) kernel=$(uname -r) date=$(date -Is)"
@@ -63,7 +64,7 @@ for disks in $DISKS; do
             echo "=== $name" >&2
             if ! "$SKR_BIN" -a "$MAA_URL" -k "$KEK_URL" -c "$CRED" -A "$ALG" \
                 -P "$BATCH" -N "$disks" -j "$conc" -i "$ITERATIONS" -W "$WARMUP" \
-                "${reuse_flag[@]}" > "$OUT_DIR/$name.json" 2> "$OUT_DIR/$name.log"; then
+                "${reuse_flag[@]}" ${EXTRA_ARGS:-} > "$OUT_DIR/$name.json" 2> "$OUT_DIR/$name.log"; then
                 echo "    failed (see $OUT_DIR/$name.log)" >&2
                 continue
             fi
@@ -75,7 +76,7 @@ for disks in $DISKS; do
                     $s.maa_ms.p50, $s.access_token_ms.p50,
                     $s.unwrap_phase_ms.p50, $s.unwrap_phase_ms.p95,
                     $s.per_key_http_ms.p50, $s.per_key_http_ms.p95,
-                    $s.per_key_tpm_ms.p50, $s.per_key_tpm_wait_ms.p50
+                    $s.per_key_tpm_ms.p50, $s.per_key_tpm_wait_ms.p50, ($s.tpm_key_create_ms.p50 // null)
                 ] | @csv' "$OUT_DIR/$name.json" >> "$CSV"
         done
     done
@@ -100,7 +101,7 @@ if [[ -n "${BASELINE_KEK_URL:-}" && -n "${BASELINE_BATCH:-}" ]]; then
         END {
             if (NR == 0) { exit }
             i50 = int(0.50 * NR + 0.999); i95 = int(0.95 * NR + 0.999); i99 = int(0.99 * NR + 0.999)
-            printf "\"baseline\",%s,1,\"n/a\",%s,%d,0,0,0,%s,%s,%s,%s,,,,,,,,\n", d, it, it - NR, v[i50], v[i95], v[i99], v[NR]
+            printf "\"baseline\",%s,1,\"n/a\",%s,%d,0,0,0,%s,%s,%s,%s,,,,,,,,,\n", d, it, it - NR, v[i50], v[i95], v[i99], v[NR]
         }' >> "$CSV"
 fi
 

@@ -38,6 +38,9 @@
 #include "AttestationUtil.h"
 #include "Logger.h"
 #include "Constants.h"
+#ifdef PLATFORM_UNIX
+#include "TpmBatchDecrypt.h"
+#endif
 #ifdef AZURE_LOCAL
 #include <hw_evidence_api.h>
 #endif
@@ -1786,6 +1789,16 @@ size_t ResolveWorkerCount(unsigned concurrency, size_t key_count)
     return (std::min)(workers, MaxSecureUnwrapWorkers);
 }
 
+bool UseTpmKeyReuse(const SecureUnwrapBatchOptions &options)
+{
+#ifdef PLATFORM_UNIX
+    return options.reuse_tpm_key;
+#else
+    (void)options;
+    return false; // TpmBatchDecryptor is Linux-only; Windows uses the library Decrypt().
+#endif
+}
+
 bool IsRetryableStatus(long status)
 {
     return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
@@ -1860,6 +1873,7 @@ struct SecureUnwrapBatchRun
     double maa_ms = 0;
     double access_token_ms = 0;
     double client_init_ms = 0;
+    double tpm_key_create_ms = 0; // one-time ephemeral key creation when reusing the TPM key
     double unwrap_phase_ms = 0;
     double total_ms = 0;
     size_t workers = 0;
@@ -1897,7 +1911,18 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
     run.access_token_ms = ElapsedMs(phase_start);
 
     phase_start = SteadyClock::now();
-    AttestationClientSession attestation_session;
+    // Transport decrypt backend: either one reused ephemeral key for the whole
+    // batch (TpmBatchDecryptor, created lazily under the TPM lock so it overlaps
+    // with the first HTTP calls) or the attestation library's per-call Decrypt().
+    const bool reuse_tpm_key = UseTpmKeyReuse(options);
+    std::unique_ptr<AttestationClientSession> attestation_session;
+    if (!reuse_tpm_key)
+    {
+        attestation_session.reset(new AttestationClientSession());
+    }
+#ifdef PLATFORM_UNIX
+    std::unique_ptr<TpmBatchDecryptor> tpm_decryptor;
+#endif
     run.client_init_ms = ElapsedMs(phase_start);
 
     const std::string request_uri = BuildSecureUnwrapRequestUri(key_enc_key_url);
@@ -1954,9 +1979,35 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                     const auto wait_start = SteadyClock::now();
                     std::lock_guard<std::mutex> lock(tpm_mutex);
                     item.tpm_wait_ms = ElapsedMs(wait_start);
-                    const auto tpm_start = SteadyClock::now();
-                    item.plaintext = DecryptTransportCiphertext(attestation_session.get(), transport_ciphertext);
-                    item.tpm_ms = ElapsedMs(tpm_start);
+#ifdef PLATFORM_UNIX
+                    if (reuse_tpm_key)
+                    {
+                        if (!tpm_decryptor)
+                        {
+                            const auto create_start = SteadyClock::now();
+                            tpm_decryptor.reset(new TpmBatchDecryptor());
+                            run.tpm_key_create_ms = ElapsedMs(create_start);
+                        }
+                        const auto tpm_start = SteadyClock::now();
+                        try
+                        {
+                            item.plaintext = tpm_decryptor->Decrypt(transport_ciphertext);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            throw skr_error(EXIT_CRYPTO_FAIL,
+                                            std::string("Failed to decrypt secure unwrap transport value: ") + e.what());
+                        }
+                        OPENSSL_cleanse(transport_ciphertext.data(), transport_ciphertext.size());
+                        item.tpm_ms = ElapsedMs(tpm_start);
+                    }
+                    else
+#endif
+                    {
+                        const auto tpm_start = SteadyClock::now();
+                        item.plaintext = DecryptTransportCiphertext(attestation_session->get(), transport_ciphertext);
+                        item.tpm_ms = ElapsedMs(tpm_start);
+                    }
                 }
 
                 if (!key.expected_sha256.empty() && Sha256Hex(item.plaintext) != key.expected_sha256)
@@ -2173,7 +2224,7 @@ std::string Util::SecureUnwrapPerf(
     const auto keys = ParseSecureUnwrapBatchInput(batch_json, options.replicate_to);
     const size_t workers = ResolveWorkerCount(options.concurrency, keys.size());
 
-    std::vector<double> total_ms, maa_ms, token_ms, client_init_ms, unwrap_phase_ms;
+    std::vector<double> total_ms, maa_ms, token_ms, client_init_ms, tpm_key_create_ms, unwrap_phase_ms;
     std::vector<double> http_ms, tpm_ms, tpm_wait_ms, item_total_ms;
     std::map<std::string, unsigned> status_counts;
     unsigned run_failures = 0;
@@ -2261,6 +2312,7 @@ std::string Util::SecureUnwrapPerf(
         maa_ms.push_back(run.maa_ms);
         token_ms.push_back(run.access_token_ms);
         client_init_ms.push_back(run.client_init_ms);
+        tpm_key_create_ms.push_back(run.tpm_key_create_ms);
         unwrap_phase_ms.push_back(run.unwrap_phase_ms);
         iteration_rows.push_back({
             {"iteration", iteration},
@@ -2268,6 +2320,7 @@ std::string Util::SecureUnwrapPerf(
             {"maa_ms", RoundMs(run.maa_ms)},
             {"access_token_ms", RoundMs(run.access_token_ms)},
             {"client_init_ms", RoundMs(run.client_init_ms)},
+            {"tpm_key_create_ms", RoundMs(run.tpm_key_create_ms)},
             {"unwrap_phase_ms", RoundMs(run.unwrap_phase_ms)},
             {"failures", iteration_failures},
             {"keys", key_rows},
@@ -2280,6 +2333,7 @@ std::string Util::SecureUnwrapPerf(
         {"concurrency", options.concurrency},
         {"workers", workers},
         {"reuse_connections", options.reuse_connections},
+        {"reuse_tpm_key", UseTpmKeyReuse(options)},
         {"max_retries", options.max_retries},
         {"iterations", iterations},
         {"warmup", warmup},
@@ -2301,6 +2355,7 @@ std::string Util::SecureUnwrapPerf(
         {"maa_ms", SummarizeMs(maa_ms)},
         {"access_token_ms", SummarizeMs(token_ms)},
         {"client_init_ms", SummarizeMs(client_init_ms)},
+        {"tpm_key_create_ms", SummarizeMs(tpm_key_create_ms)},
         {"unwrap_phase_ms", SummarizeMs(unwrap_phase_ms)},
         {"per_key_http_ms", SummarizeMs(http_ms)},
         {"per_key_tpm_ms", SummarizeMs(tpm_ms)},

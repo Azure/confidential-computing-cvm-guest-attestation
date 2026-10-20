@@ -35,6 +35,10 @@ add_executable(${CMAKE_PROJECT_TARGET}
 if(UNIX)
     add_definitions(-DPLATFORM_UNIX)
 
+    # Batched secure-unwrap TPM decrypt (reuses the attestation ephemeral key).
+    target_sources(${CMAKE_PROJECT_TARGET} PRIVATE TpmBatchDecrypt.cpp)
+    target_link_libraries(${CMAKE_PROJECT_TARGET} tss2-esys tss2-tctildr)
+
     if(AZURE_LOCAL)
         add_compile_definitions(AZURE_LOCAL)
         message(STATUS "Azure Local mode: ENABLED")

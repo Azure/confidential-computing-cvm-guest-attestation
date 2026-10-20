@@ -29,6 +29,7 @@ RUN tdnf update -y && tdnf install -y \
         zlib-devel \
         boost-devel \
         nlohmann-json-devel \
+        tpm2-tss-devel \
     && tdnf clean all
 
 # The .deb's .so may reference libjsoncpp at link time (same reason

@@ -94,6 +94,7 @@ struct SecureUnwrapBatchOptions
 {
     unsigned concurrency = 8;      // max parallel secureunwrapkey calls; 1 = sequential, 0 = one per key
     bool reuse_connections = true; // keep HTTP/TLS connections alive per worker
+    bool reuse_tpm_key = true;     // Linux: create the TPM ephemeral key once per batch
     unsigned max_retries = 3;      // retries on 429/5xx with exponential backoff
     size_t replicate_to = 0;       // replicate input keys cyclically to this count (0 = as-is)
 };
