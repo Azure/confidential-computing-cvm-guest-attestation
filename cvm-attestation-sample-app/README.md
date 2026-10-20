@@ -74,8 +74,18 @@ sudo ./ClientLibBuildAndInstallAzureLocal.sh
 
 # Build and install pre-requisites (includes libtss2-dev and edge-cc-base-attestation-sdk)
 sudo ./ClientLibBuildAndInstallAzureLocal.sh -p
+
+# Explicitly opt into the insiders-fast evidence SDK instead
+sudo ./ClientLibBuildAndInstallAzureLocal.sh -p -i
 ```
 
+Azure Local pre-requisites support Ubuntu 22.04 and 24.04. By default, installation
+configures the Microsoft production `prod.list` feed when needed and installs
+`edge-cc-base-attestation-sdk` from that Ubuntu release. The `-i` option requires
+`-p` and selects insiders-fast instead. Existing feeds are not removed; selecting
+production can downgrade a previously installed preview SDK.
+If the selected feed's source list already exists, setup is skipped without
+revalidating or overwriting it. Newly downloaded source lists and keys are checksum-validated.
 
 Once the attestation lib is installed, use the below steps to build and run the app
 

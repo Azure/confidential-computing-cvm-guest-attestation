@@ -2,11 +2,30 @@
 # Pre-requisites for Azure Local builds.
 # This script installs everything from the standard pre-requisites.sh
 # and additionally installs the edge-cc-base-attestation-sdk from the
-# insiders-fast repo and the tpm2-tools (libtss2-dev) package.
+# production PMC feed (or insiders-fast with -i) and libtss2-dev.
 
 set -e
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+USE_INSIDERS_FAST=false
+
+usage() {
+    echo "Usage: $0 [-h] [-i]"
+    echo "  -i  Install the evidence SDK from insiders-fast instead of production PMC."
+}
+
+while getopts ":hi" opt; do
+    case "$opt" in
+        h) usage; exit 0 ;;
+        i) USE_INSIDERS_FAST=true ;;
+        *) usage >&2; exit 1 ;;
+    esac
+done
+shift $((OPTIND - 1))
+if [ "$#" -ne 0 ]; then
+    usage >&2
+    exit 1
+fi
 
 # Run the standard pre-requisites
 echo "=== Running standard pre-requisites ==="
@@ -17,19 +36,22 @@ echo "=== Running standard pre-requisites ==="
 echo "=== Installing libtss2-dev ==="
 sudo apt-get install -y libtss2-dev
 
-# Enable insiders-fast repo and install edge-cc-base-attestation-sdk
-if ! [ -e /etc/apt/sources.list.d/microsoft-insiders-fast.list ]; then
-    read -r -p "The insiders-fast repo is not configured. Enable it now? [y/N] " response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        echo "=== Enabling insiders-fast repo ==="
-        sudo "${CURRENT_DIR}/enable-insider-fast-repo.sh"
-        sudo apt-get update
-    else
-        echo "[ERROR] insiders-fast repo is required to install edge-cc-base-attestation-sdk."
-        exit 1
-    fi
+# Configure the selected PMC feed if it is not already present.
+if [ "$USE_INSIDERS_FAST" = true ]; then
+    sudo bash "${CURRENT_DIR}/enable-pmc-repo.sh" -i
+else
+    sudo bash "${CURRENT_DIR}/enable-pmc-repo.sh"
 fi
-echo "=== Installing edge-cc-base-attestation-sdk ==="
-sudo apt-get install -y edge-cc-base-attestation-sdk
+sudo apt-get update
+
+# Select the suite explicitly so an existing insiders-fast source cannot override
+# production. Allow switching back to production even if a newer preview is installed.
+. /etc/os-release
+SDK_SUITE="$VERSION_CODENAME"
+if [ "$USE_INSIDERS_FAST" = true ]; then
+    SDK_SUITE=insiders-fast
+fi
+echo "=== Installing edge-cc-base-attestation-sdk from ${SDK_SUITE} ==="
+sudo apt-get install -y --allow-downgrades "edge-cc-base-attestation-sdk/${SDK_SUITE}"
 
 echo "=== Azure Local pre-requisites complete ==="

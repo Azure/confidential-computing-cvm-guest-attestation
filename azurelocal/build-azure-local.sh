@@ -5,20 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${SCRIPT_DIR}/output"
 CLEAN_BUILD=false
 INSTALL_PREREQS=false
-
-# Make all .sh scripts in the repo executable
-find "${SCRIPT_DIR}" -type f -name "*.sh" -exec chmod +x {} +
+USE_INSIDERS_FAST=false
 
 function Usage()
 {
-    echo "Usage: $0 [-h] [-c] [-p] --> where -c cleans and rebuilds everything before gathering, -p installs pre-requisites.";
-    exit 1;
+    echo "Usage: $0 [-h] [-c] [-p] [-i]"
+    echo "  -c  Clean and rebuild everything before gathering artifacts."
+    echo "  -p  Install pre-requisites when building the client library (production PMC by default)."
+    echo "  -i  Use insiders-fast for the evidence SDK (requires -p)."
+    exit "${1:-1}"
 }
 
-while getopts ":hcp" opt; do
+while getopts ":hcpi" opt; do
   case ${opt} in
     h )
-        Usage
+        Usage 0
       ;;
     c )
         CLEAN_BUILD=true
@@ -26,16 +27,33 @@ while getopts ":hcp" opt; do
     p )
         INSTALL_PREREQS=true
       ;;
+    i )
+        USE_INSIDERS_FAST=true
+      ;;
     \? )
         Usage
       ;;
   esac
 done
+shift $((OPTIND - 1))
+if [ "$#" -ne 0 ]; then
+    Usage
+fi
+if [ "$USE_INSIDERS_FAST" = true ] && [ "$INSTALL_PREREQS" != true ]; then
+    echo "[ERROR] -i requires -p to install pre-requisites." >&2
+    exit 1
+fi
+
+# Make all .sh scripts in the repo executable
+find "${SCRIPT_DIR}" -type f -name "*.sh" -exec chmod +x {} +
 
 # Build pre-requisite flags to forward
-CLIENT_LIB_FLAGS=""
+CLIENT_LIB_FLAGS=()
 if [ "$INSTALL_PREREQS" = true ]; then
-    CLIENT_LIB_FLAGS="-p"
+    CLIENT_LIB_FLAGS+=(-p)
+fi
+if [ "$USE_INSIDERS_FAST" = true ]; then
+    CLIENT_LIB_FLAGS+=(-i)
 fi
 
 if [ "$CLEAN_BUILD" = true ]; then
@@ -44,7 +62,7 @@ if [ "$CLEAN_BUILD" = true ]; then
     # Rebuild attestation library for Azure Local
     echo "Rebuilding attestation library (Azure Local)..."
     pushd "${SCRIPT_DIR}/cvm-attestation-sample-app" > /dev/null
-    sudo ./ClientLibBuildAndInstallAzureLocal.sh ${CLIENT_LIB_FLAGS}
+    sudo ./ClientLibBuildAndInstallAzureLocal.sh "${CLIENT_LIB_FLAGS[@]}"
     popd > /dev/null
 
     # Clean and rebuild AttestationClient
@@ -78,7 +96,7 @@ ATTEST_DEB="${SCRIPT_DIR}/client-library/src/Attestation/_build/x86_64/packages/
 if [ ! -f "${ATTEST_DEB}" ]; then
     echo "Building attestation library (Azure Local)..."
     pushd "${SCRIPT_DIR}/cvm-attestation-sample-app" > /dev/null
-    sudo ./ClientLibBuildAndInstallAzureLocal.sh ${CLIENT_LIB_FLAGS}
+    sudo ./ClientLibBuildAndInstallAzureLocal.sh "${CLIENT_LIB_FLAGS[@]}"
     popd > /dev/null
 fi
 if [ -f "${ATTEST_DEB}" ]; then
