@@ -358,22 +358,28 @@ exportable RSA key and then performs RSA-OAEP decryption locally.
 #### Batch Secure Unwrap (`-S`)
 
 Key Vault / Managed HSM `secureunwrapkey` accepts one wrapped value per call.
-`-S` takes the whole batch (e.g. every disk of a CVM) in one invocation, performs
-**one** MAA attestation and **one** access-token request, then fans the
-per-key `secureunwrapkey` calls out across a bounded worker pool. Each worker
-keeps its HTTP/TLS connection alive. TPM transport decrypts are serialized.
+`-S` takes the whole batch (e.g. every disk of a CVM) in one invocation:
 
-On Linux, the batch creates the attestation ephemeral TPM key **once** and
-reuses it for every transport decrypt (`TpmBatchDecrypt.cpp`). The guest
-attestation library's `Decrypt()` re-creates that key (`TPM2_CreatePrimary`,
-~200 ms on a vTPM) on every call; reusing it cuts per-key TPM time from
-~207 ms to ~25 ms. The key template and PCR policy mirror the client library
-exactly, so the TPM derives the same key MAA certified. `-K` disables reuse
-and falls back to the library `Decrypt()` per key (always used on Windows).
+1. The access token is fetched, and the first worker's TLS connection warmed,
+   **in parallel with** MAA attestation.
+2. **One** MAA attestation, through the same attestation client that later
+   decrypts. With `SetEphemeralKeyReuse(true)` the library keeps the TPM
+   ephemeral key it certified for MAA loaded instead of flushing it.
+3. Per-key `secureunwrapkey` calls fan out across a bounded worker pool
+   (keep-alive connections). As transport ciphertexts arrive, one TPM consumer
+   drains them into `AttestationClient::DecryptBatch()` calls, which reuse the
+   retained key and one PCR policy session (2 TPM commands per key).
+
+The library's per-call `Decrypt()` re-creates the ephemeral key
+(`TPM2_CreatePrimary`, ~180 ms on a vTPM) and a policy session every time
+(~205 ms per key). With the batch API a key costs ~24 ms of TPM time.
+`DecryptBatch()` requires an attestation library built from this repo's
+`client-library` (see `Dockerfile.attestlib-src`); with an older library, or
+with `-K`, the app falls back to per-key `Decrypt()`.
 
 ```sh
 sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
-  -S batch.json -j 8
+  -S batch.json
 ```
 
 Input: `{"keys":[{"id":"disk00","wrapped":"<base64url>","sha256":"<optional hex>"}, ...]}`.
@@ -382,10 +388,10 @@ Output: `{"results":[{"id":"disk00","unwrapped":"<base64url>"} | {"id":"...","er
 
 | Flag | Meaning |
 |---|---|
-| `-j <n>` | Max parallel `secureunwrapkey` calls (default 8; `1` = sequential; `0` = one per key; capped at 64) |
+| `-j <n>` | Max parallel `secureunwrapkey` calls (default 2; `1` = sequential; `0` = one per key; capped at 64) |
 | `-N <n>` | Replicate input keys cyclically to `n` keys (simulate `n` disks) |
 | `-X` | Disable connection reuse (new TLS connection per call) |
-| `-K` | Disable TPM ephemeral-key reuse (library `Decrypt()` per key) |
+| `-K` | Disable library `DecryptBatch()`/key reuse (per-key `Decrypt()`) |
 | `-R <n>` | Max retries on 429/5xx with exponential backoff (default 3) |
 
 #### Secure Unwrap Performance Test (`-P`)
@@ -396,7 +402,7 @@ It never prints key material. It accepts the `-S` flags plus `-i <iterations>`
 
 ```sh
 sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
-  -P batch.json -N 32 -j 8 -i 20 -W 2 > perf.json
+  -P batch.json -N 32 -i 20 -W 2 > perf.json
 ```
 
 The `summary` section reports min/p50/p90/p95/p99/max/mean for each phase:

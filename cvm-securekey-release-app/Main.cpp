@@ -140,12 +140,12 @@ void usage(char *programName)
     printf("\n");
     printf("\tSecure unwrap performance test (emits latency JSON, never key material):\n");
     printf("\t\t%s -a <attestation-endpoint> -k KEYURL -c (imds|sp) -P <json-file|-|inline> [-A algorithm] [-j concurrency] [-N count] [-i iterations] [-W warmup] [-X] [-R retries]\n", programName);
-    printf("\t\t-j <n>  Max parallel secureunwrapkey calls (default: 8; 1 = sequential; 0 = one per key; capped at 64)\n");
+    printf("\t\t-j <n>  Max parallel secureunwrapkey calls (default: 2; 1 = sequential; 0 = one per key; capped at 64)\n");
     printf("\t\t-N <n>  Replicate input keys cyclically to n keys (simulate n disks)\n");
     printf("\t\t-i <n>  Measured iterations (default: 10)\n");
     printf("\t\t-W <n>  Warmup iterations (default: 1)\n");
     printf("\t\t-X      Disable HTTP connection reuse (new TLS connection per call)\n");
-    printf("\t\t-K      Disable TPM ephemeral-key reuse (library Decrypt() per key; Linux reuses by default)\n");
+    printf("\t\t-K      Disable attestation-library DecryptBatch()/key reuse (per-key Decrypt())\n");
     printf("\t\t-R <n>  Max retries on 429/5xx (default: 3)\n");
     printf("\n");
     printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");

@@ -19,21 +19,23 @@
 #   LABEL         backend label for the CSV (default: host of SECURE_KEK)
 #   SECURE_ALG    default RSA-OAEP-256
 #   SKR_HASH      -H value for -B (default sha256)
-#   CONCURRENCY   -j for secure modes (default 4)
+#   CONCURRENCY   -j for secure modes (default 2)
 #   DISKS         default "1 4 8 16 32"
 #   MODES         default "cde-skr secure-lib secure-reuse"
 #   ITERATIONS    default 20, WARMUP default 2
 #   SKR_BIN       default ./AzureAttestSKR
+#   SKR_BIN_BEFORE  binary for cde-skr mode (default SKR_BIN), e.g. the build CDE ships
 #   OUT           CSV path (default ./extension-compare.csv; appended if it exists)
 set -euo pipefail
 
 : "${MAA_URL:?}" "${IMDS_MSI_RES_ID:?}" "${SKR_KEK:?}" "${SKR_BATCH:?}" "${SECURE_KEK:?}" "${SECURE_BATCH:?}"
 SKR_BIN="$(readlink -f "${SKR_BIN:-./AzureAttestSKR}")"
+SKR_BIN_BEFORE="$(readlink -f "${SKR_BIN_BEFORE:-$SKR_BIN}")"
 SKR_BATCH="$(readlink -f "$SKR_BATCH")"
 SECURE_BATCH="$(readlink -f "$SECURE_BATCH")"
 SECURE_ALG="${SECURE_ALG:-RSA-OAEP-256}"
 SKR_HASH="${SKR_HASH:-sha256}"
-CONCURRENCY="${CONCURRENCY:-4}"
+CONCURRENCY="${CONCURRENCY:-2}"
 DISKS="${DISKS:-1 4 8 16 32}"
 MODES="${MODES:-cde-skr secure-lib secure-reuse}"
 ITERATIONS="${ITERATIONS:-20}"
@@ -42,7 +44,6 @@ OUT="$(readlink -f "${OUT:-./extension-compare.csv}")"
 LABEL="${LABEL:-$(sed -E 's#^https?://([^/]+).*#\1#' <<< "$SECURE_KEK")}"
 export IMDS_MSI_RES_ID
 
-BIN_DIR="$(dirname "$SKR_BIN")"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -59,7 +60,7 @@ for n in $DISKS; do
 
     for mode in $MODES; do
         case "$mode" in
-            cde-skr)      cmd=("$SKR_BIN" -B - -a "$MAA_URL" -k "$SKR_KEK" -H "$SKR_HASH"); input="$TMP/skr.json"; conc=1 ;;
+            cde-skr)      cmd=("$SKR_BIN_BEFORE" -B - -a "$MAA_URL" -k "$SKR_KEK" -H "$SKR_HASH"); input="$TMP/skr.json"; conc=1 ;;
             secure-lib)   cmd=("$SKR_BIN" -S - -a "$MAA_URL" -k "$SECURE_KEK" -A "$SECURE_ALG" -j "$CONCURRENCY" -K); input="$TMP/secure.json"; conc=$CONCURRENCY ;;
             secure-reuse) cmd=("$SKR_BIN" -S - -a "$MAA_URL" -k "$SECURE_KEK" -A "$SECURE_ALG" -j "$CONCURRENCY"); input="$TMP/secure.json"; conc=$CONCURRENCY ;;
             *) echo "unknown mode $mode" >&2; exit 1 ;;
@@ -70,7 +71,7 @@ for n in $DISKS; do
         for ((i = 0; i < WARMUP + ITERATIONS; i++)); do
             start=$(date +%s%N)
             rc=0
-            (cd "$BIN_DIR" && "${cmd[@]}" < "$input" > "$TMP/out.json" 2> "$TMP/err.txt") || rc=$?
+            (cd "$(dirname "${cmd[0]}")" && "${cmd[@]}" < "$input" > "$TMP/out.json" 2> "$TMP/err.txt") || rc=$?
             end=$(date +%s%N)
             ok=0
             if ((rc == 0)); then

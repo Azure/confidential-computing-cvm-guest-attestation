@@ -42,7 +42,7 @@ OUT_DIR="${OUT_DIR:-./perf-results-$(date +%Y%m%d-%H%M%S)}"
 command -v jq > /dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$OUT_DIR"
 CSV="$OUT_DIR/summary.csv"
-echo "mode,disks,concurrency,reuse,iterations,run_failures,key_failures,retries,http_429,total_p50,total_p95,total_p99,total_max,maa_p50,token_p50,unwrap_phase_p50,unwrap_phase_p95,key_http_p50,key_http_p95,key_tpm_p50,key_tpm_wait_p50,tpm_key_create_p50" > "$CSV"
+echo "mode,disks,concurrency,reuse,iterations,run_failures,key_failures,retries,http_429,total_p50,total_p95,total_p99,total_max,maa_p50,token_p50,unwrap_phase_p50,unwrap_phase_p95,key_http_p50,key_http_p95,key_tpm_p50,key_tpm_wait_p50,prep_p50" > "$CSV"
 
 {
     echo "host=$(hostname) kernel=$(uname -r) date=$(date -Is)"
@@ -76,7 +76,7 @@ for disks in $DISKS; do
                     $s.maa_ms.p50, $s.access_token_ms.p50,
                     $s.unwrap_phase_ms.p50, $s.unwrap_phase_ms.p95,
                     $s.per_key_http_ms.p50, $s.per_key_http_ms.p95,
-                    $s.per_key_tpm_ms.p50, $s.per_key_tpm_wait_ms.p50, ($s.tpm_key_create_ms.p50 // null)
+                    $s.per_key_tpm_ms.p50, $s.per_key_tpm_wait_ms.p50, ($s.prep_ms.p50 // null)
                 ] | @csv' "$OUT_DIR/$name.json" >> "$CSV"
         done
     done

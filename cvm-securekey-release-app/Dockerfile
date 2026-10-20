@@ -28,7 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev \
         libjsoncpp-dev \
         libboost-all-dev \
-        libtss2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------------------------------------------

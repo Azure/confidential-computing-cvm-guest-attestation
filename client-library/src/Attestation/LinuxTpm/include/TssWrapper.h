@@ -6,9 +6,22 @@
 
 #pragma once
 
+#include <exception>
+#include <string>
 #include <vector>
 
 #include "AttestationTypes.h"
+
+/**
+ * Per-item outcome of TssWrapper::DecryptBatchWithEphemeralKey.
+ */
+struct DecryptBatchItemResult
+{
+    bool ok = false;
+    attest::Buffer plaintext;
+    uint32_t tpmRc = 0;     // TSS2_RC when the failure came from the TPM stack
+    std::string error;
+};
 
 /**
  * Abstract public interface which wraps TPM tss libraries to provide necessary
@@ -181,6 +194,40 @@ public:
                                                    const attest::Buffer& encryptedBlob,
                                                    const attest::RsaScheme rsaWrapAlgId,
                                                    const attest::RsaHashAlg rsaHashAlgId) = 0;
+
+    /**
+     * When enabled, GetEphemeralKey() keeps the certified ephemeral key loaded
+     * (instead of flushing it) so DecryptBatchWithEphemeralKey() can reuse it
+     * without re-creating it. The retained key is flushed when replaced,
+     * when retention is disabled, or when the wrapper is destroyed.
+     */
+    virtual void SetRetainEphemeralKey(bool retain) { (void)retain; }
+
+    /**
+     * Decrypt many blobs with the ephemeral key. Implementations create the key
+     * at most once (or reuse a retained key bound to the same PCR state) and
+     * reuse a single PCR policy session across items. Failures are reported per
+     * item; the default implementation falls back to DecryptWithEphemeralKey().
+     */
+    virtual std::vector<DecryptBatchItemResult> DecryptBatchWithEphemeralKey(
+        const attest::PcrSet& pcrSet,
+        const std::vector<attest::Buffer>& encryptedBlobs,
+        const attest::RsaScheme rsaWrapAlgId,
+        const attest::RsaHashAlg rsaHashAlgId)
+    {
+        std::vector<DecryptBatchItemResult> results(encryptedBlobs.size());
+        for (size_t i = 0; i < encryptedBlobs.size(); ++i) {
+            try {
+                results[i].plaintext = DecryptWithEphemeralKey(pcrSet, encryptedBlobs[i], rsaWrapAlgId, rsaHashAlgId);
+                results[i].ok = true;
+            }
+            catch (const std::exception& e) {
+                results[i].error = e.what();
+            }
+        }
+        return results;
+    }
+
     /**
     * Writes AIK cert to TPM
     *

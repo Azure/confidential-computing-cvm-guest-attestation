@@ -92,9 +92,10 @@ inline static void Check_HResult(std::string fileName, std::string funcName, int
 /// Options for batched secure unwrap (one attestation, N secureunwrapkey calls).
 struct SecureUnwrapBatchOptions
 {
-    unsigned concurrency = 8;      // max parallel secureunwrapkey calls; 1 = sequential, 0 = one per key
+    unsigned concurrency = 2;      // max parallel secureunwrapkey calls; 1 = sequential, 0 = one per key.
+                                   // HTTP (~4 ms) is far faster than a TPM decrypt (~24 ms), so 2 keeps the TPM busy.
     bool reuse_connections = true; // keep HTTP/TLS connections alive per worker
-    bool reuse_tpm_key = true;     // Linux: create the TPM ephemeral key once per batch
+    bool reuse_tpm_key = true;     // reuse the attested TPM key + DecryptBatch() (library >= DecryptBatch)
     unsigned max_retries = 3;      // retries on 429/5xx with exponential backoff
     size_t replicate_to = 0;       // replicate input keys cyclically to this count (0 = as-is)
 };
