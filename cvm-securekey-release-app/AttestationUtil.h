@@ -98,6 +98,7 @@ struct SecureUnwrapBatchOptions
     bool reuse_tpm_key = true;     // reuse the attested TPM key + DecryptBatch() (library >= DecryptBatch)
     unsigned max_retries = 3;      // retries on 429/5xx with exponential backoff
     size_t replicate_to = 0;       // replicate input keys cyclically to this count (0 = as-is)
+    bool plain_unwrap = false;     // use plain unwrapkey (no attestation, plaintext key in TLS) for comparison
 };
 
 #define TRACE_OUT Util::trace_out

@@ -22,6 +22,8 @@
 #   OUT           output batch JSON path (default ./secure-unwrap-batch.json)
 #   API_VERSION   key create/wrap API version (default 2026-07-01-preview)
 #   SKIP_CREATE   1 to reuse an existing key
+#   PLAIN_UNWRAP  1 to create a key for plain unwrapkey instead (wrapKey + unwrapKey,
+#                 non-exportable, no release policy; works on AKV Premium and MHSM)
 #   TOKEN         pre-fetched data-plane access token (default: from `az`)
 set -euo pipefail
 
@@ -32,6 +34,7 @@ COUNT="${COUNT:-32}"
 OUT="${OUT:-./secure-unwrap-batch.json}"
 API_VERSION="${API_VERSION:-2026-07-01-preview}"
 SKIP_CREATE="${SKIP_CREATE:-0}"
+PLAIN_UNWRAP="${PLAIN_UNWRAP:-0}"
 
 if [[ "$KEY_TYPE" == "oct-HSM" ]]; then
     KEY_SIZE="${KEY_SIZE:-256}"
@@ -63,7 +66,17 @@ kv_post() { # path body
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$2"
 }
 
-if [[ "$SKIP_CREATE" != "1" ]]; then
+if [[ "$SKIP_CREATE" != "1" && "$PLAIN_UNWRAP" == "1" ]]; then
+    if [[ "$KEY_TYPE" == "oct-HSM" ]]; then
+        SIZE_FIELD="$(jq -cn --argjson s "$KEY_SIZE" '{key_size: $s}')"
+    else
+        SIZE_FIELD="$(jq -cn --argjson s "$KEY_SIZE" '{key_size: $s, public_exponent: 65537}')"
+    fi
+    CREATE_BODY="$(jq -cn --arg kty "$KEY_TYPE" --argjson size "$SIZE_FIELD" '
+        {kty: $kty, key_ops: ["wrapKey", "unwrapKey"], attributes: {enabled: true, exportable: false}} + $size')"
+    echo "Creating plain-unwrap $KEY_TYPE/$KEY_SIZE key '$KEY_NAME' in $VAULT_URL" >&2
+    kv_post "/keys/$KEY_NAME/create?api-version=7.4" "$CREATE_BODY" > /dev/null
+elif [[ "$SKIP_CREATE" != "1" ]]; then
     : "${MAA_AUTHORITY:?Set MAA_AUTHORITY, e.g. https://sharedeus2.eus2.attest.azure.net}"
     POLICY="$(jq -cn --arg auth "$MAA_AUTHORITY" '{
         version: "1.0.0",

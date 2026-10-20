@@ -15,6 +15,8 @@
 #   MAA_URL, IMDS_MSI_RES_ID
 #   SKR_KEK, SKR_BATCH            exportable RSA KEK + `-B` batch ({"keys":[{"id","wrapped":base64}]})
 #   SECURE_KEK, SECURE_BATCH      secure-unwrap key + batch from setup-secure-unwrap-key.sh
+# For MODES containing plain-unwrap (no attestation, comparison only):
+#   PLAIN_KEK, PLAIN_BATCH, PLAIN_ALG (default RSA-OAEP-256) from setup-secure-unwrap-key.sh PLAIN_UNWRAP=1
 # Optional env:
 #   LABEL         backend label for the CSV (default: host of SECURE_KEK)
 #   SECURE_ALG    default RSA-OAEP-256
@@ -56,13 +58,19 @@ for n in $DISKS; do
     # Replicate secure keys cyclically if the batch has fewer than n keys.
     jq --argjson n "$n" '.keys as $k | {keys: [range(0; $n) as $i | $k[$i % ($k | length)] | .id += "#\($i)"]}' \
         "$SECURE_BATCH" > "$TMP/secure.json"
-    jq -r '.keys[] | "\(.id) \(.sha256 // "")"' "$TMP/secure.json" | sort > "$TMP/expected.txt"
+    jq -r '.keys[] | "\(.id) \(.sha256 // "")"' "$TMP/secure.json" | sort > "$TMP/expected-secure.txt"
+    if [[ -n "${PLAIN_BATCH:-}" ]]; then
+        jq --argjson n "$n" '.keys as $k | {keys: [range(0; $n) as $i | $k[$i % ($k | length)] | .id += "#\($i)"]}' \
+            "$PLAIN_BATCH" > "$TMP/plain.json"
+        jq -r '.keys[] | "\(.id) \(.sha256 // "")"' "$TMP/plain.json" | sort > "$TMP/expected-plain.txt"
+    fi
 
     for mode in $MODES; do
         case "$mode" in
             cde-skr)      cmd=("$SKR_BIN_BEFORE" -B - -a "$MAA_URL" -k "$SKR_KEK" -H "$SKR_HASH"); input="$TMP/skr.json"; conc=1 ;;
             secure-lib)   cmd=("$SKR_BIN" -S - -a "$MAA_URL" -k "$SECURE_KEK" -A "$SECURE_ALG" -j "$CONCURRENCY" -K); input="$TMP/secure.json"; conc=$CONCURRENCY ;;
             secure-reuse) cmd=("$SKR_BIN" -S - -a "$MAA_URL" -k "$SECURE_KEK" -A "$SECURE_ALG" -j "$CONCURRENCY"); input="$TMP/secure.json"; conc=$CONCURRENCY ;;
+            plain-unwrap) cmd=("$SKR_BIN" -S - -a "$MAA_URL" -k "${PLAIN_KEK:?}" -A "${PLAIN_ALG:-RSA-OAEP-256}" -j "$CONCURRENCY" -Y); input="$TMP/plain.json"; conc=$CONCURRENCY ;;
             *) echo "unknown mode $mode" >&2; exit 1 ;;
         esac
         : > "$TMP/samples"
@@ -81,7 +89,8 @@ for n in $DISKS; do
                 else
                     jq -r '.results[] | select(has("unwrapped")) | "\(.id) \(.unwrapped)"' "$TMP/out.json" 2> /dev/null |
                         while read -r id val; do echo "$id $(printf '%s' "$val" | b64url_sha256)"; done | sort > "$TMP/got.txt"
-                    cmp -s "$TMP/got.txt" "$TMP/expected.txt" && ok=1
+                    expected="$TMP/expected-secure.txt"; [[ "$mode" == plain-unwrap ]] && expected="$TMP/expected-plain.txt"
+                    cmp -s "$TMP/got.txt" "$expected" && ok=1
                 fi
             fi
             : > "$TMP/out.json"

@@ -2067,21 +2067,26 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
             }
         });
 
-        // 2. Attestation on the critical path.
+        // 2. Attestation on the critical path (skipped for plain unwrapkey,
+        //    which is authorized by the access token alone).
         auto phase_start = SteadyClock::now();
-        AttestationClientSession attestation_session;
-        run.client_init_ms = ElapsedMs(phase_start);
-#ifdef ATTESTATION_CLIENT_HAS_DECRYPT_BATCH
-        attestation_session.get()->SetEphemeralKeyReuse(use_batch_api);
-#endif
-        phase_start = SteadyClock::now();
-        const std::string attestation_token =
-            AttestWithClient(attestation_session.get(), attestation_url, nonce);
-        if (attestation_token.empty())
+        std::unique_ptr<AttestationClientSession> attestation_session;
+        std::string attestation_token;
+        if (!options.plain_unwrap)
         {
-            throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+            attestation_session.reset(new AttestationClientSession());
+            run.client_init_ms = ElapsedMs(phase_start);
+#ifdef ATTESTATION_CLIENT_HAS_DECRYPT_BATCH
+            attestation_session->get()->SetEphemeralKeyReuse(use_batch_api);
+#endif
+            phase_start = SteadyClock::now();
+            attestation_token = AttestWithClient(attestation_session->get(), attestation_url, nonce);
+            if (attestation_token.empty())
+            {
+                throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+            }
+            run.maa_ms = ElapsedMs(phase_start);
         }
-        run.maa_ms = ElapsedMs(phase_start);
 
         for (auto &t : prep_threads)
         {
@@ -2092,14 +2097,16 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
             std::rethrow_exception(prep_error);
         }
 
-        // 3. Fan out secureunwrapkey; a single consumer drains ready ciphertexts.
+        // 3. Fan out (secure)unwrapkey; a single consumer drains ready ciphertexts.
         phase_start = SteadyClock::now();
-        const std::string request_uri = BuildSecureUnwrapRequestUri(key_enc_key_url);
+        const std::string request_uri = options.plain_unwrap
+                                            ? key_enc_key_url + "/unwrapkey?api-version=7.4"
+                                            : BuildSecureUnwrapRequestUri(key_enc_key_url);
         std::atomic<size_t> next_index{0};
         std::mutex queue_mutex;
         std::condition_variable queue_cv;
         std::deque<size_t> ready;
-        size_t http_failed = 0;
+        size_t finished_outside_queue = 0; // HTTP failures and plain unwraps (no TPM step)
 
         auto worker = [&](size_t worker_index)
         {
@@ -2119,7 +2126,9 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                 try
                 {
                     const std::string body =
-                        BuildSecureUnwrapRequestBody(algorithm, key.wrapped, attestation_token);
+                        options.plain_unwrap
+                            ? json({{"alg", algorithm}, {"value", key.wrapped}}).dump()
+                            : BuildSecureUnwrapRequestBody(algorithm, key.wrapped, attestation_token);
                     std::string response;
                     for (;;)
                     {
@@ -2143,6 +2152,30 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                         std::this_thread::sleep_for(backoff);
                         item.backoff_ms += static_cast<double>(backoff.count());
                     }
+                    if (options.plain_unwrap)
+                    {
+                        // unwrapkey returns the key itself (base64url) inside TLS.
+                        const json parsed = json::parse(response);
+                        if (!parsed.contains("value") || !parsed["value"].is_string())
+                        {
+                            throw skr_error(EXIT_SKR_FAIL, "Unwrap response does not contain a string value");
+                        }
+                        item.plaintext = Util::base64url_to_binary(parsed["value"].get<std::string>());
+                        if (!key.expected_sha256.empty() && Sha256Hex(item.plaintext) != key.expected_sha256)
+                        {
+                            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+                            item.plaintext.clear();
+                            throw skr_error(EXIT_CRYPTO_FAIL, "Unwrapped key SHA-256 does not match expected value");
+                        }
+                        item.ok = true;
+                        item.total_ms = ElapsedMs(item.start);
+                        {
+                            std::lock_guard<std::mutex> lock(queue_mutex);
+                            ++finished_outside_queue;
+                        }
+                        queue_cv.notify_one();
+                        continue;
+                    }
                     item.transport = ParseSecureUnwrapResponse(response, algorithm);
                     item.ready_at = SteadyClock::now();
                     {
@@ -2161,7 +2194,7 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                 if (!pushed)
                 {
                     std::lock_guard<std::mutex> lock(queue_mutex);
-                    ++http_failed;
+                    ++finished_outside_queue;
                 }
                 queue_cv.notify_one();
             }
@@ -2191,7 +2224,7 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                 {
                     std::unique_lock<std::mutex> lock(queue_mutex);
                     queue_cv.wait(lock, [&]()
-                                  { return !ready.empty() || consumed + http_failed == keys.size(); });
+                                  { return !ready.empty() || consumed + finished_outside_queue == keys.size(); });
                     if (ready.empty())
                     {
                         break;
@@ -2210,7 +2243,7 @@ SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
                     item->tpm_wait_ms =
                         std::chrono::duration<double, std::milli>(tpm_start - item->ready_at).count();
                 }
-                DecryptReadyItems(attestation_session.get(), use_batch_api, chunk);
+                DecryptReadyItems(attestation_session->get(), use_batch_api, chunk);
                 const double chunk_ms = ElapsedMs(tpm_start);
                 ++run.tpm_batches;
 
@@ -2521,7 +2554,8 @@ std::string Util::SecureUnwrapPerf(
         {"warmup", warmup},
         {"algorithm", algorithm},
         {"key_host", HostFromUrl(key_enc_key_url)},
-        {"api_version", Constants::SECURE_UNWRAP_API_VERSION},
+        {"operation", options.plain_unwrap ? "unwrapkey" : "secureunwrapkey"},
+        {"api_version", options.plain_unwrap ? std::string("7.4") : Constants::SECURE_UNWRAP_API_VERSION},
 #ifdef _WIN32
         {"platform", "windows"},
 #else

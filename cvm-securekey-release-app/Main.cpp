@@ -147,6 +147,7 @@ void usage(char *programName)
     printf("\t\t-X      Disable HTTP connection reuse (new TLS connection per call)\n");
     printf("\t\t-K      Disable attestation-library DecryptBatch()/key reuse (per-key Decrypt())\n");
     printf("\t\t-R <n>  Max retries on 429/5xx (default: 3)\n");
+    printf("\t\t-Y      Use plain unwrapkey instead (no attestation; key returned in plaintext over TLS) - comparison only\n");
     printf("\n");
     printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -L [-A algorithm]\n", programName);
@@ -266,7 +267,7 @@ int main(int argc, char *argv[])
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:S:P:j:N:i:W:XKR:")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:S:P:j:N:i:W:XKYR:")) != -1)
     {
         switch (opt)
         {
@@ -373,6 +374,9 @@ int main(int argc, char *argv[])
             break;
         case 'K':
             secure_batch_options.reuse_tpm_key = false;
+            break;
+        case 'Y':
+            secure_batch_options.plain_unwrap = true;
             break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
