@@ -187,6 +187,25 @@ public:
     virtual TSS2_RC Esys_FlushContext(
         ESYS_CONTEXT* esysContext,
         ESYS_TR flushHandle) = 0;
+
+    // Session/policy/decrypt functions are proxied with only the parameters
+    // the tests need (the full signatures exceed the GMock argument limit).
+    virtual TSS2_RC Esys_StartAuthSession(ESYS_CONTEXT* esysContext,
+                                          TPM2_SE sessionType,
+                                          ESYS_TR* sessionHandle) = 0;
+
+    virtual TSS2_RC Esys_PolicyPCR(ESYS_CONTEXT* esysContext,
+                                   ESYS_TR policySession) = 0;
+
+    virtual TSS2_RC Esys_PolicyGetDigest(ESYS_CONTEXT* esysContext,
+                                         ESYS_TR policySession,
+                                         TPM2B_DIGEST** policyDigest) = 0;
+
+    virtual TSS2_RC Esys_RSA_Decrypt(ESYS_CONTEXT* esysContext,
+                                     ESYS_TR keyHandle,
+                                     ESYS_TR session,
+                                     const TPM2B_PUBLIC_KEY_RSA* cipherText,
+                                     TPM2B_PUBLIC_KEY_RSA** message) = 0;
 };
 
 /**
@@ -330,5 +349,22 @@ public:
 
     MOCK_METHOD2(Esys_FlushContext, TSS2_RC(ESYS_CONTEXT* esysContext,
                                             ESYS_TR flushHandle));
+
+    MOCK_METHOD3(Esys_StartAuthSession, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                                TPM2_SE sessionType,
+                                                ESYS_TR* sessionHandle));
+
+    MOCK_METHOD2(Esys_PolicyPCR, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                         ESYS_TR policySession));
+
+    MOCK_METHOD3(Esys_PolicyGetDigest, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                               ESYS_TR policySession,
+                                               TPM2B_DIGEST** policyDigest));
+
+    MOCK_METHOD5(Esys_RSA_Decrypt, TSS2_RC(ESYS_CONTEXT* esysContext,
+                                           ESYS_TR keyHandle,
+                                           ESYS_TR session,
+                                           const TPM2B_PUBLIC_KEY_RSA* cipherText,
+                                           TPM2B_PUBLIC_KEY_RSA** message));
 };
 

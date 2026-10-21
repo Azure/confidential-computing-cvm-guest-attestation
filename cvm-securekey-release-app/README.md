@@ -305,20 +305,33 @@ sudo ./AzureAttestSKR -a <url> -k <kek> -c imds -s <wrapped> -u 2>/dev/null | my
   sudo ./AzureAttestSKR -a "https://sharedweu.weu.attest.azure.net" -k "https://mykv.vault.azure.net/keys/mykey/version_GUID" -c "sp" -s "<copy_base64_from_previous_run>" -u
   ```
 
-### Managed HSM Secure Key Unwrap
+### Secure Key Unwrap (Key Vault / Managed HSM)
 
-The `-U` operation uses the Managed HSM `secureunwrapkey` API to unwrap a
-key with a non-exportable HSM key and release the result only to the attested
-VM represented by the MAA token. The returned transport ciphertext is
-decrypted by the VM's TPM-bound ephemeral private key.
+The `-U` operation uses the `secureunwrapkey` API to unwrap a key with a
+non-exportable HSM key and release the result only to the attested VM
+represented by the MAA token. The returned transport ciphertext is decrypted
+by the VM's TPM-bound ephemeral private key.
 
-The Managed HSM key must:
+Supported key/algorithm combinations:
+
+| Backend | Key type | `-A` algorithm |
+|---|---|---|
+| Managed HSM | `oct-HSM` (AES-256) | `A256KWPAD` (default) |
+| Managed HSM | `RSA-HSM` | `RSA-OAEP-256` |
+
+> Azure Key Vault (Standard/Premium) does not support `secureunwrapkey`: it
+> rejects the `secureUnwrapKey` key operation, rejects release policies on
+> non-exportable keys, and returns `Method POST does not allow operation
+> 'secureunwrapkey'`. Managed HSM keys must have `secureUnwrapKey` *without*
+> `unwrapKey` in `key_ops`.
+
+The key must:
 
 - be non-exportable;
 - have the `secureUnwrapKey` operation;
 - have a release policy that accepts the target VM's MAA claims.
 
-The caller must have Managed HSM data-plane permission to unwrap with the key.
+The caller must have data-plane permission to unwrap with the key.
 The input to `-s` is the base64url value returned by a prior wrap operation.
 
 ```sh
@@ -338,9 +351,77 @@ stdout without adding a newline, so it can be piped directly to a consumer:
 sudo ./AzureAttestSKR ... -U -A A256KWPAD 2>/dev/null | my-consumer
 ```
 
-Secure unwrap requires Managed HSM API version `2026-07-01-preview`. It is a
+Secure unwrap requires API version `2026-07-01-preview`. It is a
 separate flow from `-u`: the existing `-u` operation first releases an
 exportable RSA key and then performs RSA-OAEP decryption locally.
+
+#### Batch Secure Unwrap (`-S`)
+
+Key Vault / Managed HSM `secureunwrapkey` accepts one wrapped value per call.
+`-S` takes the whole batch (e.g. every disk of a CVM) in one invocation:
+
+1. The access token is fetched, and the first worker's TLS connection warmed,
+   **in parallel with** MAA attestation.
+2. **One** MAA attestation, through the same attestation client that later
+   decrypts. With `SetEphemeralKeyReuse(true)` the library keeps the TPM
+   ephemeral key it certified for MAA loaded instead of flushing it.
+3. Per-key `secureunwrapkey` calls fan out across a bounded worker pool
+   (keep-alive connections). As transport ciphertexts arrive, one TPM consumer
+   drains them into `AttestationClient::DecryptBatch()` calls, which reuse the
+   retained key and one PCR policy session (2 TPM commands per key).
+
+The library's per-call `Decrypt()` re-creates the ephemeral key
+(`TPM2_CreatePrimary`, ~180 ms on a vTPM) and a policy session every time
+(~205 ms per key). With the batch API a key costs ~24 ms of TPM time.
+`DecryptBatch()` requires an attestation library built from this repo's
+`client-library` (see `Dockerfile.attestlib-src`); with an older library, or
+with `-K`, the app falls back to per-key `Decrypt()`.
+
+```sh
+sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
+  -S batch.json
+```
+
+Input: `{"keys":[{"id":"disk00","wrapped":"<base64url>","sha256":"<optional hex>"}, ...]}`.
+If `sha256` is present, the unwrapped bytes are verified against it.
+Output: `{"results":[{"id":"disk00","unwrapped":"<base64url>"} | {"id":"...","error":"..."}]}`.
+
+| Flag | Meaning |
+|---|---|
+| `-j <n>` | Max parallel `secureunwrapkey` calls (default 2; `1` = sequential; `0` = one per key; capped at 64) |
+| `-N <n>` | Replicate input keys cyclically to `n` keys (simulate `n` disks) |
+| `-X` | Disable connection reuse (new TLS connection per call) |
+| `-K` | Disable library `DecryptBatch()`/key reuse (per-key `Decrypt()`) |
+| `-R <n>` | Max retries on 429/5xx with exponential backoff (default 3) |
+
+#### Secure Unwrap Performance Test (`-P`)
+
+`-P` runs the same batch flow repeatedly and prints latency statistics as JSON.
+It never prints key material. It accepts the `-S` flags plus `-i <iterations>`
+(default 10) and `-W <warmup>` (default 1).
+
+```sh
+sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
+  -P batch.json -N 32 -i 20 -W 2 > perf.json
+```
+
+The `summary` section reports min/p50/p90/p95/p99/max/mean for each phase:
+`total_ms`, `maa_ms`, `access_token_ms`, `client_init_ms`, `unwrap_phase_ms`, and
+per-key `http_ms`, `tpm_ms`, `tpm_wait_ms`. It also reports HTTP status counts,
+retries, and failures. Per-iteration and per-key detail is in `iterations`.
+
+Helper scripts in [`perf/`](perf/):
+
+- `setup-secure-unwrap-key.sh` creates a non-exportable Managed HSM key
+  (`RSA-HSM` or `oct-HSM`) with a CVM release policy, wraps
+  N random test DEKs, and writes the batch JSON (DEK SHA-256 only, never the DEKs).
+- `run-secure-unwrap-perf.sh` sweeps disk counts × concurrency × connection
+  reuse on the CVM and writes `summary.csv`. It can optionally time the
+  existing `-B` flow (one SKR release + local unwrap) as a baseline.
+- `run-extension-compare.sh` times `AzureAttestSKR` exactly as the CDE
+  extension invokes it (one process per batch, JSON on stdin,
+  `IMDS_MSI_RES_ID`) for today's SKR flow (`-B -`) vs secure unwrap
+  (`-S -`, with and without TPM key reuse), verifying every key.
 
 ### Managed HSM AES Release and Local Unwrap
 

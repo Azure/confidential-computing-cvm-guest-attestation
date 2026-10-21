@@ -290,6 +290,22 @@ AttestationResult AttestationClientImpl::Decrypt(const attest::EncryptionType en
         result.description_ = std::string("Invalid input parameter");
         return result;
     }
+    if (reuse_ephemeral_key_) {
+        // Reuse the retained ephemeral key and policy session.
+        const unsigned char* in[1] = {encrypted_data};
+        uint32_t in_size[1] = {encrypted_data_size};
+        unsigned char* out[1] = {nullptr};
+        uint32_t out_size[1] = {0};
+        AttestationResult item[1];
+        AttestationResult batch = DecryptBatch(encryption_type, 1, in, in_size, out, out_size, item,
+                                               rsaWrapAlgId, rsaHashAlgId);
+        if (batch.code_ != AttestationResult::ErrorCode::SUCCESS) {
+            return item[0].code_ != AttestationResult::ErrorCode::SUCCESS ? item[0] : batch;
+        }
+        *decrypted_data = out[0];
+        *decrypted_data_size = out_size[0];
+        return batch;
+    }
     try {
         Tpm tpm;
         PcrList list = GetAttestationPcrList();
@@ -342,6 +358,149 @@ void AttestationClientImpl::Free(void* ptr) noexcept {
     }
 
     free(ptr);
+}
+
+Tpm& AttestationClientImpl::acquireTpm(std::unique_ptr<Tpm>& local) {
+    if (!reuse_ephemeral_key_) {
+        local.reset(new Tpm());
+        return *local;
+    }
+    if (!session_tpm_) {
+        session_tpm_.reset(new Tpm());
+        session_tpm_->SetRetainEphemeralKey(true);
+    }
+    return *session_tpm_;
+}
+
+void AttestationClientImpl::SetEphemeralKeyReuse(bool enable) noexcept {
+    reuse_ephemeral_key_ = enable;
+    if (!enable) {
+        // Destroying the long-lived TPM instance flushes the retained key and session.
+        session_tpm_.reset();
+        have_session_pcrs_ = false;
+        session_pcrs_ = PcrSet();
+    }
+}
+
+AttestationResult AttestationClientImpl::DecryptBatch(const attest::EncryptionType encryption_type,
+                                                      uint32_t count,
+                                                      const unsigned char* const* encrypted_data,
+                                                      const uint32_t* encrypted_data_sizes,
+                                                      unsigned char** decrypted_data,
+                                                      uint32_t* decrypted_data_sizes,
+                                                      attest::AttestationResult* item_results,
+                                                      const attest::RsaScheme rsaWrapAlgId,
+                                                      const attest::RsaHashAlg rsaHashAlgId) noexcept {
+    AttestationResult result(AttestationResult::ErrorCode::SUCCESS);
+    if (encryption_type != attest::EncryptionType::NONE ||
+        (count > 0 && (encrypted_data == nullptr ||
+                       encrypted_data_sizes == nullptr ||
+                       decrypted_data == nullptr ||
+                       decrypted_data_sizes == nullptr ||
+                       item_results == nullptr))) {
+        CLIENT_LOG_ERROR("Invalid input parameter");
+        result.code_ = AttestationResult::ErrorCode::ERROR_INVALID_INPUT_PARAMETER;
+        result.description_ = std::string("Invalid input parameter");
+        return result;
+    }
+    if (count == 0) {
+        return result;
+    }
+
+    std::vector<Buffer> blobs(count);
+    for (uint32_t i = 0; i < count; i++) {
+        decrypted_data[i] = nullptr;
+        decrypted_data_sizes[i] = 0;
+        item_results[i] = AttestationResult(AttestationResult::ErrorCode::SUCCESS);
+        if (encrypted_data[i] == nullptr || encrypted_data_sizes[i] == 0) {
+            CLIENT_LOG_ERROR("Invalid input parameter");
+            result.code_ = AttestationResult::ErrorCode::ERROR_INVALID_INPUT_PARAMETER;
+            result.description_ = std::string("Invalid input parameter");
+            return result;
+        }
+        blobs[i].assign(encrypted_data[i], encrypted_data[i] + encrypted_data_sizes[i]);
+    }
+
+    // Set once per-item results have been written; until then a failure applies to every item.
+    bool items_populated = false;
+    try {
+        std::unique_ptr<Tpm> local_tpm;
+        Tpm& tpm = acquireTpm(local_tpm);
+
+        // With key reuse, the retained key is bound to the PCR values captured at
+        // Attest(); reuse them to skip a PCR read. If the PCRs have changed since,
+        // PolicyPCR fails and the affected items report a TPM error.
+        PcrSet pcrValues = (reuse_ephemeral_key_ && have_session_pcrs_)
+                               ? session_pcrs_
+                               : tpm.GetPCRValues(GetAttestationPcrList(), attestation_hash_alg);
+
+        std::vector<DecryptBatchItemResult> items =
+            tpm.DecryptBatchWithEphemeralKey(pcrValues, blobs, rsaWrapAlgId, rsaHashAlgId);
+
+        uint32_t failed = 0;
+        items_populated = true;
+        for (uint32_t i = 0; i < count; i++) {
+            DecryptBatchItemResult& item = items[i];
+            if (!item.ok) {
+                failed++;
+                item_results[i].code_ = AttestationResult::ErrorCode::ERROR_DATA_DECRYPTION_TPM_ERROR;
+                item_results[i].tpm_error_code_ = item.tpmRc;
+                item_results[i].description_ = item.error;
+                continue;
+            }
+            unsigned char* out = (unsigned char*)malloc(item.plaintext.size() > 0 ? item.plaintext.size() : 1);
+            if (out == nullptr) {
+                failed++;
+                item_results[i].code_ = AttestationResult::ErrorCode::ERROR_TPM_INTERNAL_FAILURE;
+                item_results[i].description_ = std::string("Memory allocation failed");
+            }
+            else {
+                std::memcpy(out, item.plaintext.data(), item.plaintext.size());
+                decrypted_data[i] = out;
+                decrypted_data_sizes[i] = static_cast<uint32_t>(item.plaintext.size());
+            }
+            std::fill(item.plaintext.begin(), item.plaintext.end(), 0);
+        }
+
+        if (failed > 0) {
+            result.code_ = AttestationResult::ErrorCode::ERROR_DATA_DECRYPTION_TPM_ERROR;
+            result.description_ = std::to_string(failed) + std::string(" of ") +
+                                  std::to_string(count) + std::string(" items failed to decrypt");
+            CLIENT_LOG_ERROR("DecryptBatch: %s", result.description_.c_str());
+        }
+    }
+    catch (const Tss2Exception& e) {
+        result.code_ = AttestationResult::ErrorCode::ERROR_DATA_DECRYPTION_TPM_ERROR;
+        result.tpm_error_code_ = e.get_rc();
+        result.description_ = std::string(e.what());
+        CLIENT_LOG_ERROR("Failed Tpm operation:%d Error:%s",
+            result.tpm_error_code_,
+            result.description_.c_str());
+    }
+    catch (const std::exception& e) {
+        result.code_ = AttestationResult::ErrorCode::ERROR_TPM_INTERNAL_FAILURE;
+        result.description_ = std::string(e.what());
+        CLIENT_LOG_ERROR("Tpm internal error:%s", result.description_.c_str());
+    }
+    catch (...) {
+        result.code_ = AttestationResult::ErrorCode::ERROR_TPM_INTERNAL_FAILURE;
+        result.description_ = std::string("Error: Unknown internal error");
+        CLIENT_LOG_ERROR("Tpm internal error:%s", result.description_.c_str());
+    }
+
+    // On a batch-level failure no item output is returned and every item carries the error.
+    if (result.code_ != AttestationResult::ErrorCode::SUCCESS && !items_populated) {
+        for (uint32_t i = 0; i < count; i++) {
+            if (decrypted_data[i] != nullptr) {
+                std::memset(decrypted_data[i], 0, decrypted_data_sizes[i]);
+                free(decrypted_data[i]);
+                decrypted_data[i] = nullptr;
+                decrypted_data_sizes[i] = 0;
+            }
+            item_results[i] = result;
+        }
+    }
+    return result;
 }
 
 AttestationResult AttestationClientImpl::DecryptMaaToken(const std::string& jwt_token_encrypted,
@@ -581,7 +740,8 @@ AttestationResult AttestationClientImpl::GetTpmInfo(TpmInfo& tpm_info) {
 
     try {
 
-        Tpm tpm;
+        std::unique_ptr<Tpm> local_tpm;
+        Tpm& tpm = acquireTpm(local_tpm);
         Buffer aik_cert = tpm.GetAIKCert();
 
         Buffer aik_pub = tpm.GetAIKPub();
@@ -598,6 +758,10 @@ AttestationResult AttestationClientImpl::GetTpmInfo(TpmInfo& tpm_info) {
         PcrSet pcr_values = tpm.GetPCRValues(pcrs, attestation_hash_alg);
 
         EphemeralKey enc_key = tpm.GetEphemeralKey(pcr_values);
+        if (reuse_ephemeral_key_) {
+            session_pcrs_ = pcr_values;
+            have_session_pcrs_ = true;
+        }
 
         tpm_info.aik_cert_ = aik_cert;
         tpm_info.aik_pub_ = aik_pub;
