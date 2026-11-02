@@ -43,14 +43,21 @@ sudo pip3 install mock
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
 
-sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
+if [ -x /usr/local/attestationssl/bin/openssl ] && \
+    [[ "$(/usr/local/attestationssl/bin/openssl version)" == "OpenSSL 3.3.2 "* ]]; then
+    echo "OpenSSL 3.3.2 is already installed in /usr/local/attestationssl; skipping installation."
+else
+    if [ ! -f openssl-3.3.2.tar.gz ]; then
+        sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz || exit 1
+    fi
     echo 2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281 openssl-3.3.2.tar.gz | sha256sum -c - && \
     sudo tar -C /tmp -xzf openssl-3.3.2.tar.gz && \
     sudo rm -rf openssl-3.3.2.tar.gz && \
     cd /tmp/openssl-3.3.2 && \
     sudo LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./config --prefix=/usr/local/attestationssl --openssldir=/usr/local/attestationssl && \
     sudo make -j$(nproc) && \
-    sudo make install_sw
+    sudo make install_sw || exit 1
+fi
 
 cd ${CURRENT_DIR}
 

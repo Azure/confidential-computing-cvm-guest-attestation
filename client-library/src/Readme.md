@@ -19,6 +19,7 @@ cd confidential-computing-cvm-guest-attestation
 sudo ./client-library/src/Attestation/pre-requisites.sh
 ```
 The prerequisite script reuses `curl-8.5.0.tar.gz` if it is already in `client-library/src/Attestation`, and skips the curl build if libcurl 8.5.0 is already installed in `/usr/local/attestationcurl`. A system curl installation alone does not replace this custom build.
+Likewise, it reuses `openssl-3.3.2.tar.gz` from the same directory (with checksum verification) and skips the OpenSSL build if OpenSSL 3.3.2 is already installed in `/usr/local/attestationssl`. A system OpenSSL installation alone does not replace this custom build.
 
 4. Build the library.
 ```
