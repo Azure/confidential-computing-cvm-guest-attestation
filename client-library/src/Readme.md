@@ -18,6 +18,8 @@ cd confidential-computing-cvm-guest-attestation
 ```
 sudo ./client-library/src/Attestation/pre-requisites.sh
 ```
+The prerequisite script reuses `curl-8.5.0.tar.gz` if it is already in `client-library/src/Attestation`, and skips the curl build if libcurl 8.5.0 is already installed in `/usr/local/attestationcurl`. A system curl installation alone does not replace this custom build.
+
 4. Build the library.
 ```
 sudo ./client-library/src/Attestation/build.sh
@@ -32,6 +34,7 @@ sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh
 # Optional: use the insiders-fast evidence SDK instead
 sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh -i
 ```
+If `edge-cc-base-attestation-sdk` is already installed, its feed setup and installation are skipped. The installed version is kept even when `-i` is specified.
 
 2. Build the Library specifiying its for Azure local.
 ```

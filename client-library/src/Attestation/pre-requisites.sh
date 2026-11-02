@@ -54,14 +54,21 @@ sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
 
 cd ${CURRENT_DIR}
 
-sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
+if [ -x /usr/local/attestationcurl/bin/curl-config ] && \
+    [ "$(/usr/local/attestationcurl/bin/curl-config --version)" = "libcurl 8.5.0" ]; then
+    echo "curl 8.5.0 is already installed in /usr/local/attestationcurl; skipping installation."
+else
+    if [ ! -f curl-8.5.0.tar.gz ]; then
+        sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate || exit 1
+    fi
     sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
     sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
     env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./configure \
     --without-zstd --with-openssl \
     --prefix=/usr/local/attestationcurl && \
     sudo make -j$(nproc) && \
-    sudo make install
+    sudo make install || exit 1
+fi
 
 cd ${CURRENT_DIR}
 
