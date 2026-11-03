@@ -8,16 +8,19 @@ set -e
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 USE_INSIDERS_FAST=false
+FORCE_INSTALL=false
 
 usage() {
-    echo "Usage: $0 [-h] [-i]"
+    echo "Usage: $0 [-h] [-i] [-f]"
     echo "  -i  Install the evidence SDK from insiders-fast instead of production PMC."
+    echo "  -f  Refresh and reinstall the evidence SDK even if already installed."
 }
 
-while getopts ":hi" opt; do
+while getopts ":hif" opt; do
     case "$opt" in
         h) usage; exit 0 ;;
         i) USE_INSIDERS_FAST=true ;;
+        f) FORCE_INSTALL=true ;;
         *) usage >&2; exit 1 ;;
     esac
 done
@@ -36,7 +39,8 @@ echo "=== Running standard pre-requisites ==="
 echo "=== Installing libtss2-dev ==="
 sudo apt-get install -y libtss2-dev
 
-if [ "$(dpkg-query -W -f='${Status}' edge-cc-base-attestation-sdk 2>/dev/null)" = "install ok installed" ]; then
+if [ "$FORCE_INSTALL" = false ] && \
+    [ "$(dpkg-query -W -f='${Status}' edge-cc-base-attestation-sdk 2>/dev/null)" = "install ok installed" ]; then
     echo "=== edge-cc-base-attestation-sdk is already installed; skipping SDK installation ==="
 else
     # Configure the selected PMC feed if it is not already present.
@@ -55,7 +59,11 @@ else
         SDK_SUITE=insiders-fast
     fi
     echo "=== Installing edge-cc-base-attestation-sdk from ${SDK_SUITE} ==="
-    sudo apt-get install -y --allow-downgrades "edge-cc-base-attestation-sdk/${SDK_SUITE}"
+    SDK_INSTALL_ARGS=(-y --allow-downgrades)
+    if [ "$FORCE_INSTALL" = true ]; then
+        SDK_INSTALL_ARGS+=(--reinstall)
+    fi
+    sudo apt-get install "${SDK_INSTALL_ARGS[@]}" "edge-cc-base-attestation-sdk/${SDK_SUITE}"
 fi
 
 echo "=== Azure Local pre-requisites complete ==="

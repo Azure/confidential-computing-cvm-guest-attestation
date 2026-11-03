@@ -43,6 +43,7 @@ sudo pip3 install mock
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
 
+# Reuse the pinned custom OpenSSL build; replace missing or different versions.
 if [ -x /usr/local/attestationssl/bin/openssl ] && \
     [[ "$(/usr/local/attestationssl/bin/openssl version)" == "OpenSSL 3.3.2 "* ]]; then
     echo "OpenSSL 3.3.2 is already installed in /usr/local/attestationssl; skipping installation."
@@ -59,6 +60,7 @@ fi
 
 cd ${CURRENT_DIR}
 
+# Reuse the pinned custom CURL build; replace missing or different versions.
 if [ -x /usr/local/attestationcurl/bin/curl-config ] && \
     [ "$(/usr/local/attestationcurl/bin/curl-config --version)" = "libcurl 8.5.0" ]; then
     echo "curl 8.5.0 is already installed in /usr/local/attestationcurl; skipping installation."

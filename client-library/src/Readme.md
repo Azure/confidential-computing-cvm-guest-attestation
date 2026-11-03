@@ -18,8 +18,7 @@ cd confidential-computing-cvm-guest-attestation
 ```
 sudo ./client-library/src/Attestation/pre-requisites.sh
 ```
-The prerequisite script reuses `curl-8.5.0.tar.gz` if it is already in `client-library/src/Attestation`, and skips the curl build if libcurl 8.5.0 is already installed in `/usr/local/attestationcurl`. A system curl installation alone does not replace this custom build.
-Likewise, it reuses `openssl-3.3.2.tar.gz` from the same directory (with checksum verification) and skips the OpenSSL build if OpenSSL 3.3.2 is already installed in `/usr/local/attestationssl`. A system OpenSSL installation alone does not replace this custom build.
+The prerequisite script skips the curl build if libcurl 8.5.0 is already installed in `/usr/local/attestationcurl`, and skips the OpenSSL build if OpenSSL 3.3.2 is already installed in `/usr/local/attestationssl`. System installations alone do not replace these custom builds. When a build is needed, its source archive is downloaded; the OpenSSL archive is checksum-verified.
 
 4. Build the library.
 ```
@@ -35,7 +34,14 @@ sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh
 # Optional: use the insiders-fast evidence SDK instead
 sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh -i
 ```
-If `edge-cc-base-attestation-sdk` is already installed, its feed setup and installation are skipped. The installed version is kept even when `-i` is specified.
+If `edge-cc-base-attestation-sdk` is already installed, its feed setup and installation are skipped unless you use `-f` to force SDK installation.
+When you use both `-i` and `-f`, the SDK is installed from the insiders-fast feed rather than the production PMC feed, even if the SDK is already installed.
+
+```
+sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh -f
+# Force installation from insiders-fast instead of production PMC
+sudo ./client-library/src/Attestation/pre-requisites-azure-local.sh -i -f
+```
 
 2. Build the Library specifiying its for Azure local.
 ```
