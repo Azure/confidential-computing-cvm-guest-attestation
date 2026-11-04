@@ -45,9 +45,7 @@ void Uninitialize() {
         return;
     }
 
-    // Created with `new AttestationClientImpl`; delete through the concrete
-    // type so its destructor runs (flushing any retained TPM objects).
-    delete static_cast<AttestationClientImpl*>(attestation_client);
+    free(attestation_client);
     attestation_client = nullptr;
     return;
 }

@@ -373,9 +373,11 @@ Key Vault / Managed HSM `secureunwrapkey` accepts one wrapped value per call.
 The library's per-call `Decrypt()` re-creates the ephemeral key
 (`TPM2_CreatePrimary`, ~180 ms on a vTPM) and a policy session every time
 (~205 ms per key). With the batch API a key costs ~24 ms of TPM time.
-`DecryptBatch()` requires an attestation library built from this repo's
-`client-library` (see `Dockerfile.attestlib-src`); with an older library, or
-with `-K`, the app falls back to per-key `Decrypt()`.
+`DecryptBatch()` and `SetEphemeralKeyReuse()` are added to the attestation
+library in a separate change. Until a library with them is released (or built
+from source, see `Dockerfile.attestlib-src`), the app detects their absence at
+compile time (`ATTESTATION_CLIENT_HAS_DECRYPT_BATCH`) and uses per-key
+`Decrypt()`; `-K` forces that path.
 
 ```sh
 sudo ./AzureAttestSKR -a <maa-url> -k <key-url> -c imds -A RSA-OAEP-256 \
