@@ -24,12 +24,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cmath>
-#include <condition_variable>
-#include <deque>
-#include <map>
 #include <mutex>
-#include <numeric>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
@@ -431,12 +426,12 @@ std::string Util::GetAADToken(const std::string &KEKUrl)
     throw skr_error(EXIT_AUTH_FAIL, oss.str());
 }
 
-/// Run MAA attestation with an already-initialized attestation client and
-/// return the JWT. Does not Initialize()/Uninitialize() the client.
-static std::string AttestWithClient(AttestationClient *attestation_client,
-                                    const std::string &attestation_url,
-                                    const std::string &nonce)
+/// \copydoc Util::GetMAAToken()
+// TODO: attestation server URL can be constructed from VM region if necessary.
+std::string Util::GetMAAToken(const std::string &attestation_url, const std::string &nonce)
 {
+    TRACE_OUT("Entering Util::GetMAAToken()");
+
     std::string attest_server_url;
     attest_server_url.assign(attestation_url);
     if (attest_server_url.empty())
@@ -451,6 +446,16 @@ static std::string AttestWithClient(AttestationClient *attestation_client,
     {
         // use some random nonce
         nonce_token.assign(Constants::NONCE);
+    }
+
+    AttestationClient *attestation_client = nullptr;
+    AttestationLogger *log_handle = new Logger(Util::get_trace());
+
+    // Initialize attestation client
+    if (!Initialize(log_handle, &attestation_client))
+    {
+        Uninitialize();
+        throw skr_error(EXIT_ATTEST_FAIL, "Failed to create attestation client object");
     }
 
     // parameters for the Attest call
@@ -469,21 +474,23 @@ static std::string AttestWithClient(AttestationClient *attestation_client,
         std::string errDesc = result.description_.empty() ? "(no description)" : result.description_;
         fprintf(stderr, "MAA attestation failed: error code %d, description: %s\n",
                 static_cast<int>(result.code_), errDesc.c_str());
+        Uninitialize();
         throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation failed: " + errDesc);
     }
 
     // Attestation succeeded
     jwt_str = std::string(reinterpret_cast<char *>(jwt));
-    attestation_client->Free(jwt);
     std::vector<std::string> tokens;
     boost::split(tokens, jwt_str, [](char c)
                  { return c == '.'; });
     if (tokens.size() < 3)
     {
+        attestation_client->Free(jwt);
+        Uninitialize();
         throw skr_error(EXIT_ATTEST_FAIL, "MAA returned invalid JWT token (fewer than 3 parts)");
     }
 
-    json attestation_claims = json::parse(Util::base64_decode(tokens[1]));
+    json attestation_claims = json::parse(base64_decode(tokens[1]));
     try
     {
         std::string attestation_type = attestation_claims["x-ms-isolation-tee"]["x-ms-attestation-type"].get<std::string>();
@@ -500,37 +507,10 @@ static std::string AttestWithClient(AttestationClient *attestation_client,
         TRACE_OUT("TEE isolation claims not found in token (non-CVM or different token schema)");
     }
 
-    TRACE_OUT("MAA attestation succeeded, is_cvm=%d, token length=%zu", is_cvm, jwt_str.length());
-    return jwt_str;
-}
-
-/// \copydoc Util::GetMAAToken()
-// TODO: attestation server URL can be constructed from VM region if necessary.
-std::string Util::GetMAAToken(const std::string &attestation_url, const std::string &nonce)
-{
-    TRACE_OUT("Entering Util::GetMAAToken()");
-
-    AttestationClient *attestation_client = nullptr;
-    AttestationLogger *log_handle = new Logger(Util::get_trace());
-
-    // Initialize attestation client
-    if (!Initialize(log_handle, &attestation_client))
-    {
-        Uninitialize();
-        throw skr_error(EXIT_ATTEST_FAIL, "Failed to create attestation client object");
-    }
-
-    std::string jwt_str;
-    try
-    {
-        jwt_str = AttestWithClient(attestation_client, attestation_url, nonce);
-    }
-    catch (...)
-    {
-        Uninitialize();
-        throw;
-    }
+    attestation_client->Free(jwt);
     Uninitialize();
+
+    TRACE_OUT("MAA attestation succeeded, is_cvm=%d, token length=%zu", is_cvm, jwt_str.length());
 
     TRACE_OUT("Exiting Util::GetMAAToken()");
     return jwt_str;
@@ -676,8 +656,7 @@ static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
                                  const std::string &requestUri,
                                  const std::string &access_token,
                                  const std::string &requestBodyStr,
-                                 std::string &responseStr,
-                                 bool http_get = false)
+                                 std::string &responseStr)
 {
     TRACE_OUT("Entering KeyVaultPostWinHttp()");
     responseStr.clear();
@@ -721,7 +700,7 @@ static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
     DWORD dwFlags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
     std::wstring requestPath(szUrlPath, urlComp.dwUrlPathLength);
     requestPath.append(szExtraInfo, urlComp.dwExtraInfoLength);
-    WinHttpHandle hRequest(WinHttpOpenRequest(hConnect.get(), http_get ? L"GET" : L"POST", requestPath.c_str(), NULL,
+    WinHttpHandle hRequest(WinHttpOpenRequest(hConnect.get(), L"POST", requestPath.c_str(), NULL,
                                               WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags));
     if (!hRequest)
     {
@@ -764,11 +743,10 @@ static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
     TRACE_OUT("HTTP headers added, sending request with body length: %d", (int)requestBodyStr.length());
 
     // Send the request
-    const DWORD bodyLength = http_get ? 0 : (DWORD)requestBodyStr.length();
     BOOL bResults = WinHttpSendRequest(hRequest.get(),
                                        WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                       http_get ? WINHTTP_NO_REQUEST_DATA : (LPVOID)requestBodyStr.c_str(),
-                                       bodyLength, bodyLength, 0);
+                                       (LPVOID)requestBodyStr.c_str(), (DWORD)requestBodyStr.length(),
+                                       (DWORD)requestBodyStr.length(), 0);
     if (!bResults)
     {
         std::ostringstream oss;
@@ -884,8 +862,7 @@ static long KeyVaultPostCurl(CURL *curl,
                              const std::string &requestUri,
                              const std::string &access_token,
                              const std::string &requestBodyStr,
-                             std::string &responseStr,
-                             bool http_get = false)
+                             std::string &responseStr)
 {
     TRACE_OUT("Entering KeyVaultPostCurl()");
     responseStr.clear();
@@ -896,11 +873,10 @@ static long KeyVaultPostCurl(CURL *curl,
     {
         TRACE_ERROR_EXIT("curl_easy_setopt() failed for URL")
     }
-    curlRet = http_get ? curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L)
-                       : curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curlRet = curl_easy_setopt(curl, CURLOPT_POST, 1L);
     if (curlRet != CURLE_OK)
     {
-        TRACE_ERROR_EXIT("curl_easy_setopt() failed for HTTP method")
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for POST")
     }
 
     curlRet = curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
@@ -965,18 +941,15 @@ static long KeyVaultPostCurl(CURL *curl,
         TRACE_ERROR_EXIT("curl_easy_setopt() failed")
     }
 
-    if (!http_get)
+    curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBodyStr.c_str());
+    if (curlRet != CURLE_OK)
     {
-        curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBodyStr.c_str());
-        if (curlRet != CURLE_OK)
-        {
-            TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDS")
-        }
-        curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)requestBodyStr.size());
-        if (curlRet != CURLE_OK)
-        {
-            TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDSIZE")
-        }
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDS")
+    }
+    curlRet = curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)requestBodyStr.size());
+    if (curlRet != CURLE_OK)
+    {
+        TRACE_ERROR_EXIT("curl_easy_setopt() failed for CURLOPT_POSTFIELDSIZE")
     }
 
     char errbuf[CURL_ERROR_SIZE] = {0};
@@ -1537,19 +1510,11 @@ static void rsa_decrypt_safe(EVP_PKEY *pkey, const PBYTE msg, size_t msglen,
 
 namespace
 {
-using SteadyClock = std::chrono::steady_clock;
-
-double ElapsedMs(SteadyClock::time_point start)
-{
-    return std::chrono::duration<double, std::milli>(SteadyClock::now() - start).count();
-}
-
 void ValidateSecureUnwrapArgs(const std::string &key_enc_key_url, const std::string &algorithm)
 {
-    if (key_enc_key_url.find(Constants::MHSM_URL_SUFFIX) == std::string::npos &&
-        key_enc_key_url.find(Constants::AKV_URL_SUFFIX) == std::string::npos)
+    if (key_enc_key_url.find(Constants::MHSM_URL_SUFFIX) == std::string::npos)
     {
-        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires an Azure Key Vault or Managed HSM key URL");
+        throw skr_error(EXIT_USAGE, "SecureUnwrapKey requires a Managed HSM key URL");
     }
     if (algorithm.empty())
     {
@@ -1732,8 +1697,7 @@ struct SecureUnwrapInputKey
     std::string expected_sha256; // optional, lowercase hex
 };
 
-std::vector<SecureUnwrapInputKey> ParseSecureUnwrapBatchInput(const std::string &batch_json,
-                                                              size_t replicate_to)
+std::vector<SecureUnwrapInputKey> ParseSecureUnwrapBatchInput(const std::string &batch_json)
 {
     json input;
     try
@@ -1768,20 +1732,6 @@ std::vector<SecureUnwrapInputKey> ParseSecureUnwrapBatchInput(const std::string 
         }
         keys.push_back(std::move(key));
     }
-
-    // Replicate the input cyclically to simulate N disks from fewer wrapped keys.
-    if (replicate_to > 0 && replicate_to != keys.size())
-    {
-        std::vector<SecureUnwrapInputKey> replicated;
-        replicated.reserve(replicate_to);
-        for (size_t i = 0; i < replicate_to; ++i)
-        {
-            SecureUnwrapInputKey key = keys[i % keys.size()];
-            key.id += "#" + std::to_string(i);
-            replicated.push_back(std::move(key));
-        }
-        keys = std::move(replicated);
-    }
     return keys;
 }
 
@@ -1810,57 +1760,27 @@ size_t ResolveWorkerCount(unsigned concurrency, size_t key_count)
     return (std::min)(workers, MaxSecureUnwrapWorkers);
 }
 
-bool UseTpmKeyReuse(const SecureUnwrapBatchOptions &options)
-{
-#ifdef ATTESTATION_CLIENT_HAS_DECRYPT_BATCH
-    return options.reuse_tpm_key;
-#else
-    (void)options;
-    return false; // Attestation library without DecryptBatch(): per-key Decrypt().
-#endif
-}
-
 bool IsRetryableStatus(long status)
 {
     return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
 }
 
-/// Per-worker HTTP client. With reuse enabled the underlying connection
-/// (curl handle / WinHTTP session) is kept alive across requests.
+/// Per-worker HTTP client that keeps its connection (curl handle / WinHTTP
+/// session) alive across requests, so each worker does one TLS handshake.
 class KeyVaultHttpClient
 {
 public:
-    explicit KeyVaultHttpClient(bool reuse_connection) : reuse_(reuse_connection) {}
-
     long Post(const std::string &uri, const std::string &access_token,
               const std::string &body, std::string &response)
     {
-        return Send(uri, access_token, body, response, false);
-    }
-
-    long Get(const std::string &uri, const std::string &access_token, std::string &response)
-    {
-        return Send(uri, access_token, std::string(), response, true);
-    }
-
-private:
-    long Send(const std::string &uri, const std::string &access_token,
-              const std::string &body, std::string &response, bool http_get)
-    {
 #ifdef _WIN32
-        if (!reuse_ || !session_)
+        if (!session_)
         {
             session_ = OpenKeyVaultWinHttpSession();
         }
-        long status = static_cast<long>(
-            KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response, http_get));
-        if (!reuse_)
-        {
-            session_.reset();
-        }
-        return status;
+        return static_cast<long>(KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response));
 #else
-        if (!reuse_ || !curl_)
+        if (!curl_)
         {
             curl_.reset(curl_easy_init());
             if (!curl_)
@@ -1868,16 +1788,11 @@ private:
                 throw skr_error(EXIT_NETWORK_FAIL, "curl_easy_init() failed");
             }
         }
-        long status = KeyVaultPostCurl(curl_.get(), uri, access_token, body, response, http_get);
-        if (!reuse_)
-        {
-            curl_.reset();
-        }
-        return status;
+        return KeyVaultPostCurl(curl_.get(), uri, access_token, body, response);
 #endif
     }
 
-    bool reuse_;
+private:
 #ifdef _WIN32
     WinHttpHandle session_;
 #else
@@ -1906,415 +1821,32 @@ struct SecureUnwrapItemResult
 {
     std::string id;
     std::vector<BYTE> plaintext;
-    std::vector<BYTE> transport; // TPM-bound ciphertext awaiting decrypt
-    bool ok = false;
     std::string error;
-    long http_status = 0;
-    unsigned attempts = 0;
-    double http_ms = 0;     // sum of HTTP round trips, excluding backoff
-    double backoff_ms = 0;  // time slept between retries
-    double tpm_wait_ms = 0; // ciphertext ready -> its TPM decrypt batch started
-    double tpm_ms = 0;      // this key's share of its TPM decrypt batch
-    double total_ms = 0;
-    SteadyClock::time_point start{};
-    SteadyClock::time_point ready_at{};
 };
 
-struct SecureUnwrapBatchRun
+/// POST one secureunwrapkey request, retrying 429/5xx with exponential backoff.
+std::string PostSecureUnwrapWithRetry(KeyVaultHttpClient &http,
+                                      const std::string &request_uri,
+                                      const std::string &access_token,
+                                      const std::string &body,
+                                      unsigned max_retries)
 {
-    double maa_ms = 0;          // MAA attestation (critical path)
-    double access_token_ms = 0; // overlapped with MAA
-    double prep_ms = 0;         // access token + connection warm-up, overlapped with MAA
-    double client_init_ms = 0;
-    double unwrap_phase_ms = 0; // after attestation: HTTP + TPM decrypts
-    double total_ms = 0;
-    size_t workers = 0;
-    unsigned tpm_batches = 0;   // number of TPM decrypt batches issued
-    std::vector<SecureUnwrapItemResult> items;
-};
-
-/// Decrypt a set of ready transport ciphertexts with the attestation client:
-/// one DecryptBatch() call when available, otherwise per-key Decrypt().
-void DecryptReadyItems(AttestationClient *client, bool use_batch_api,
-                       std::vector<SecureUnwrapItemResult *> &chunk)
-{
-#ifdef ATTESTATION_CLIENT_HAS_DECRYPT_BATCH
-    if (use_batch_api)
+    std::string response;
+    for (unsigned attempt = 1;; ++attempt)
     {
-        const uint32_t n = static_cast<uint32_t>(chunk.size());
-        std::vector<const unsigned char *> in(n);
-        std::vector<uint32_t> in_sizes(n);
-        std::vector<unsigned char *> out(n, nullptr);
-        std::vector<uint32_t> out_sizes(n, 0);
-        std::vector<attest::AttestationResult> item_results(n);
-        for (uint32_t i = 0; i < n; ++i)
+        const long status = http.Post(request_uri, access_token, body, response);
+        if (status == 200)
         {
-            in[i] = chunk[i]->transport.data();
-            in_sizes[i] = static_cast<uint32_t>(chunk[i]->transport.size());
+            return response;
         }
-        attest::AttestationResult batch = client->DecryptBatch(
-            attest::EncryptionType::NONE, n, in.data(), in_sizes.data(), out.data(), out_sizes.data(),
-            item_results.data(), attest::RsaScheme::RsaOaep, attest::RsaHashAlg::RsaSha256);
-        for (uint32_t i = 0; i < n; ++i)
+        if (!IsRetryableStatus(status) || attempt > max_retries)
         {
-            SecureUnwrapItemResult &item = *chunk[i];
-            if (out[i] != nullptr && out_sizes[i] > 0 &&
-                item_results[i].code_ == attest::AttestationResult::ErrorCode::SUCCESS)
-            {
-                item.plaintext.assign(out[i], out[i] + out_sizes[i]);
-                OPENSSL_cleanse(out[i], out_sizes[i]);
-                client->Free(out[i]);
-            }
-            else
-            {
-                const attest::AttestationResult &r =
-                    item_results[i].code_ != attest::AttestationResult::ErrorCode::SUCCESS ? item_results[i] : batch;
-                std::ostringstream oss;
-                oss << "Failed to decrypt secure unwrap transport value: error code "
-                    << static_cast<int>(r.code_) << ", TPM error code=" << r.tpm_error_code_
-                    << ", Desc=" << r.description_;
-                item.error = oss.str();
-                if (out[i] != nullptr)
-                {
-                    client->Free(out[i]);
-                }
-            }
+            std::ostringstream oss;
+            oss << "Secure unwrap HTTP request failed: HTTP " << status << ": " << response;
+            throw skr_error(EXIT_SKR_FAIL, oss.str());
         }
-        return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(200u << (std::min)(attempt - 1, 4u)));
     }
-#else
-    (void)use_batch_api;
-#endif
-    for (SecureUnwrapItemResult *item : chunk)
-    {
-        try
-        {
-            item->plaintext = DecryptTransportCiphertext(client, item->transport);
-        }
-        catch (const std::exception &e)
-        {
-            item->error = e.what();
-        }
-    }
-}
-
-/// Batched secure unwrap:
-///  1. Access token + per-worker TLS warm-up run concurrently with MAA attestation.
-///  2. One attestation through the same client that later decrypts, so the
-///     library can retain the certified TPM ephemeral key (no re-creation).
-///  3. N secureunwrapkey calls across a bounded worker pool; as ciphertexts
-///     arrive a single TPM consumer drains them into DecryptBatch() calls that
-///     reuse the ephemeral key and one PCR policy session.
-SecureUnwrapBatchRun RunSecureUnwrapBatch(const std::string &attestation_url,
-                                          const std::string &nonce,
-                                          const std::vector<SecureUnwrapInputKey> &keys,
-                                          const std::string &key_enc_key_url,
-                                          const std::string &algorithm,
-                                          const Util::AkvCredentialSource &akv_credential_source,
-                                          const SecureUnwrapBatchOptions &options)
-{
-#ifndef _WIN32
-    static std::once_flag curl_init_flag;
-    std::call_once(curl_init_flag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
-#endif
-
-    SecureUnwrapBatchRun run;
-    const auto run_start = SteadyClock::now();
-    run.items.resize(keys.size());
-    run.workers = ResolveWorkerCount(options.concurrency, keys.size());
-    const bool use_batch_api = UseTpmKeyReuse(options);
-
-    std::vector<std::unique_ptr<KeyVaultHttpClient>> clients;
-    for (size_t i = 0; i < run.workers; ++i)
-    {
-        clients.emplace_back(new KeyVaultHttpClient(options.reuse_connections));
-    }
-
-    // 1. Off the critical path: access token, then warm each worker's connection.
-    std::string access_token;
-    std::exception_ptr prep_error;
-    std::vector<std::thread> prep_threads;
-    {
-        ThreadJoiner prep_joiner{prep_threads};
-        prep_threads.emplace_back([&]()
-        {
-            try
-            {
-                const auto prep_start = SteadyClock::now();
-                access_token = GetKeyVaultAccessToken(key_enc_key_url, akv_credential_source);
-                run.access_token_ms = ElapsedMs(prep_start);
-                // Warm only the first worker's connection: the first ciphertext
-                // is what starts the TPM pipeline, and later handshakes overlap
-                // with TPM decrypts. Warming every connection competes with MAA
-                // attestation for CPU on small VMs.
-                if (options.reuse_connections && !clients.empty())
-                {
-                    try
-                    {
-                        std::string ignored;
-                        clients[0]->Get(key_enc_key_url + "?api-version=7.4", access_token, ignored);
-                    }
-                    catch (...)
-                    {
-                        // Warm-up is best effort; the real request reconnects.
-                    }
-                }
-                run.prep_ms = ElapsedMs(prep_start);
-            }
-            catch (...)
-            {
-                prep_error = std::current_exception();
-            }
-        });
-
-        // 2. Attestation on the critical path (skipped for plain unwrapkey,
-        //    which is authorized by the access token alone).
-        auto phase_start = SteadyClock::now();
-        std::unique_ptr<AttestationClientSession> attestation_session;
-        std::string attestation_token;
-        if (!options.plain_unwrap)
-        {
-            attestation_session.reset(new AttestationClientSession());
-            run.client_init_ms = ElapsedMs(phase_start);
-#ifdef ATTESTATION_CLIENT_HAS_DECRYPT_BATCH
-            attestation_session->get()->SetEphemeralKeyReuse(use_batch_api);
-#endif
-            phase_start = SteadyClock::now();
-            attestation_token = AttestWithClient(attestation_session->get(), attestation_url, nonce);
-            if (attestation_token.empty())
-            {
-                throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
-            }
-            run.maa_ms = ElapsedMs(phase_start);
-        }
-
-        for (auto &t : prep_threads)
-        {
-            t.join();
-        }
-        if (prep_error)
-        {
-            std::rethrow_exception(prep_error);
-        }
-
-        // 3. Fan out (secure)unwrapkey; a single consumer drains ready ciphertexts.
-        phase_start = SteadyClock::now();
-        const std::string request_uri = options.plain_unwrap
-                                            ? key_enc_key_url + "/unwrapkey?api-version=7.4"
-                                            : BuildSecureUnwrapRequestUri(key_enc_key_url);
-        std::atomic<size_t> next_index{0};
-        std::mutex queue_mutex;
-        std::condition_variable queue_cv;
-        std::deque<size_t> ready;
-        size_t finished_outside_queue = 0; // HTTP failures and plain unwraps (no TPM step)
-
-        auto worker = [&](size_t worker_index)
-        {
-            KeyVaultHttpClient &http = *clients[worker_index];
-            for (;;)
-            {
-                const size_t idx = next_index.fetch_add(1);
-                if (idx >= keys.size())
-                {
-                    break;
-                }
-                const SecureUnwrapInputKey &key = keys[idx];
-                SecureUnwrapItemResult &item = run.items[idx];
-                item.id = key.id;
-                item.start = SteadyClock::now();
-                bool pushed = false;
-                try
-                {
-                    const std::string body =
-                        options.plain_unwrap
-                            ? json({{"alg", algorithm}, {"value", key.wrapped}}).dump()
-                            : BuildSecureUnwrapRequestBody(algorithm, key.wrapped, attestation_token);
-                    std::string response;
-                    for (;;)
-                    {
-                        ++item.attempts;
-                        const auto http_start = SteadyClock::now();
-                        item.http_status = http.Post(request_uri, access_token, body, response);
-                        item.http_ms += ElapsedMs(http_start);
-                        if (item.http_status == 200)
-                        {
-                            break;
-                        }
-                        if (!IsRetryableStatus(item.http_status) || item.attempts > options.max_retries)
-                        {
-                            std::ostringstream oss;
-                            oss << "Secure unwrap HTTP request failed: HTTP " << item.http_status
-                                << ": " << response;
-                            throw skr_error(EXIT_SKR_FAIL, oss.str());
-                        }
-                        const auto backoff =
-                            std::chrono::milliseconds(200u << (std::min)(item.attempts - 1, 4u));
-                        std::this_thread::sleep_for(backoff);
-                        item.backoff_ms += static_cast<double>(backoff.count());
-                    }
-                    if (options.plain_unwrap)
-                    {
-                        // unwrapkey returns the key itself (base64url) inside TLS.
-                        const json parsed = json::parse(response);
-                        if (!parsed.contains("value") || !parsed["value"].is_string())
-                        {
-                            throw skr_error(EXIT_SKR_FAIL, "Unwrap response does not contain a string value");
-                        }
-                        item.plaintext = Util::base64url_to_binary(parsed["value"].get<std::string>());
-                        if (!key.expected_sha256.empty() && Sha256Hex(item.plaintext) != key.expected_sha256)
-                        {
-                            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
-                            item.plaintext.clear();
-                            throw skr_error(EXIT_CRYPTO_FAIL, "Unwrapped key SHA-256 does not match expected value");
-                        }
-                        item.ok = true;
-                        item.total_ms = ElapsedMs(item.start);
-                        {
-                            std::lock_guard<std::mutex> lock(queue_mutex);
-                            ++finished_outside_queue;
-                        }
-                        queue_cv.notify_one();
-                        continue;
-                    }
-                    item.transport = ParseSecureUnwrapResponse(response, algorithm);
-                    item.ready_at = SteadyClock::now();
-                    {
-                        std::lock_guard<std::mutex> lock(queue_mutex);
-                        ready.push_back(idx);
-                    }
-                    pushed = true;
-                }
-                catch (const std::exception &e)
-                {
-                    item.ok = false;
-                    item.error = e.what();
-                    item.total_ms = ElapsedMs(item.start);
-                    TRACE_OUT("Secure unwrap key [%s] failed: %s", item.id.c_str(), e.what());
-                }
-                if (!pushed)
-                {
-                    std::lock_guard<std::mutex> lock(queue_mutex);
-                    ++finished_outside_queue;
-                }
-                queue_cv.notify_one();
-            }
-        };
-
-        std::vector<std::thread> worker_threads;
-        {
-            ThreadJoiner worker_joiner{worker_threads};
-            try
-            {
-                for (size_t i = 0; i < run.workers; ++i)
-                {
-                    worker_threads.emplace_back(worker, i);
-                }
-            }
-            catch (...)
-            {
-                // Stop the workers that did start; the joiner waits for them.
-                next_index.store(keys.size());
-                throw;
-            }
-
-            size_t consumed = 0;
-            for (;;)
-            {
-                std::vector<SecureUnwrapItemResult *> chunk;
-                {
-                    std::unique_lock<std::mutex> lock(queue_mutex);
-                    queue_cv.wait(lock, [&]()
-                                  { return !ready.empty() || consumed + finished_outside_queue == keys.size(); });
-                    if (ready.empty())
-                    {
-                        break;
-                    }
-                    for (size_t idx : ready)
-                    {
-                        chunk.push_back(&run.items[idx]);
-                    }
-                    ready.clear();
-                }
-                consumed += chunk.size();
-
-                const auto tpm_start = SteadyClock::now();
-                for (SecureUnwrapItemResult *item : chunk)
-                {
-                    item->tpm_wait_ms =
-                        std::chrono::duration<double, std::milli>(tpm_start - item->ready_at).count();
-                }
-                DecryptReadyItems(attestation_session->get(), use_batch_api, chunk);
-                const double chunk_ms = ElapsedMs(tpm_start);
-                ++run.tpm_batches;
-
-                for (SecureUnwrapItemResult *item : chunk)
-                {
-                    item->tpm_ms = chunk_ms / static_cast<double>(chunk.size());
-                    OPENSSL_cleanse(item->transport.data(), item->transport.size());
-                    item->transport.clear();
-                    if (item->error.empty())
-                    {
-                        const SecureUnwrapInputKey &key = keys[static_cast<size_t>(item - run.items.data())];
-                        if (!key.expected_sha256.empty() && Sha256Hex(item->plaintext) != key.expected_sha256)
-                        {
-                            OPENSSL_cleanse(item->plaintext.data(), item->plaintext.size());
-                            item->plaintext.clear();
-                            item->error = "Unwrapped key SHA-256 does not match expected value";
-                        }
-                    }
-                    item->ok = item->error.empty();
-                    if (!item->ok)
-                    {
-                        TRACE_OUT("Secure unwrap key [%s] failed: %s", item->id.c_str(), item->error.c_str());
-                    }
-                    item->total_ms = ElapsedMs(item->start);
-                }
-            }
-        }
-        run.unwrap_phase_ms = ElapsedMs(phase_start);
-    }
-    run.total_ms = ElapsedMs(run_start);
-    return run;
-}
-
-double RoundMs(double value)
-{
-    return std::round(value * 1000.0) / 1000.0;
-}
-
-/// Nearest-rank percentile summary.
-json SummarizeMs(std::vector<double> values)
-{
-    json out;
-    out["count"] = values.size();
-    if (values.empty())
-    {
-        return out;
-    }
-    std::sort(values.begin(), values.end());
-    auto percentile = [&values](double p)
-    {
-        size_t rank = static_cast<size_t>(std::ceil(p / 100.0 * values.size()));
-        rank = (std::max)(rank, static_cast<size_t>(1));
-        return values[(std::min)(rank, values.size()) - 1];
-    };
-    const double sum = std::accumulate(values.begin(), values.end(), 0.0);
-    out["min"] = RoundMs(values.front());
-    out["p50"] = RoundMs(percentile(50));
-    out["p90"] = RoundMs(percentile(90));
-    out["p95"] = RoundMs(percentile(95));
-    out["p99"] = RoundMs(percentile(99));
-    out["max"] = RoundMs(values.back());
-    out["mean"] = RoundMs(sum / values.size());
-    return out;
-}
-
-std::string HostFromUrl(const std::string &url)
-{
-    size_t start = url.find("://");
-    start = (start == std::string::npos) ? 0 : start + 3;
-    const size_t end = url.find('/', start);
-    return url.substr(start, end == std::string::npos ? std::string::npos : end - start);
 }
 #endif // !AZURE_LOCAL
 } // namespace
@@ -2380,17 +1912,94 @@ std::string Util::SecureUnwrapKeyBatch(
 #ifdef AZURE_LOCAL
     throw skr_error(EXIT_USAGE, "SecureUnwrapKeyBatch is not implemented for Azure Local");
 #else
-    const auto keys = ParseSecureUnwrapBatchInput(batch_json, options.replicate_to);
-    SecureUnwrapBatchRun run = RunSecureUnwrapBatch(attestation_url, nonce, keys, key_enc_key_url,
-                                                    algorithm, akv_credential_source, options);
+    const auto keys = ParseSecureUnwrapBatchInput(batch_json);
+
+#ifndef _WIN32
+    static std::once_flag curl_init_flag;
+    std::call_once(curl_init_flag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+#endif
+
+    // One attestation and one access token for the whole batch.
+    const std::string attestation_token = Util::GetMAAToken(attestation_url, nonce);
+    if (attestation_token.empty())
+    {
+        throw skr_error(EXIT_ATTEST_FAIL, "MAA attestation returned an empty token");
+    }
+    const std::string access_token = GetKeyVaultAccessToken(key_enc_key_url, akv_credential_source);
+    const std::string request_uri = BuildSecureUnwrapRequestUri(key_enc_key_url);
+
+    // Workers run the secureunwrapkey calls in parallel; TPM decrypts are
+    // serialized on one attestation client.
+    AttestationClientSession attestation_session;
+    std::mutex tpm_mutex;
+    std::vector<SecureUnwrapItemResult> items(keys.size());
+    std::atomic<size_t> next_index{0};
+    const size_t workers = ResolveWorkerCount(options.concurrency, keys.size());
+
+    auto worker = [&]()
+    {
+        KeyVaultHttpClient http;
+        for (;;)
+        {
+            const size_t idx = next_index.fetch_add(1);
+            if (idx >= keys.size())
+            {
+                break;
+            }
+            const SecureUnwrapInputKey &key = keys[idx];
+            SecureUnwrapItemResult &item = items[idx];
+            item.id = key.id;
+            try
+            {
+                const std::string response = PostSecureUnwrapWithRetry(
+                    http, request_uri, access_token,
+                    BuildSecureUnwrapRequestBody(algorithm, key.wrapped, attestation_token),
+                    options.max_retries);
+                std::vector<BYTE> transport = ParseSecureUnwrapResponse(response, algorithm);
+                {
+                    std::lock_guard<std::mutex> lock(tpm_mutex);
+                    item.plaintext = DecryptTransportCiphertext(attestation_session.get(), transport);
+                }
+                if (!key.expected_sha256.empty() && Sha256Hex(item.plaintext) != key.expected_sha256)
+                {
+                    throw skr_error(EXIT_CRYPTO_FAIL, "Unwrapped key SHA-256 does not match expected value");
+                }
+            }
+            catch (const std::exception &e)
+            {
+                OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+                item.plaintext.clear();
+                item.error = e.what();
+                TRACE_OUT("Secure unwrap key [%s] failed: %s", item.id.c_str(), e.what());
+            }
+        }
+    };
+
+    std::vector<std::thread> threads;
+    {
+        ThreadJoiner joiner{threads};
+        try
+        {
+            for (size_t i = 0; i < workers; ++i)
+            {
+                threads.emplace_back(worker);
+            }
+        }
+        catch (...)
+        {
+            // Stop the workers that did start; the joiner waits for them.
+            next_index.store(keys.size());
+            throw;
+        }
+    }
 
     json results = json::array();
     size_t failures = 0;
-    for (auto &item : run.items)
+    for (auto &item : items)
     {
         json entry;
         entry["id"] = item.id;
-        if (item.ok)
+        if (item.error.empty())
         {
             entry["unwrapped"] = Util::binary_to_base64url(item.plaintext);
             OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
@@ -2403,186 +2012,12 @@ std::string Util::SecureUnwrapKeyBatch(
         results.push_back(entry);
     }
 
-    TRACE_OUT("Secure unwrap batch complete: %zu keys, %zu failed, %zu workers, %.1f ms",
-              run.items.size(), failures, run.workers, run.total_ms);
+    TRACE_OUT("Secure unwrap batch complete: %zu keys, %zu failed, %zu workers",
+              items.size(), failures, workers);
     TRACE_OUT("Exiting Util::SecureUnwrapKeyBatch()");
 
     json output;
     output["results"] = results;
-    return output.dump(2);
-#endif
-}
-
-std::string Util::SecureUnwrapPerf(
-    const std::string &attestation_url,
-    const std::string &nonce,
-    const std::string &batch_json,
-    const std::string &key_enc_key_url,
-    const std::string &algorithm,
-    const Util::AkvCredentialSource &akv_credential_source,
-    const SecureUnwrapBatchOptions &options,
-    unsigned iterations,
-    unsigned warmup)
-{
-    TRACE_OUT("Entering Util::SecureUnwrapPerf()");
-    ValidateSecureUnwrapArgs(key_enc_key_url, algorithm);
-    if (iterations == 0)
-    {
-        throw skr_error(EXIT_USAGE, "SecureUnwrapPerf requires at least one iteration");
-    }
-
-#ifdef AZURE_LOCAL
-    throw skr_error(EXIT_USAGE, "SecureUnwrapPerf is not implemented for Azure Local");
-#else
-    const auto keys = ParseSecureUnwrapBatchInput(batch_json, options.replicate_to);
-    const size_t workers = ResolveWorkerCount(options.concurrency, keys.size());
-
-    std::vector<double> total_ms, maa_ms, token_ms, prep_ms, client_init_ms, unwrap_phase_ms, tpm_batches;
-    std::vector<double> http_ms, tpm_ms, tpm_wait_ms, item_total_ms;
-    std::map<std::string, unsigned> status_counts;
-    unsigned run_failures = 0;
-    unsigned key_failures = 0;
-    unsigned retries = 0;
-    json errors = json::array();
-    json iteration_rows = json::array();
-    constexpr size_t MaxReportedErrors = 20;
-
-    for (unsigned i = 0; i < warmup + iterations; ++i)
-    {
-        const bool measured = i >= warmup;
-        const unsigned iteration = measured ? i - warmup + 1 : i + 1;
-        SecureUnwrapBatchRun run;
-        try
-        {
-            run = RunSecureUnwrapBatch(attestation_url, nonce, keys, key_enc_key_url,
-                                       algorithm, akv_credential_source, options);
-        }
-        catch (const std::exception &e)
-        {
-            fprintf(stderr, "%s %u: run failed: %s\n", measured ? "iteration" : "warmup",
-                    iteration, e.what());
-            if (measured)
-            {
-                ++run_failures;
-                if (errors.size() < MaxReportedErrors)
-                {
-                    errors.push_back({{"iteration", iteration}, {"error", e.what()}});
-                }
-            }
-            continue;
-        }
-
-        unsigned iteration_failures = 0;
-        json key_rows = json::array();
-        for (auto &item : run.items)
-        {
-            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
-            if (!measured)
-            {
-                continue;
-            }
-            status_counts[std::to_string(item.http_status)]++;
-            retries += item.attempts > 0 ? item.attempts - 1 : 0;
-            http_ms.push_back(item.http_ms);
-            item_total_ms.push_back(item.total_ms);
-            if (item.ok)
-            {
-                tpm_ms.push_back(item.tpm_ms);
-                tpm_wait_ms.push_back(item.tpm_wait_ms);
-            }
-            else
-            {
-                ++iteration_failures;
-                if (errors.size() < MaxReportedErrors)
-                {
-                    errors.push_back({{"iteration", iteration}, {"id", item.id}, {"error", item.error}});
-                }
-            }
-            key_rows.push_back({
-                {"id", item.id},
-                {"ok", item.ok},
-                {"http_status", item.http_status},
-                {"attempts", item.attempts},
-                {"http_ms", RoundMs(item.http_ms)},
-                {"backoff_ms", RoundMs(item.backoff_ms)},
-                {"tpm_wait_ms", RoundMs(item.tpm_wait_ms)},
-                {"tpm_ms", RoundMs(item.tpm_ms)},
-                {"total_ms", RoundMs(item.total_ms)},
-            });
-        }
-
-        fprintf(stderr, "%s %u: total=%.1fms maa=%.1fms token=%.1fms unwrap_phase=%.1fms failures=%u\n",
-                measured ? "iteration" : "warmup", iteration, run.total_ms, run.maa_ms,
-                run.access_token_ms, run.unwrap_phase_ms,
-                measured ? iteration_failures : 0u);
-
-        if (!measured)
-        {
-            continue;
-        }
-        key_failures += iteration_failures;
-        total_ms.push_back(run.total_ms);
-        maa_ms.push_back(run.maa_ms);
-        token_ms.push_back(run.access_token_ms);
-        client_init_ms.push_back(run.client_init_ms);
-        prep_ms.push_back(run.prep_ms);
-        tpm_batches.push_back(static_cast<double>(run.tpm_batches));
-        unwrap_phase_ms.push_back(run.unwrap_phase_ms);
-        iteration_rows.push_back({
-            {"iteration", iteration},
-            {"total_ms", RoundMs(run.total_ms)},
-            {"maa_ms", RoundMs(run.maa_ms)},
-            {"access_token_ms", RoundMs(run.access_token_ms)},
-            {"client_init_ms", RoundMs(run.client_init_ms)},
-            {"prep_ms", RoundMs(run.prep_ms)},
-            {"tpm_batches", run.tpm_batches},
-            {"unwrap_phase_ms", RoundMs(run.unwrap_phase_ms)},
-            {"failures", iteration_failures},
-            {"keys", key_rows},
-        });
-    }
-
-    json output;
-    output["config"] = {
-        {"keys", keys.size()},
-        {"concurrency", options.concurrency},
-        {"workers", workers},
-        {"reuse_connections", options.reuse_connections},
-        {"reuse_tpm_key", UseTpmKeyReuse(options)},
-        {"max_retries", options.max_retries},
-        {"iterations", iterations},
-        {"warmup", warmup},
-        {"algorithm", algorithm},
-        {"key_host", HostFromUrl(key_enc_key_url)},
-        {"operation", options.plain_unwrap ? "unwrapkey" : "secureunwrapkey"},
-        {"api_version", options.plain_unwrap ? std::string("7.4") : Constants::SECURE_UNWRAP_API_VERSION},
-#ifdef _WIN32
-        {"platform", "windows"},
-#else
-        {"platform", "linux"},
-#endif
-    };
-    output["summary"] = {
-        {"run_failures", run_failures},
-        {"key_failures", key_failures},
-        {"retries", retries},
-        {"http_status_counts", status_counts},
-        {"total_ms", SummarizeMs(total_ms)},
-        {"maa_ms", SummarizeMs(maa_ms)},
-        {"access_token_ms", SummarizeMs(token_ms)},
-        {"client_init_ms", SummarizeMs(client_init_ms)},
-        {"prep_ms", SummarizeMs(prep_ms)},
-        {"tpm_batches", SummarizeMs(tpm_batches)},
-        {"unwrap_phase_ms", SummarizeMs(unwrap_phase_ms)},
-        {"per_key_http_ms", SummarizeMs(http_ms)},
-        {"per_key_tpm_ms", SummarizeMs(tpm_ms)},
-        {"per_key_tpm_wait_ms", SummarizeMs(tpm_wait_ms)},
-        {"per_key_total_ms", SummarizeMs(item_total_ms)},
-    };
-    output["errors"] = errors;
-    output["iterations"] = iteration_rows;
-
-    TRACE_OUT("Exiting Util::SecureUnwrapPerf()");
     return output.dump(2);
 #endif
 }
