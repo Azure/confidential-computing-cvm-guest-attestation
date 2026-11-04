@@ -25,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <random>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
@@ -650,13 +651,15 @@ static WinHttpHandle OpenKeyVaultWinHttpSession()
 /// <summary>
 /// POST a JSON body to Key Vault / Managed HSM over an existing WinHTTP session.
 /// Returns the HTTP status code; the caller decides how to handle non-200.
-/// Transport failures throw.
+/// If retry_after_seconds is set, it receives the Retry-After delay in
+/// seconds, or -1 if the response has none. Transport failures throw.
 /// </summary>
 static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
                                  const std::string &requestUri,
                                  const std::string &access_token,
                                  const std::string &requestBodyStr,
-                                 std::string &responseStr)
+                                 std::string &responseStr,
+                                 long *retry_after_seconds = nullptr)
 {
     TRACE_OUT("Entering KeyVaultPostWinHttp()");
     responseStr.clear();
@@ -769,6 +772,24 @@ static DWORD KeyVaultPostWinHttp(HINTERNET hSession,
     WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                         WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
 
+    if (retry_after_seconds)
+    {
+        // Only the delta-seconds form is used; an HTTP-date value is ignored.
+        *retry_after_seconds = -1;
+        WCHAR szRetryAfter[64] = {0};
+        DWORD dwRetryAfterSize = sizeof(szRetryAfter);
+        if (WinHttpQueryHeaders(hRequest.get(), WINHTTP_QUERY_RETRY_AFTER, WINHTTP_HEADER_NAME_BY_INDEX,
+                                szRetryAfter, &dwRetryAfterSize, WINHTTP_NO_HEADER_INDEX))
+        {
+            WCHAR *end = nullptr;
+            const long value = wcstol(szRetryAfter, &end, 10);
+            if (end != szRetryAfter && *end == L'\0' && value >= 0)
+            {
+                *retry_after_seconds = value;
+            }
+        }
+    }
+
     // Read the response body
     DWORD dwDownloaded = 0;
     do
@@ -856,13 +877,16 @@ struct CurlSlistFree
 /// POST a JSON body to Key Vault / Managed HSM using an existing curl easy
 /// handle. curl_easy_reset() keeps the handle's connection cache, so reusing
 /// one handle across requests to the same host reuses the TLS connection.
-/// Returns the HTTP status code; transport failures throw.
+/// Returns the HTTP status code. If retry_after_seconds is set, it receives
+/// the Retry-After delay in seconds, or -1 if the response has none.
+/// Transport failures throw.
 /// </summary>
 static long KeyVaultPostCurl(CURL *curl,
                              const std::string &requestUri,
                              const std::string &access_token,
                              const std::string &requestBodyStr,
-                             std::string &responseStr)
+                             std::string &responseStr,
+                             long *retry_after_seconds = nullptr)
 {
     TRACE_OUT("Entering KeyVaultPostCurl()");
     responseStr.clear();
@@ -995,6 +1019,18 @@ static long KeyVaultPostCurl(CURL *curl,
     // AKV/MHSM errors (403, 404, 429, etc.) come back as valid HTTP responses
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    if (retry_after_seconds)
+    {
+        *retry_after_seconds = -1;
+#if LIBCURL_VERSION_NUM >= 0x074200 // CURLINFO_RETRY_AFTER: curl 7.66.0+
+        curl_off_t retry_after = 0;
+        if (curl_easy_getinfo(curl, CURLINFO_RETRY_AFTER, &retry_after) == CURLE_OK && retry_after > 0)
+        {
+            *retry_after_seconds = static_cast<long>(retry_after);
+        }
+#endif
+    }
 
     TRACE_OUT("SKR HTTP status: %ld, response: %s", http_code, Util::reduct_log(responseStr).c_str());
     TRACE_OUT("Exiting KeyVaultPostCurl()");
@@ -1771,14 +1807,15 @@ class KeyVaultHttpClient
 {
 public:
     long Post(const std::string &uri, const std::string &access_token,
-              const std::string &body, std::string &response)
+              const std::string &body, std::string &response, long &retry_after_seconds)
     {
 #ifdef _WIN32
         if (!session_)
         {
             session_ = OpenKeyVaultWinHttpSession();
         }
-        return static_cast<long>(KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response));
+        return static_cast<long>(
+            KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response, &retry_after_seconds));
 #else
         if (!curl_)
         {
@@ -1788,7 +1825,7 @@ public:
                 throw skr_error(EXIT_NETWORK_FAIL, "curl_easy_init() failed");
             }
         }
-        return KeyVaultPostCurl(curl_.get(), uri, access_token, body, response);
+        return KeyVaultPostCurl(curl_.get(), uri, access_token, body, response, &retry_after_seconds);
 #endif
     }
 
@@ -1824,7 +1861,29 @@ struct SecureUnwrapItemResult
     std::string error;
 };
 
-/// POST one secureunwrapkey request, retrying 429/5xx with exponential backoff.
+constexpr long RetryBaseDelayMs = 250;
+constexpr long RetryMaxDelayMs = 30 * 1000;   // cap for a single wait
+constexpr long RetryTotalBudgetMs = 60 * 1000; // cap for all waits of one request
+
+/// Delay before retry number `attempt` (1-based): exponential backoff with
+/// random jitter (50-100% of the step), at least the server's Retry-After,
+/// capped at RetryMaxDelayMs.
+long RetryDelayMs(unsigned attempt, long retry_after_seconds)
+{
+    thread_local std::mt19937 rng{std::random_device{}()};
+    const long step = (std::min)(RetryBaseDelayMs << (std::min)(attempt - 1, 10u), RetryMaxDelayMs);
+    std::uniform_int_distribution<long> jitter(step / 2, step);
+    long delay = jitter(rng);
+    if (retry_after_seconds > 0)
+    {
+        const long server_ms = (std::min)(retry_after_seconds, RetryMaxDelayMs / 1000) * 1000;
+        delay = (std::max)(delay, server_ms);
+    }
+    return (std::min)(delay, RetryMaxDelayMs);
+}
+
+/// POST one secureunwrapkey request, retrying 429/5xx with backoff that
+/// honors Retry-After.
 std::string PostSecureUnwrapWithRetry(KeyVaultHttpClient &http,
                                       const std::string &request_uri,
                                       const std::string &access_token,
@@ -1832,21 +1891,113 @@ std::string PostSecureUnwrapWithRetry(KeyVaultHttpClient &http,
                                       unsigned max_retries)
 {
     std::string response;
+    long waited_ms = 0;
     for (unsigned attempt = 1;; ++attempt)
     {
-        const long status = http.Post(request_uri, access_token, body, response);
+        long retry_after_seconds = -1;
+        const long status = http.Post(request_uri, access_token, body, response, retry_after_seconds);
         if (status == 200)
         {
             return response;
         }
-        if (!IsRetryableStatus(status) || attempt > max_retries)
+        const long delay_ms = IsRetryableStatus(status) ? RetryDelayMs(attempt, retry_after_seconds) : 0;
+        if (!IsRetryableStatus(status) || attempt > max_retries || waited_ms + delay_ms > RetryTotalBudgetMs)
         {
             std::ostringstream oss;
             oss << "Secure unwrap HTTP request failed: HTTP " << status << ": " << response;
             throw skr_error(EXIT_SKR_FAIL, oss.str());
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(200u << (std::min)(attempt - 1, 4u)));
+        TRACE_OUT("Secure unwrap HTTP %ld, retry %u in %ld ms (Retry-After=%ld)",
+                  status, attempt, delay_ms, retry_after_seconds);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        waited_ms += delay_ms;
     }
+}
+
+/// Wipes every item's plaintext when the batch leaves scope, on any path.
+struct PlaintextWiper
+{
+    std::vector<SecureUnwrapItemResult> &items;
+    ~PlaintextWiper()
+    {
+        for (auto &item : items)
+        {
+            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
+            item.plaintext.clear();
+        }
+    }
+};
+
+size_t Base64UrlLength(size_t n)
+{
+    return (n / 3) * 4 + ((n % 3) ? (n % 3) + 1 : 0);
+}
+
+/// Append unpadded base64url of data to out without temporary copies.
+void AppendBase64Url(std::string &out, const std::vector<BYTE> &data)
+{
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    size_t i = 0;
+    for (; i + 3 <= data.size(); i += 3)
+    {
+        const uint32_t v = (uint32_t(data[i]) << 16) | (uint32_t(data[i + 1]) << 8) | data[i + 2];
+        out.push_back(alphabet[(v >> 18) & 0x3F]);
+        out.push_back(alphabet[(v >> 12) & 0x3F]);
+        out.push_back(alphabet[(v >> 6) & 0x3F]);
+        out.push_back(alphabet[v & 0x3F]);
+    }
+    const size_t rest = data.size() - i;
+    if (rest > 0)
+    {
+        uint32_t v = uint32_t(data[i]) << 16;
+        if (rest == 2)
+        {
+            v |= uint32_t(data[i + 1]) << 8;
+        }
+        out.push_back(alphabet[(v >> 18) & 0x3F]);
+        out.push_back(alphabet[(v >> 12) & 0x3F]);
+        if (rest == 2)
+        {
+            out.push_back(alphabet[(v >> 6) & 0x3F]);
+        }
+    }
+}
+
+/// Build the batch output JSON (same layout as json::dump(2)) with a single
+/// buffer reserved up front, so unwrapped keys are never copied elsewhere.
+std::string BuildSecureUnwrapBatchOutput(const std::vector<SecureUnwrapItemResult> &items)
+{
+    std::vector<std::string> ids, errors;
+    size_t capacity = 64;
+    for (const auto &item : items)
+    {
+        ids.push_back(json(item.id).dump());
+        errors.push_back(item.error.empty() ? std::string() : json(item.error).dump());
+        capacity += 64 + ids.back().size() + errors.back().size() + Base64UrlLength(item.plaintext.size());
+    }
+
+    std::string out;
+    out.reserve(capacity);
+    out += "{\n  \"results\": [";
+    for (size_t i = 0; i < items.size(); ++i)
+    {
+        out += (i == 0) ? "\n    {\n" : ",\n    {\n";
+        if (items[i].error.empty())
+        {
+            out += "      \"id\": " + ids[i] + ",\n      \"unwrapped\": \"";
+            AppendBase64Url(out, items[i].plaintext);
+            out += "\"\n";
+        }
+        else
+        {
+            // json objects sort keys, so "error" precedes "id".
+            out += "      \"error\": " + errors[i] + ",\n      \"id\": " + ids[i] + "\n";
+        }
+        out += "    }";
+    }
+    out += "\n  ]\n}";
+    return out;
 }
 #endif // !AZURE_LOCAL
 } // namespace
@@ -1933,6 +2084,7 @@ std::string Util::SecureUnwrapKeyBatch(
     AttestationClientSession attestation_session;
     std::mutex tpm_mutex;
     std::vector<SecureUnwrapItemResult> items(keys.size());
+    PlaintextWiper plaintext_wiper{items};
     std::atomic<size_t> next_index{0};
     const size_t workers = ResolveWorkerCount(options.concurrency, keys.size());
 
@@ -1993,32 +2145,14 @@ std::string Util::SecureUnwrapKeyBatch(
         }
     }
 
-    json results = json::array();
-    size_t failures = 0;
-    for (auto &item : items)
-    {
-        json entry;
-        entry["id"] = item.id;
-        if (item.error.empty())
-        {
-            entry["unwrapped"] = Util::binary_to_base64url(item.plaintext);
-            OPENSSL_cleanse(item.plaintext.data(), item.plaintext.size());
-        }
-        else
-        {
-            entry["error"] = item.error;
-            ++failures;
-        }
-        results.push_back(entry);
-    }
+    const size_t failures = static_cast<size_t>(std::count_if(
+        items.begin(), items.end(), [](const SecureUnwrapItemResult &item) { return !item.error.empty(); }));
+    std::string output = BuildSecureUnwrapBatchOutput(items);
 
     TRACE_OUT("Secure unwrap batch complete: %zu keys, %zu failed, %zu workers",
               items.size(), failures, workers);
     TRACE_OUT("Exiting Util::SecureUnwrapKeyBatch()");
-
-    json output;
-    output["results"] = results;
-    return output.dump(2);
+    return output;
 #endif
 }
 
