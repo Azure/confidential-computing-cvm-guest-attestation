@@ -285,6 +285,7 @@ The application returns structured exit codes for programmatic callers:
 | 4 | `EXIT_SKR_FAIL` | AKV/MHSM SKR HTTP error (policy, 403, key not found) |
 | 5 | `EXIT_CRYPTO_FAIL` | OpenSSL error (decrypt, parse, unwrap) |
 | 6 | `EXIT_NETWORK_FAIL` | curl/WinHTTP transport failure |
+| 7 | `EXIT_PARTIAL_FAIL` | `-S` batch: at least one key failed; the JSON on stdout has every key's result |
 
 ### Cross-Distro SSL CA Bundle Fix
 
@@ -366,7 +367,7 @@ The input is a JSON file path, `-` for stdin, or inline JSON:
 `{"keys":[{"id":"disk00","wrapped":"<base64url>","sha256":"<optional hex>"}, ...]}`.
 If `sha256` is present, the unwrapped bytes are checked against it.
 Output: `{"results":[{"id":"disk00","unwrapped":"<base64url>"} | {"id":"...","error":"..."}]}`.
-A failure for one key is reported in its entry and does not stop the others.
+A failure for one key is reported in its entry and does not stop the others. If any key fails, the exit code is 7 (`EXIT_PARTIAL_FAIL`), so callers can't mistake a partial batch for success.
 
 | Flag | Meaning |
 |---|---|

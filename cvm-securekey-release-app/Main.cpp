@@ -406,15 +406,21 @@ int main(int argc, char *argv[])
         case Operation::SecureUnwrapBatch:
         {
             std::string batch_json;
+            size_t failed_keys = 0;
             if (!read_batch_input(batch_input, batch_json))
             {
                 return EXIT_FAILURE;
             }
             result = Util::SecureUnwrapKeyBatch(attestation_url, nonce, batch_json,
                                                 key_enc_key_url, secure_unwrap_algorithm,
-                                                akv_credential_source, secure_batch_options);
+                                                akv_credential_source, secure_batch_options, &failed_keys);
             std::cout << result << std::endl;
             OPENSSL_cleanse(&result[0], result.size());
+            if (failed_keys > 0)
+            {
+                std::cerr << "Secure unwrap batch: " << failed_keys << " key(s) failed" << std::endl;
+                retVal = EXIT_PARTIAL_FAIL;
+            }
             break;
         }
         case Operation::ReleaseKey:

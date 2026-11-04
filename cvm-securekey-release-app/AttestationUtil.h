@@ -45,6 +45,7 @@ constexpr int EXIT_AUTH_FAIL    = 3; // IMDS / AAD token acquisition failed
 constexpr int EXIT_SKR_FAIL     = 4; // AKV/MHSM SKR HTTP error (policy, 403, key not found)
 constexpr int EXIT_CRYPTO_FAIL  = 5; // OpenSSL error (decrypt, parse, unwrap)
 constexpr int EXIT_NETWORK_FAIL = 6; // curl/WinHTTP transport failure
+constexpr int EXIT_PARTIAL_FAIL = 7; // -S batch: at least one key failed (per-key errors in the JSON)
 
 /// Exception that carries a structured exit code + human-readable message.
 /// Thrown instead of calling exit()/abort() so main() can return the code.
@@ -369,6 +370,7 @@ public:
     /// then one secureunwrapkey call per key across a bounded worker pool.
     /// </summary>
     /// <param name="batch_json">{"keys":[{"id":"label","wrapped":"base64url","sha256":"optional hex"},...]}</param>
+    /// <param name="failed_keys">Optional; receives the number of keys that failed.</param>
     /// <returns>{"results":[{"id":"label","unwrapped":"base64url"} or {"id":"label","error":"msg"},...]}</returns>
     static std::string SecureUnwrapKeyBatch(
         const std::string &attestation_url,
@@ -377,7 +379,8 @@ public:
         const std::string &key_enc_key_url,
         const std::string &algorithm,
         const Util::AkvCredentialSource &akv_credential_source,
-        const SecureUnwrapBatchOptions &options);
+        const SecureUnwrapBatchOptions &options,
+        size_t *failed_keys = nullptr);
 
     /// <summary>
     /// Release an exportable Managed HSM AES key into the attested VM and use

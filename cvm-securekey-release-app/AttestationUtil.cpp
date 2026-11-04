@@ -2055,7 +2055,8 @@ std::string Util::SecureUnwrapKeyBatch(
     const std::string &key_enc_key_url,
     const std::string &algorithm,
     const Util::AkvCredentialSource &akv_credential_source,
-    const SecureUnwrapBatchOptions &options)
+    const SecureUnwrapBatchOptions &options,
+    size_t *failed_keys)
 {
     TRACE_OUT("Entering Util::SecureUnwrapKeyBatch()");
     ValidateSecureUnwrapArgs(key_enc_key_url, algorithm);
@@ -2148,6 +2149,10 @@ std::string Util::SecureUnwrapKeyBatch(
     const size_t failures = static_cast<size_t>(std::count_if(
         items.begin(), items.end(), [](const SecureUnwrapItemResult &item) { return !item.error.empty(); }));
     std::string output = BuildSecureUnwrapBatchOutput(items);
+    if (failed_keys)
+    {
+        *failed_keys = failures;
+    }
 
     TRACE_OUT("Secure unwrap batch complete: %zu keys, %zu failed, %zu workers",
               items.size(), failures, workers);
