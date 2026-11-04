@@ -1375,6 +1375,44 @@ TEST_F(TpmTest, DecryptBatch_ItemFailureIsIsolated)
 }
 
 /**
+ * If a new policy session cannot be started after a failed item, the batch
+ * still returns: earlier items keep their plaintext and the rest are failed.
+ */
+TEST_F(TpmTest, DecryptBatch_SessionRestartFailureKeepsEarlierResults)
+{
+    const ESYS_TR session = 0x03000040;
+    ExpectPcrCountQueries();
+    ExpectEphemeralKeyCreation(1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_StartAuthSession(_, TPM2_SE_POLICY, _))
+        .WillOnce(DoAll(SetArgPointee<2>(session), Return(TSS2_RC_SUCCESS)))
+        .WillOnce(Return(TPM2_RC_FAILURE));
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyPCR(_, session)).Times(2);
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, kEphemeralKey, session, _, _))
+        .Times(2)
+        .WillRepeatedly(Invoke(EchoDecrypt));
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, session)).Times(1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, kEphemeralKey)).Times(1);
+
+    std::vector<attest::Buffer> blobs = {{1}, {0xFF, 2}, {3}, {4}};
+    std::vector<DecryptBatchItemResult> results;
+    ASSERT_NO_THROW(results = tpm->DecryptBatchWithEphemeralKey(MakeAttestationPcrSet(), blobs,
+                                                                attest::RsaScheme::RsaOaep,
+                                                                attest::RsaHashAlg::RsaSha256));
+
+    ASSERT_EQ(results.size(), 4u);
+    EXPECT_TRUE(results[0].ok);
+    EXPECT_EQ(results[0].plaintext, blobs[0]);
+    EXPECT_FALSE(results[1].ok);
+    EXPECT_EQ(results[1].tpmRc, (uint32_t)TPM2_RC_FAILURE);
+    for (size_t i = 2; i < results.size(); i++) {
+        EXPECT_FALSE(results[i].ok);
+        EXPECT_TRUE(results[i].plaintext.empty());
+        EXPECT_EQ(results[i].tpmRc, (uint32_t)TPM2_RC_FAILURE);
+        EXPECT_FALSE(results[i].error.empty());
+    }
+}
+
+/**
  * With retention enabled, the key certified by GetEphemeralKey() (the one MAA
  * attests) is kept loaded and reused by later batches, along with the policy
  * session; both are flushed when retention is disabled.

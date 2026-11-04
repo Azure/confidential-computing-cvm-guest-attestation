@@ -750,6 +750,14 @@ std::vector<DecryptBatchItemResult> Tss2Wrapper::DecryptBatchWithEphemeralKey(
             Esys_FlushContext(ctx->Get(), key);
         }
     };
+    auto wipeResults = [&]() {
+        for (auto& item : results) {
+            if (!item.plaintext.empty()) {
+                memset(item.plaintext.data(), 0, item.plaintext.size());
+                item.plaintext.clear();
+            }
+        }
+    };
 
     try {
         session = (retainEphemeralKey && retainedSession != ESYS_TR_NONE)
@@ -763,7 +771,8 @@ std::vector<DecryptBatchItemResult> Tss2Wrapper::DecryptBatchWithEphemeralKey(
         scheme.scheme = rsaWrapAlgId;
         scheme.details.oaep.hashAlg = rsaHashAlgId;
 
-        for (size_t i = 0; i < encryptedBlobs.size(); ++i) {
+        bool sessionLost = false;
+        for (size_t i = 0; i < encryptedBlobs.size() && !sessionLost; ++i) {
             const attest::Buffer& blob = encryptedBlobs[i];
             DecryptBatchItemResult& item = results[i];
             if (blob.empty() || blob.size() > TPM2_MAX_RSA_KEY_BYTES) {
@@ -805,7 +814,18 @@ std::vector<DecryptBatchItemResult> Tss2Wrapper::DecryptBatchWithEphemeralKey(
                 }
                 Esys_FlushContext(ctx->Get(), session);
                 session = ESYS_TR_NONE;
-                session = StartBatchPolicySession();
+                try {
+                    session = StartBatchPolicySession();
+                }
+                catch (const Tss2Exception& e) {
+                    // Keep the results decrypted so far; fail this item and the rest.
+                    for (size_t j = i + 1; j < results.size(); ++j) {
+                        results[j].tpmRc = e.get_rc();
+                        results[j].error = std::string("Failed to restart policy session: ") + e.what();
+                    }
+                    sessionLost = true;
+                    break;
+                }
                 sessionUsed = false;
                 if (retainEphemeralKey) {
                     retainedSession = session;
@@ -824,6 +844,7 @@ std::vector<DecryptBatchItemResult> Tss2Wrapper::DecryptBatchWithEphemeralKey(
                 session = ESYS_TR_NONE;
             }
         }
+        wipeResults();
         cleanup();
         throw;
     }
