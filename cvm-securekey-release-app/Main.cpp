@@ -136,9 +136,10 @@ void usage(char *programName)
     printf("\t\t-A <algorithm>  Secure unwrap algorithm (default: A256KWPAD)\n");
     printf("\n");
     printf("\tSecurely unwrap a batch with a Managed HSM key (one attestation, one secureunwrapkey call per key):\n");
-    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -S <json-file|-|inline> [-A algorithm] [-j concurrency] [-R retries]\n", programName);
+    printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -S <json-file|-|inline> [-A algorithm] [-j concurrency] [-R retries] [-K]\n", programName);
     printf("\t\t-j <n>  Max parallel secureunwrapkey calls (default: 2; 1 = sequential; 0 = one per key; capped at 64)\n");
     printf("\t\t-R <n>  Max retries on HTTP 429/5xx and transport errors (default: 3)\n");
+    printf("\t\t-K      Do not reuse the TPM key; decrypt each key with Decrypt()\n");
     printf("\n");
     printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -L [-A algorithm]\n", programName);
@@ -255,7 +256,7 @@ int main(int argc, char *argv[])
     Util::AkvCredentialSource akv_credential_source = Util::AkvCredentialSource::Imds;
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:S:j:R:")) != -1)
+    while ((opt = getopt(argc, argv, "a:n:k:c:s:uULwrB:H:G:A:S:j:R:K")) != -1)
     {
         switch (opt)
         {
@@ -343,6 +344,9 @@ int main(int argc, char *argv[])
                 secure_batch_options.max_retries = value;
             break;
         }
+        case 'K':
+            secure_batch_options.reuse_tpm_key = false;
+            break;
         case ':':
             std::cerr << "Option needs a value" << std::endl;
             return EXIT_FAILURE;

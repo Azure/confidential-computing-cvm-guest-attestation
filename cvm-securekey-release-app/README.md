@@ -348,12 +348,29 @@ exportable RSA key and then performs RSA-OAEP decryption locally.
 `secureunwrapkey` accepts one wrapped value per call. `-S` unwraps a whole
 batch (for example every disk of a CVM) in one invocation:
 
-1. One MAA attestation and one access token for the whole batch.
-2. One `secureunwrapkey` call per key, spread across a small worker pool.
+1. The access token is fetched, and the first worker's HTTPS connection
+   opened, in parallel with one MAA attestation.
+2. The attestation runs on the same attestation client that later decrypts.
+   With `SetEphemeralKeyReuse(true)` the library keeps the TPM ephemeral key
+   it certified for MAA loaded instead of flushing it.
+3. One `secureunwrapkey` call per key, spread across a small worker pool.
    Each worker keeps its HTTPS connection alive between calls. HTTP 429 and
    5xx responses are retried with exponential backoff.
-3. Each result is decrypted with the VM's TPM-bound ephemeral key using the
-   attestation library's `Decrypt()`, one key at a time.
+4. As results arrive, they are decrypted together with
+   `AttestationClient::DecryptBatch()`, which reuses the retained key and one
+   PCR policy session (2 TPM commands per key).
+
+The library's per-call `Decrypt()` creates a new ephemeral key
+(`TPM2_CreatePrimary`, ~180 ms on a vTPM) and policy session every time
+(~205 ms per key). With `DecryptBatch()` a key costs ~24 ms of TPM time.
+The app detects these APIs at compile time
+(`ATTESTATION_CLIENT_HAS_DECRYPT_BATCH`). With a library that does not have
+them yet, or with `-K`, each key is decrypted with `Decrypt()`. To build
+against the library from this repo's source, use `Dockerfile.attestlib-src`:
+
+```sh
+docker build -f cvm-securekey-release-app/Dockerfile.attestlib-src --output out .
+```
 
 Like `-U`, this works with Managed HSM keys only and uses API version
 `2026-07-01-preview`.
@@ -373,6 +390,7 @@ A failure for one key is reported in its entry and does not stop the others. If 
 |---|---|
 | `-j <n>` | Max parallel `secureunwrapkey` calls (default 2; `1` = sequential; `0` = one per key; capped at 64) |
 | `-R <n>` | Max retries on HTTP 429/5xx and transport errors (default 3) |
+| `-K` | Do not reuse the TPM key; decrypt each key with `Decrypt()` |
 
 Each `secureunwrapkey` request has a 10 s connect timeout and a 30 s request timeout
 (curl `CURLOPT_CONNECTTIMEOUT`/`CURLOPT_TIMEOUT` on Linux; on Windows, WinHTTP name resolution and

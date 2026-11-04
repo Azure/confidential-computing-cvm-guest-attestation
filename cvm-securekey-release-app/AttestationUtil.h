@@ -95,6 +95,7 @@ struct SecureUnwrapBatchOptions
 {
     unsigned concurrency = 2; // max parallel secureunwrapkey calls; 1 = sequential, 0 = one per key
     unsigned max_retries = 3; // retries on 429/5xx with exponential backoff
+    bool reuse_tpm_key = true; // keep the attested TPM key and use DecryptBatch() when the library has it
 };
 
 #define TRACE_OUT Util::trace_out

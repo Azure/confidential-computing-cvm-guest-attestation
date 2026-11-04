@@ -1,0 +1,68 @@
+# Build AzureAttestSKR against the guest attestation client library built from
+# this repo's source (client-library/), instead of the published .deb. Use this
+# to pick up library changes that are not released yet, e.g. the
+# AttestationClient::DecryptBatch() / SetEphemeralKeyReuse() APIs.
+#
+# The library's CMake expects its private OpenSSL/curl/tpm2-tss under
+# /usr/local/attestation*. Here those paths point at Ubuntu's system packages,
+# which is also what the shipped .so resolves at runtime once its RUNPATH is
+# stripped (see Dockerfile).
+#
+# Usage (from repo root):
+#   docker build -t azureattest-skr-src -f cvm-securekey-release-app/Dockerfile.attestlib-src --output out .
+
+FROM ubuntu:22.04 AS deps
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ca-certificates patchelf wget \
+        libcurl4-openssl-dev libssl-dev zlib1g-dev \
+        libtss2-dev libgcrypt20-dev \
+        libgtest-dev libgmock-dev \
+        nlohmann-json3-dev libboost-all-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Point the library's private dependency prefixes at the system packages.
+RUN set -eux; ARCH_LIB=/usr/lib/x86_64-linux-gnu; \
+    mkdir -p /usr/local/attestationssl /usr/local/attestationcurl /usr/local/attestationtpm2-tss; \
+    ln -s /usr/include /usr/local/attestationssl/include;    ln -s $ARCH_LIB /usr/local/attestationssl/lib64; \
+        ln -s /usr/include /usr/local/attestationtpm2-tss/include; ln -s $ARCH_LIB /usr/local/attestationtpm2-tss/lib
+
+# The library needs curl >= 7.84 (CURLINFO_CAINFO); Ubuntu 22.04 ships 7.81.
+# Build the same private curl as client-library/src/Attestation/pre-requisites.sh.
+RUN set -eux; cd /tmp \
+    && wget -q https://curl.se/download/curl-8.5.0.tar.gz \
+    && echo "05fc17ff25b793a437a0906e0484b82172a9f4de02be5ed447e0cab8c3475add  curl-8.5.0.tar.gz" | sha256sum -c - \
+    && tar xzf curl-8.5.0.tar.gz && cd curl-8.5.0 \
+    && ./configure --prefix=/usr/local/attestationcurl --with-openssl --without-zstd --without-libpsl \
+         --without-brotli --without-nghttp2 --without-libidn2 --disable-ldap --disable-static \
+    && make -j"$(nproc)" && make install \
+    && cd / && rm -rf /tmp/curl-8.5.0*
+
+FROM deps AS build
+
+# 1. Attestation client library from source.
+WORKDIR /repo
+COPY client-library/ client-library/
+RUN cmake -S client-library/src/Attestation -B /build/attest -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build /build/attest --target azguestattestation -j"$(nproc)" \
+    && SO=$(find /build/attest -name 'libazguestattestation.so.*.*.*' | head -1) \
+    && patchelf --remove-rpath "$SO" \
+    && cp "$SO" /usr/lib/ && ldconfig \
+    && ln -sf "/usr/lib/$(basename "$SO")" /usr/lib/libazguestattestation.so \
+    && mkdir -p /usr/include/azguestattestation1 \
+    && cp client-library/src/Attestation/AttestationClient/lib/include/*.h /usr/include/azguestattestation1/
+
+# 2. AzureAttestSKR against it.
+WORKDIR /repo/cvm-securekey-release-app
+COPY cvm-securekey-release-app/ .
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKR_PORTABLE_DEPLOY=ON \
+    && cmake --build build \
+    && mkdir -p /staging \
+    && cp build/AzureAttestSKR /staging/ \
+    && cp -L /usr/lib/libazguestattestation.so.1 /staging/
+
+FROM scratch AS output
+COPY --from=build /staging/AzureAttestSKR             /AzureAttestSKR
+COPY --from=build /staging/libazguestattestation.so.1 /libazguestattestation.so.1
