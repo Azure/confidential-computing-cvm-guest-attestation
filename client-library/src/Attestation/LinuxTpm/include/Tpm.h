@@ -56,6 +56,16 @@ public:
 
     attest::EphemeralKey GetEphemeralKey(const attest::PcrSet& pcrSet) const;
 
+    /** See TssWrapper::SetRetainEphemeralKey. */
+    void SetRetainEphemeralKey(bool retain) const;
+
+    /** See TssWrapper::DecryptBatchWithEphemeralKey. */
+    std::vector<DecryptBatchItemResult> DecryptBatchWithEphemeralKey(
+        const attest::PcrSet& pcrSet,
+        const std::vector<attest::Buffer>& encryptedBlobs,
+        const attest::RsaScheme rsaWrapAlgId,
+        const attest::RsaHashAlg rsaHashAlgId) const;
+
     // Default RSA scheme to RSAES and hash algorithm to SHA1 for backcompat with MAA.
     attest::Buffer DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
                                            const attest::Buffer& encryptedBlob,

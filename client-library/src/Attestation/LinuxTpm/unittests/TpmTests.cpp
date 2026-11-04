@@ -22,6 +22,8 @@ using ::testing::DoAll;
 using ::testing::Mock;
 using ::testing::Return;
 using ::testing::SetArgPointee;
+using ::testing::AnyNumber;
+using ::testing::Invoke;
 
 // Must be global because it is accessed in mocked C functions
 std::shared_ptr<TpmLibMock> tpmLibMockObj;
@@ -1220,4 +1222,205 @@ int main(int argc, char** argv)
 {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+//
+// Batch decrypt with the ephemeral key
+//
+
+namespace {
+
+const ESYS_TR kEphemeralKey = 0x80000100;
+const ESYS_TR kTrialSession = 0x03000001;
+
+attest::PcrSet MakeAttestationPcrSet()
+{
+    attest::PcrSet pcrSet;
+    pcrSet.hashAlg = attest::HashAlg::Sha256;
+    for (uint8_t i = 0; i < 8; i++) {
+        attest::PcrValue value;
+        value.index = i;
+        value.digest = std::vector<unsigned char>(32, i);
+        pcrSet.pcrs.push_back(value);
+    }
+    return pcrSet;
+}
+
+// GetTssPcrSelection queries the PCR count on every call.
+void ExpectPcrCountQueries()
+{
+    EXPECT_CALL(*tpmLibMockObj, Esys_GetCapability(_,ESYS_TR_NONE,ESYS_TR_NONE,ESYS_TR_NONE,TPM2_CAP_TPM_PROPERTIES,TPM2_PT_PCR_COUNT,1,_,_))
+        .WillRepeatedly(Invoke([](ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, TPM2_CAP, UINT32, UINT32,
+                                  TPMI_YES_NO*, TPMS_CAPABILITY_DATA** caps) {
+            auto data = (TPMS_CAPABILITY_DATA*)calloc(1, sizeof(TPMS_CAPABILITY_DATA));
+            data->data.tpmProperties.count = 1;
+            data->data.tpmProperties.tpmProperty[0].property = TPM2_PT_PCR_COUNT;
+            data->data.tpmProperties.tpmProperty[0].value = MOCK_MAX_PCR_COUNT;
+            *caps = data;
+            return TSS2_RC(TSS2_RC_SUCCESS);
+        }));
+}
+
+// Creating the ephemeral key computes its policy digest with a trial session.
+void ExpectEphemeralKeyCreation(int times)
+{
+    EXPECT_CALL(*tpmLibMockObj, Esys_StartAuthSession(_, TPM2_SE_TRIAL, _))
+        .Times(times)
+        .WillRepeatedly(DoAll(SetArgPointee<2>(kTrialSession), Return(TSS2_RC_SUCCESS)));
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyPCR(_, kTrialSession)).Times(times);
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyGetDigest(_, kTrialSession, _))
+        .Times(times)
+        .WillRepeatedly(Invoke([](ESYS_CONTEXT*, ESYS_TR, TPM2B_DIGEST** digest) {
+            *digest = (TPM2B_DIGEST*)calloc(1, sizeof(TPM2B_DIGEST));
+            (*digest)->size = 32;
+            return TSS2_RC(TSS2_RC_SUCCESS);
+        }));
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, kTrialSession)).Times(times);
+    EXPECT_CALL(*tpmLibMockObj, Esys_CreatePrimary(_))
+        .Times(times)
+        .WillRepeatedly(Invoke([](ESYS_CREATEPRIMARY_PARAMS* params) {
+            auto pub = (TPM2B_PUBLIC*)calloc(1, sizeof(TPM2B_PUBLIC));
+            pub->size = MOCK_TPM_PUBLIC_SIZE;
+            pub->publicArea.type = TPM2_ALG_NULL;
+            pub->publicArea.nameAlg = TPM2_ALG_NULL;
+            *params->outPublic = pub;
+            *params->objectHandle = kEphemeralKey;
+            return TSS2_RC(TSS2_RC_SUCCESS);
+        }));
+}
+
+// Each POLICY session gets a new handle starting at `first`.
+void ExpectPolicySessions(ESYS_TR first, int times)
+{
+    auto next = std::make_shared<ESYS_TR>(first);
+    EXPECT_CALL(*tpmLibMockObj, Esys_StartAuthSession(_, TPM2_SE_POLICY, _))
+        .Times(times)
+        .WillRepeatedly(Invoke([next](ESYS_CONTEXT*, TPM2_SE, ESYS_TR* handle) {
+            *handle = (*next)++;
+            return TSS2_RC(TSS2_RC_SUCCESS);
+        }));
+}
+
+// "Decrypts" by echoing the ciphertext; a leading 0xFF simulates a TPM failure.
+TSS2_RC EchoDecrypt(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, const TPM2B_PUBLIC_KEY_RSA* cipher,
+                    TPM2B_PUBLIC_KEY_RSA** message)
+{
+    if (cipher->size > 0 && cipher->buffer[0] == 0xFF) {
+        return TPM2_RC_FAILURE;
+    }
+    *message = (TPM2B_PUBLIC_KEY_RSA*)calloc(1, sizeof(TPM2B_PUBLIC_KEY_RSA));
+    std::memcpy((*message)->buffer, cipher->buffer, cipher->size);
+    (*message)->size = cipher->size;
+    return TSS2_RC_SUCCESS;
+}
+
+} // namespace
+
+/**
+ * A batch creates the ephemeral key once and reuses one policy session:
+ * per item only PolicyPCR + RSA_Decrypt are sent to the TPM.
+ */
+TEST_F(TpmTest, DecryptBatch_CreatesKeyOnceAndReusesPolicySession)
+{
+    const ESYS_TR session = 0x03000010;
+    ExpectPcrCountQueries();
+    ExpectEphemeralKeyCreation(1);
+    ExpectPolicySessions(session, 1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyPCR(_, session)).Times(3);
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, kEphemeralKey, session, _, _))
+        .Times(3)
+        .WillRepeatedly(Invoke(EchoDecrypt));
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, session)).Times(1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, kEphemeralKey)).Times(1);
+
+    std::vector<attest::Buffer> blobs = {{1, 2}, {3, 4}, {5, 6}};
+    auto results = tpm->DecryptBatchWithEphemeralKey(MakeAttestationPcrSet(), blobs,
+                                                     attest::RsaScheme::RsaOaep,
+                                                     attest::RsaHashAlg::RsaSha256);
+
+    ASSERT_EQ(results.size(), blobs.size());
+    for (size_t i = 0; i < blobs.size(); i++) {
+        EXPECT_TRUE(results[i].ok);
+        EXPECT_EQ(results[i].plaintext, blobs[i]);
+    }
+}
+
+/**
+ * A failed item does not affect the others; the session is replaced after the
+ * failure (and the failed item is retried once on a fresh session).
+ */
+TEST_F(TpmTest, DecryptBatch_ItemFailureIsIsolated)
+{
+    ExpectPcrCountQueries();
+    ExpectEphemeralKeyCreation(1);
+    ExpectPolicySessions(0x03000020, 3);
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyPCR(_, ::testing::Ne(kTrialSession))).Times(4);
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, kEphemeralKey, _, _, _))
+        .Times(4)
+        .WillRepeatedly(Invoke(EchoDecrypt));
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, ::testing::Ne(kTrialSession))).Times(AnyNumber());
+
+    std::vector<attest::Buffer> blobs = {{1}, {0xFF, 2}, {3}};
+    auto results = tpm->DecryptBatchWithEphemeralKey(MakeAttestationPcrSet(), blobs,
+                                                     attest::RsaScheme::RsaOaep,
+                                                     attest::RsaHashAlg::RsaSha256);
+
+    ASSERT_EQ(results.size(), 3u);
+    EXPECT_TRUE(results[0].ok);
+    EXPECT_FALSE(results[1].ok);
+    EXPECT_EQ(results[1].tpmRc, (uint32_t)TPM2_RC_FAILURE);
+    EXPECT_TRUE(results[1].plaintext.empty());
+    EXPECT_TRUE(results[2].ok);
+    EXPECT_EQ(results[2].plaintext, blobs[2]);
+}
+
+/**
+ * With retention enabled, the key certified by GetEphemeralKey() (the one MAA
+ * attests) is kept loaded and reused by later batches, along with the policy
+ * session; both are flushed when retention is disabled.
+ */
+TEST_F(TpmTest, DecryptBatch_ReusesRetainedAttestationKey)
+{
+    const ESYS_TR session = 0x03000030;
+    ExpectPcrCountQueries();
+    ExpectEphemeralKeyCreation(1); // only GetEphemeralKey creates the key
+
+    EXPECT_CALL(*tpmLibMockObj, Esys_TR_FromTPMPublic(_, _, _, _, _, _)).Times(1);
+    auto certifyInfo = (TPM2B_ATTEST*)calloc(1, sizeof(TPM2B_ATTEST));
+    certifyInfo->size = sizeof(TPMS_ATTEST);
+    auto signature = (TPMT_SIGNATURE*)calloc(1, sizeof(TPMT_SIGNATURE));
+    signature->sigAlg = TPM2_ALG_RSA;
+    signature->signature.rsassa.sig.size = 1;
+    EXPECT_CALL(*tpmLibMockObj, Esys_Certify(_, kEphemeralKey, _, _, _, _, _, _, _, _))
+        .WillOnce(DoAll(SetArgPointee<8>(certifyInfo), SetArgPointee<9>(signature), Return(0)));
+
+    ExpectPolicySessions(session, 1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_PolicyPCR(_, session)).Times(4);
+    EXPECT_CALL(*tpmLibMockObj, Esys_RSA_Decrypt(_, kEphemeralKey, session, _, _))
+        .Times(4)
+        .WillRepeatedly(Invoke(EchoDecrypt));
+
+    auto pcrSet = MakeAttestationPcrSet();
+    tpm->SetRetainEphemeralKey(true);
+    tpm->GetEphemeralKey(pcrSet);
+
+    std::vector<attest::Buffer> blobs = {{7}, {8}};
+    {
+        // Neither the key nor the session is flushed between batches.
+        EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, kEphemeralKey)).Times(0);
+        EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, session)).Times(0);
+        for (int batch = 0; batch < 2; batch++) {
+            auto results = tpm->DecryptBatchWithEphemeralKey(pcrSet, blobs,
+                                                             attest::RsaScheme::RsaOaep,
+                                                             attest::RsaHashAlg::RsaSha256);
+            ASSERT_EQ(results.size(), 2u);
+            EXPECT_TRUE(results[0].ok);
+            EXPECT_TRUE(results[1].ok);
+        }
+        Mock::VerifyAndClearExpectations(tpmLibMockObj.get());
+    }
+
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, session)).Times(1);
+    EXPECT_CALL(*tpmLibMockObj, Esys_FlushContext(_, kEphemeralKey)).Times(1);
+    tpm->SetRetainEphemeralKey(false);
 }

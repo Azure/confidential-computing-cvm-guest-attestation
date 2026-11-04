@@ -38,6 +38,11 @@ Tss2Wrapper::Tss2Wrapper()
     this->ctx = std::make_unique<Tss2Ctx>();
 }
 
+Tss2Wrapper::~Tss2Wrapper()
+{
+    FlushRetained();
+}
+
 /* See header */
 std::vector<unsigned char> Tss2Wrapper::GetEkNvCert()
 {
@@ -560,6 +565,11 @@ attest::PcrQuote Tss2Wrapper::UnpackPcrQuoteToRSA(attest::PcrQuote& pcrQuoteMars
 
 attest::EphemeralKey Tss2Wrapper::GetCertifiedKeyAndFlushHandle(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle)
 {
+    return GetCertifiedKey(outPubPtr, primaryHandle, true);
+}
+
+attest::EphemeralKey Tss2Wrapper::GetCertifiedKey(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle, bool flush)
+{
     TPM2B_DATA qualifyingData = { 0 };
     TPMT_SIG_SCHEME inScheme;
     inScheme.scheme = TPM2_ALG_NULL;
@@ -588,8 +598,11 @@ attest::EphemeralKey Tss2Wrapper::GetCertifiedKeyAndFlushHandle(const unique_c_p
     unique_c_ptr<TPM2B_ATTEST> certifyInfoPtr(certifyInfo);
     unique_c_ptr<TPMT_SIGNATURE> certifyInfoSignaturePtr(signature);
 
-    // Flush the key object from the tpm to make sure we are not consuming tpm memory.
-    Tss2Util::FlushObjectContext(*ctx, primaryHandle);
+    // Flush the key object from the tpm to make sure we are not consuming tpm memory,
+    // unless the caller retains it for later decrypts.
+    if (flush) {
+        Tss2Util::FlushObjectContext(*ctx, primaryHandle);
+    }
 
     size_t offset = 0;
     std::vector<unsigned char> keyPub(sizeof(*outPubPtr), '\0');
@@ -625,7 +638,197 @@ attest::EphemeralKey Tss2Wrapper::GetEphemeralKey(const attest::PcrSet& pcrSet) 
     // Store the object in a unique_c_ptr<> to manage clean up after use.
     unique_c_ptr<TPM2B_PUBLIC> outPubPtr(outPublic);
 
-    return GetCertifiedKeyAndFlushHandle(outPubPtr, primaryHandle);
+    if (!retainEphemeralKey) {
+        return GetCertifiedKeyAndFlushHandle(outPubPtr, primaryHandle);
+    }
+
+    // Keep the certified key loaded so batch decrypts can reuse it. The key is
+    // bound to this PCR state through its policy; record the digest so a
+    // decrypt against different PCR values creates a fresh key instead.
+    attest::EphemeralKey key = GetCertifiedKey(outPubPtr, primaryHandle, false);
+    auto pcrDigest = Tss2Util::GeneratePcrDigest(pcrSet, pcrSet.hashAlg);
+    FlushRetained();
+    retainedKey = primaryHandle;
+    retainedPcrDigest.assign(pcrDigest->buffer, pcrDigest->buffer + pcrDigest->size);
+    return key;
+}
+
+void Tss2Wrapper::SetRetainEphemeralKey(bool retain)
+{
+    retainEphemeralKey = retain;
+    if (!retain) {
+        FlushRetained();
+    }
+}
+
+void Tss2Wrapper::FlushRetained() noexcept
+{
+    if (retainedSession != ESYS_TR_NONE) {
+        Esys_FlushContext(ctx->Get(), retainedSession);
+        retainedSession = ESYS_TR_NONE;
+    }
+    if (retainedKey != ESYS_TR_NONE) {
+        Esys_FlushContext(ctx->Get(), retainedKey);
+        retainedKey = ESYS_TR_NONE;
+    }
+    retainedPcrDigest.clear();
+}
+
+ESYS_TR Tss2Wrapper::StartBatchPolicySession()
+{
+    // Same parameters as Tss2Session::Start(TPM2_SE_POLICY).
+    TPM2B_NONCE nonceCaller = {0};
+    nonceCaller.size = TPM2_SHA1_DIGEST_SIZE;
+    TPMT_SYM_DEF symmetric = {0};
+    symmetric.algorithm = TPM2_ALG_NULL;
+
+    ESYS_TR session = ESYS_TR_NONE;
+    TSS2_RC ret = Esys_StartAuthSession(ctx->Get(),
+                        ESYS_TR_NONE, ESYS_TR_NONE,
+                        ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+                        &nonceCaller, TPM2_SE_POLICY, &symmetric,
+                        TPM2_ALG_SHA256, &session);
+    if (ret != TSS2_RC_SUCCESS) {
+        throw Tss2Exception("Failed to start auth session", ret);
+    }
+
+    // Keep the session alive across commands. After each successful use the
+    // TPM resets the policy digest, so each item re-applies PolicyPCR.
+    ret = Esys_TRSess_SetAttributes(ctx->Get(), session,
+                                    TPMA_SESSION_CONTINUESESSION, TPMA_SESSION_CONTINUESESSION);
+    if (ret != TSS2_RC_SUCCESS) {
+        Esys_FlushContext(ctx->Get(), session);
+        throw Tss2Exception("Failed to set session attributes", ret);
+    }
+    return session;
+}
+
+std::vector<DecryptBatchItemResult> Tss2Wrapper::DecryptBatchWithEphemeralKey(
+    const attest::PcrSet& pcrSet,
+    const std::vector<attest::Buffer>& encryptedBlobs,
+    const attest::RsaScheme rsaWrapAlgId,
+    const attest::RsaHashAlg rsaHashAlgId)
+{
+    std::vector<DecryptBatchItemResult> results(encryptedBlobs.size());
+    if (encryptedBlobs.empty()) {
+        return results;
+    }
+
+    auto pcrDigest = Tss2Util::GeneratePcrDigest(pcrSet, pcrSet.hashAlg);
+    auto pcrSelection = Tss2Util::GetTssPcrSelection(*ctx, pcrSet, pcrSet.hashAlg);
+    std::vector<unsigned char> digest(pcrDigest->buffer, pcrDigest->buffer + pcrDigest->size);
+
+    // Reuse the key retained from GetEphemeralKey() when it is bound to the same
+    // PCR state; otherwise create it once for the whole batch.
+    ESYS_TR key = ESYS_TR_NONE;
+    bool ownsKey = false;
+    if (retainedKey != ESYS_TR_NONE && retainedPcrDigest == digest) {
+        key = retainedKey;
+    }
+    else {
+        TPM2B_PUBLIC* outPublic = nullptr;
+        key = Tss2Util::CreateEphemeralKey(*ctx, pcrSet, &outPublic);
+        free(outPublic);
+        if (retainEphemeralKey) {
+            FlushRetained();
+            retainedKey = key;
+            retainedPcrDigest = digest;
+        }
+        else {
+            ownsKey = true;
+        }
+    }
+
+    ESYS_TR session = ESYS_TR_NONE;
+    // A retained session may already have been used by an earlier batch.
+    bool sessionUsed = retainEphemeralKey && retainedSession != ESYS_TR_NONE;
+    auto cleanup = [&]() {
+        if (session != ESYS_TR_NONE && session != retainedSession) {
+            Esys_FlushContext(ctx->Get(), session);
+        }
+        if (ownsKey) {
+            Esys_FlushContext(ctx->Get(), key);
+        }
+    };
+
+    try {
+        session = (retainEphemeralKey && retainedSession != ESYS_TR_NONE)
+                      ? retainedSession
+                      : StartBatchPolicySession();
+        if (retainEphemeralKey) {
+            retainedSession = session;
+        }
+
+        TPMT_RSA_DECRYPT scheme;
+        scheme.scheme = rsaWrapAlgId;
+        scheme.details.oaep.hashAlg = rsaHashAlgId;
+
+        for (size_t i = 0; i < encryptedBlobs.size(); ++i) {
+            const attest::Buffer& blob = encryptedBlobs[i];
+            DecryptBatchItemResult& item = results[i];
+            if (blob.empty() || blob.size() > TPM2_MAX_RSA_KEY_BYTES) {
+                item.error = "Encrypted data size is invalid for the ephemeral key";
+                continue;
+            }
+
+            TPM2B_PUBLIC_KEY_RSA cipher_msg;
+            memcpy((void*)cipher_msg.buffer, (void*)blob.data(), blob.size());
+            cipher_msg.size = static_cast<UINT16>(blob.size());
+
+            // A session that was already used is retried once on a fresh session
+            // so a TPM that does not reset policy state still decrypts correctly.
+            for (int attempt = 0; attempt < 2; ++attempt) {
+                const bool reusedSession = sessionUsed;
+                TSS2_RC ret = Esys_PolicyPCR(ctx->Get(), session, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+                                             pcrDigest.get(), pcrSelection.get());
+                TPM2B_PUBLIC_KEY_RSA* decrypted = nullptr;
+                if (ret == TSS2_RC_SUCCESS) {
+                    ret = Esys_RSA_Decrypt(ctx->Get(), key, session, ESYS_TR_NONE, ESYS_TR_NONE,
+                                           &cipher_msg, &scheme, nullptr, &decrypted);
+                }
+                if (ret == TSS2_RC_SUCCESS) {
+                    item.plaintext.assign(decrypted->buffer, decrypted->buffer + decrypted->size);
+                    item.ok = true;
+                    item.tpmRc = 0;
+                    item.error.clear();
+                    memset(decrypted->buffer, 0, decrypted->size);
+                    free(decrypted);
+                    sessionUsed = true;
+                    break;
+                }
+
+                item.tpmRc = ret;
+                item.error = "Failed to decrypt message";
+                // The session's policy state is unknown after a failure; replace it.
+                if (session == retainedSession) {
+                    retainedSession = ESYS_TR_NONE;
+                }
+                Esys_FlushContext(ctx->Get(), session);
+                session = ESYS_TR_NONE;
+                session = StartBatchPolicySession();
+                sessionUsed = false;
+                if (retainEphemeralKey) {
+                    retainedSession = session;
+                }
+                if (!reusedSession) {
+                    break;
+                }
+            }
+        }
+    }
+    catch (...) {
+        if (session == retainedSession) {
+            retainedSession = ESYS_TR_NONE;
+            if (session != ESYS_TR_NONE) {
+                Esys_FlushContext(ctx->Get(), session);
+                session = ESYS_TR_NONE;
+            }
+        }
+        cleanup();
+        throw;
+    }
+    cleanup();
+    return results;
 }
 
 attest::Buffer Tss2Wrapper::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
