@@ -2297,7 +2297,9 @@ std::string Util::SecureUnwrapKeyBatch(
             }
             catch (...)
             {
-                // Warm-up is best effort; the real request reconnects.
+                // Warm-up is best effort; drop the connection so the real request
+                // starts fresh instead of reusing a failed one.
+                clients[0]->Reset();
             }
         }
         catch (...)
