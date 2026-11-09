@@ -105,6 +105,20 @@ attest::EphemeralKey Tpm::GetEphemeralKey(const attest::PcrSet& pcrSet) const
     return this->tssWrapper->GetEphemeralKey(pcrSet);
 }
 
+void Tpm::SetRetainEphemeralKey(bool retain) const
+{
+    this->tssWrapper->SetRetainEphemeralKey(retain);
+}
+
+std::vector<DecryptBatchItemResult> Tpm::DecryptBatchWithEphemeralKey(
+    const attest::PcrSet& pcrSet,
+    const std::vector<attest::Buffer>& encryptedBlobs,
+    const attest::RsaScheme rsaWrapAlgId,
+    const attest::RsaHashAlg rsaHashAlgId) const
+{
+    return this->tssWrapper->DecryptBatchWithEphemeralKey(pcrSet, encryptedBlobs, rsaWrapAlgId, rsaHashAlgId);
+}
+
 attest::Buffer Tpm::DecryptWithEphemeralKey(const attest::PcrSet& pcrSet,
                                             const attest::Buffer& encryptedBlob,
                                             const attest::RsaScheme rsaWrapAlgId,

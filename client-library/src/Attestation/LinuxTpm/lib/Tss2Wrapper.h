@@ -21,7 +21,7 @@ class Tss2Wrapper : public TssWrapper
 {
 public:
     Tss2Wrapper();
-    virtual ~Tss2Wrapper(){}
+    virtual ~Tss2Wrapper();
 
     /**
      * Retrieves the EK certificate
@@ -191,6 +191,16 @@ public:
                                            const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
                                            const attest::RsaHashAlg rsaHashAlgId  = attest::RsaHashAlg::RsaSha1) override;
 
+    /* See TssWrapper */
+    void SetRetainEphemeralKey(bool retain) override;
+
+    /* See TssWrapper */
+    std::vector<DecryptBatchItemResult> DecryptBatchWithEphemeralKey(
+        const attest::PcrSet& pcrSet,
+        const std::vector<attest::Buffer>& encryptedBlobs,
+        const attest::RsaScheme rsaWrapAlgId,
+        const attest::RsaHashAlg rsaHashAlgId) override;
+
     /**
      * Removes the EK from TPM NVRAM
      */
@@ -233,6 +243,23 @@ private:
      * returns: The ephemeral structure containing the public key and the certification info
      */
     attest::EphemeralKey GetCertifiedKeyAndFlushHandle(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle);
+
+    /**
+     * Same as GetCertifiedKeyAndFlushHandle, but only flushes the key when
+     * `flush` is true (or certification fails).
+     */
+    attest::EphemeralKey GetCertifiedKey(const unique_c_ptr<TPM2B_PUBLIC>& outPubPtr, ESYS_TR primaryHandle, bool flush);
+
+    /** Start a PCR-policy auth session with continueSession set. */
+    ESYS_TR StartBatchPolicySession();
+
+    /** Flush the retained ephemeral key and policy session, ignoring errors. */
+    void FlushRetained() noexcept;
+
+    bool retainEphemeralKey = false;
+    ESYS_TR retainedKey = ESYS_TR_NONE;
+    std::vector<unsigned char> retainedPcrDigest;
+    ESYS_TR retainedSession = ESYS_TR_NONE;
 
 
     /**

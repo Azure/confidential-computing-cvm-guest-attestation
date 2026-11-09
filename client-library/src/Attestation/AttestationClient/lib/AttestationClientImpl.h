@@ -5,6 +5,7 @@
 //-------------------------------------------------------------------------------------------------
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "AttestationLibTypes.h"
@@ -108,6 +109,20 @@ public:
      * @param[in] ptr: Pointer to memory block previously allocated
      */
     virtual void Free(void* ptr) noexcept override;
+
+    /* See AttestationClient */
+    void SetEphemeralKeyReuse(bool enable) noexcept override;
+
+    /* See AttestationClient */
+    attest::AttestationResult DecryptBatch(const attest::EncryptionType encryption_type,
+                                           uint32_t count,
+                                           const unsigned char* const* encrypted_data,
+                                           const uint32_t* encrypted_data_sizes,
+                                           unsigned char** decrypted_data,
+                                           uint32_t* decrypted_data_sizes,
+                                           attest::AttestationResult* item_results,
+                                           const attest::RsaScheme rsaWrapAlgId = attest::RsaScheme::RsaEs,
+                                           const attest::RsaHashAlg rsaHashAlgId = attest::RsaHashAlg::RsaSha1) noexcept override;
 
     /**
      * @brief This function will be used to Decrypt a JWT token received from
@@ -259,5 +274,18 @@ private:
     attest::AttestationResult sendHttpRequest(const std::string& payload,
                                               std::string& response);  
 
+    /**
+     * @brief Returns the TPM instance to use for an operation: the long-lived
+     * instance (with ephemeral-key retention) when key reuse is enabled,
+     * otherwise a fresh instance stored in `local`.
+     */
+    Tpm& acquireTpm(std::unique_ptr<Tpm>& local);
+
     std::string attestation_url_;
+
+    bool reuse_ephemeral_key_ = false;
+    std::unique_ptr<Tpm> session_tpm_;
+    // PCR values the retained ephemeral key was certified with.
+    bool have_session_pcrs_ = false;
+    attest::PcrSet session_pcrs_;
 };

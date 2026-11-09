@@ -293,7 +293,7 @@ Esys_StartAuthSession(
     const TPMT_SYM_DEF *symmetric,
     TPMI_ALG_HASH authHash, ESYS_TR *sessionHandle)
 {
-    return 0;
+    return tpmLibMockObj->Esys_StartAuthSession(esysContext, sessionType, sessionHandle);
 }
 
 TSS2_RC
@@ -347,7 +347,7 @@ Esys_PolicyPCR(
     const TPM2B_DIGEST *pcrDigest,
     const TPML_PCR_SELECTION *pcrs)
 {
-    return 0;
+    return tpmLibMockObj->Esys_PolicyPCR(esysContext, policySession);
 }
 
 TSS2_RC
@@ -358,6 +358,31 @@ Esys_PolicyGetDigest(
     ESYS_TR shandle2,
     ESYS_TR shandle3,
     TPM2B_DIGEST **policyDigest)
+{
+    return tpmLibMockObj->Esys_PolicyGetDigest(esysContext, policySession, policyDigest);
+}
+
+TSS2_RC
+Esys_RSA_Decrypt(
+    ESYS_CONTEXT *esysContext,
+    ESYS_TR keyHandle,
+    ESYS_TR shandle1,
+    ESYS_TR shandle2,
+    ESYS_TR shandle3,
+    const TPM2B_PUBLIC_KEY_RSA *cipherText,
+    const TPMT_RSA_DECRYPT *inScheme,
+    const TPM2B_DATA *label,
+    TPM2B_PUBLIC_KEY_RSA **message)
+{
+    return tpmLibMockObj->Esys_RSA_Decrypt(esysContext, keyHandle, shandle1, cipherText, message);
+}
+
+TSS2_RC
+Esys_TRSess_SetAttributes(
+    ESYS_CONTEXT *esysContext,
+    ESYS_TR session,
+    TPMA_SESSION flags,
+    TPMA_SESSION mask)
 {
     return 0;
 }
