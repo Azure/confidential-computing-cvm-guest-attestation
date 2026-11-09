@@ -372,7 +372,19 @@ A failure for one key is reported in its entry and does not stop the others. If 
 | Flag | Meaning |
 |---|---|
 | `-j <n>` | Max parallel `secureunwrapkey` calls (default 2; `1` = sequential; `0` = one per key; capped at 64) |
-| `-R <n>` | Max retries on HTTP 429/5xx (default 3) |
+| `-R <n>` | Max retries on HTTP 429/5xx and transport errors (default 3) |
+
+Each `secureunwrapkey` request has a 10 s connect timeout and a 30 s request timeout
+(curl `CURLOPT_CONNECTTIMEOUT`/`CURLOPT_TIMEOUT` on Linux; on Windows, WinHTTP name resolution and
+connect get 10 s and each send, receive and the wait for response headers get 30 s, since WinHTTP has
+no single total timeout). These timeouts apply to `-S` only.
+
+Retries: HTTP 429, 500, 502, 503 and 504 and transport errors (connection reset or refused, unexpected
+EOF, timeout, e.g. WinHTTP 12002/12029/12030) are retried on a new connection, up to `-R` times per key.
+Each wait is exponential backoff from 250 ms with 50–100 % jitter, at least the server's `Retry-After`
+(delta-seconds), and at most 30 s. No retry starts once a key has used 60 s, so one key takes at most
+about 60 s plus one request timeout. Other HTTP errors (400, 401, 403, 404, ...) are not retried.
+A key that still fails is reported in its entry, and the process exits 7.
 
 ### Managed HSM AES Release and Local Unwrap
 

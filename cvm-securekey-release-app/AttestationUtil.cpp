@@ -649,6 +649,31 @@ static WinHttpHandle OpenKeyVaultWinHttpSession()
 }
 
 /// <summary>
+/// Apply request timeouts to a WinHTTP session (inherited by its requests).
+/// WinHTTP has no single total timeout, so name resolution and connect get
+/// connect_ms, and each send, receive and the wait for response headers get
+/// request_ms. Timeouts surface as ERROR_WINHTTP_TIMEOUT (12002).
+/// </summary>
+static void SetKeyVaultWinHttpTimeouts(HINTERNET hSession, long connect_ms, long request_ms)
+{
+    if (!WinHttpSetTimeouts(hSession, static_cast<int>(connect_ms), static_cast<int>(connect_ms),
+                            static_cast<int>(request_ms), static_cast<int>(request_ms)))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpSetTimeouts failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+    DWORD response_timeout = static_cast<DWORD>(request_ms);
+    if (!WinHttpSetOption(hSession, WINHTTP_OPTION_RECEIVE_RESPONSE_TIMEOUT,
+                          &response_timeout, sizeof(response_timeout)))
+    {
+        std::ostringstream oss;
+        oss << "WinHttpSetOption(RECEIVE_RESPONSE_TIMEOUT) failed with error: " << GetLastError();
+        TRACE_ERROR_EXIT(oss.str().c_str())
+    }
+}
+
+/// <summary>
 /// POST a JSON body to Key Vault / Managed HSM over an existing WinHTTP session.
 /// Returns the HTTP status code; the caller decides how to handle non-200.
 /// If retry_after_seconds is set, it receives the Retry-After delay in
@@ -879,14 +904,17 @@ struct CurlSlistFree
 /// one handle across requests to the same host reuses the TLS connection.
 /// Returns the HTTP status code. If retry_after_seconds is set, it receives
 /// the Retry-After delay in seconds, or -1 if the response has none.
-/// Transport failures throw.
+/// Non-zero timeouts cap the connect phase and the whole request.
+/// Transport failures (including timeouts) throw EXIT_NETWORK_FAIL.
 /// </summary>
 static long KeyVaultPostCurl(CURL *curl,
                              const std::string &requestUri,
                              const std::string &access_token,
                              const std::string &requestBodyStr,
                              std::string &responseStr,
-                             long *retry_after_seconds = nullptr)
+                             long *retry_after_seconds = nullptr,
+                             long connect_timeout_ms = 0,
+                             long request_timeout_ms = 0)
 {
     TRACE_OUT("Entering KeyVaultPostCurl()");
     responseStr.clear();
@@ -911,6 +939,16 @@ static long KeyVaultPostCurl(CURL *curl,
 
     // Required for safe use of curl from multiple threads.
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+    // 0 keeps curl's defaults (no total timeout); the -S batch path sets both.
+    if (connect_timeout_ms > 0)
+    {
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    }
+    if (request_timeout_ms > 0)
+    {
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, request_timeout_ms);
+    }
 
 #ifdef PLATFORM_UNIX
     // Resolve the CA bundle path - curl's compiled-in default may not exist on all distros.
@@ -1801,11 +1839,25 @@ bool IsRetryableStatus(long status)
     return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
 }
 
+// Per-request timeouts for secureunwrapkey calls (both OSes).
+constexpr long SecureUnwrapConnectTimeoutMs = 10 * 1000;
+constexpr long SecureUnwrapRequestTimeoutMs = 30 * 1000;
+
 /// Per-worker HTTP client that keeps its connection (curl handle / WinHTTP
 /// session) alive across requests, so each worker does one TLS handshake.
 class KeyVaultHttpClient
 {
 public:
+    /// Drop the connection so the next request opens a new one.
+    void Reset()
+    {
+#ifdef _WIN32
+        session_.reset();
+#else
+        curl_.reset();
+#endif
+    }
+
     long Post(const std::string &uri, const std::string &access_token,
               const std::string &body, std::string &response, long &retry_after_seconds)
     {
@@ -1813,6 +1865,7 @@ public:
         if (!session_)
         {
             session_ = OpenKeyVaultWinHttpSession();
+            SetKeyVaultWinHttpTimeouts(session_.get(), SecureUnwrapConnectTimeoutMs, SecureUnwrapRequestTimeoutMs);
         }
         return static_cast<long>(
             KeyVaultPostWinHttp(session_.get(), uri, access_token, body, response, &retry_after_seconds));
@@ -1825,7 +1878,8 @@ public:
                 throw skr_error(EXIT_NETWORK_FAIL, "curl_easy_init() failed");
             }
         }
-        return KeyVaultPostCurl(curl_.get(), uri, access_token, body, response, &retry_after_seconds);
+        return KeyVaultPostCurl(curl_.get(), uri, access_token, body, response, &retry_after_seconds,
+                                SecureUnwrapConnectTimeoutMs, SecureUnwrapRequestTimeoutMs);
 #endif
     }
 
@@ -1863,7 +1917,7 @@ struct SecureUnwrapItemResult
 
 constexpr long RetryBaseDelayMs = 250;
 constexpr long RetryMaxDelayMs = 30 * 1000;   // cap for a single wait
-constexpr long RetryTotalBudgetMs = 60 * 1000; // cap for all waits of one request
+constexpr long RetryTotalBudgetMs = 60 * 1000; // no retry starts after this long on one key
 
 /// Delay before retry number `attempt` (1-based): exponential backoff with
 /// random jitter (50-100% of the step), at least the server's Retry-After,
@@ -1882,8 +1936,10 @@ long RetryDelayMs(unsigned attempt, long retry_after_seconds)
     return (std::min)(delay, RetryMaxDelayMs);
 }
 
-/// POST one secureunwrapkey request, retrying 429/5xx with backoff that
-/// honors Retry-After.
+/// POST one secureunwrapkey request, retrying HTTP 429/5xx and transport
+/// errors (connection reset/refused, EOF, timeout) with backoff that honors
+/// Retry-After. Other HTTP errors are not retried. No retry starts once the
+/// key has used RetryTotalBudgetMs.
 std::string PostSecureUnwrapWithRetry(KeyVaultHttpClient &http,
                                       const std::string &request_uri,
                                       const std::string &access_token,
@@ -1891,26 +1947,55 @@ std::string PostSecureUnwrapWithRetry(KeyVaultHttpClient &http,
                                       unsigned max_retries)
 {
     std::string response;
-    long waited_ms = 0;
+    const auto start = std::chrono::steady_clock::now();
     for (unsigned attempt = 1;; ++attempt)
     {
         long retry_after_seconds = -1;
-        const long status = http.Post(request_uri, access_token, body, response, retry_after_seconds);
-        if (status == 200)
+        long status = 0;
+        std::string transport_error;
+        try
+        {
+            status = http.Post(request_uri, access_token, body, response, retry_after_seconds);
+        }
+        catch (const skr_error &e)
+        {
+            if (e.exit_code != EXIT_NETWORK_FAIL)
+            {
+                throw;
+            }
+            transport_error = e.what();
+            http.Reset();
+        }
+        if (transport_error.empty() && status == 200)
         {
             return response;
         }
-        const long delay_ms = IsRetryableStatus(status) ? RetryDelayMs(attempt, retry_after_seconds) : 0;
-        if (!IsRetryableStatus(status) || attempt > max_retries || waited_ms + delay_ms > RetryTotalBudgetMs)
+        const bool retryable = !transport_error.empty() || IsRetryableStatus(status);
+        const long delay_ms = retryable ? RetryDelayMs(attempt, retry_after_seconds) : 0;
+        const long elapsed_ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                      std::chrono::steady_clock::now() - start).count());
+        if (!retryable || attempt > max_retries || elapsed_ms + delay_ms > RetryTotalBudgetMs)
         {
             std::ostringstream oss;
+            if (!transport_error.empty())
+            {
+                oss << "Secure unwrap request failed after " << attempt << " attempt(s): " << transport_error;
+                throw skr_error(EXIT_NETWORK_FAIL, oss.str());
+            }
             oss << "Secure unwrap HTTP request failed: HTTP " << status << ": " << response;
             throw skr_error(EXIT_SKR_FAIL, oss.str());
         }
-        TRACE_OUT("Secure unwrap HTTP %ld, retry %u in %ld ms (Retry-After=%ld)",
-                  status, attempt, delay_ms, retry_after_seconds);
+        if (transport_error.empty())
+        {
+            TRACE_OUT("Secure unwrap HTTP %ld, retry %u in %ld ms (Retry-After=%ld)",
+                      status, attempt, delay_ms, retry_after_seconds);
+        }
+        else
+        {
+            TRACE_OUT("Secure unwrap transport error, retry %u in %ld ms: %s",
+                      attempt, delay_ms, transport_error.c_str());
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
-        waited_ms += delay_ms;
     }
 }
 

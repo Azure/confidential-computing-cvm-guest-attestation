@@ -138,7 +138,7 @@ void usage(char *programName)
     printf("\tSecurely unwrap a batch with a Managed HSM key (one attestation, one secureunwrapkey call per key):\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -S <json-file|-|inline> [-A algorithm] [-j concurrency] [-R retries]\n", programName);
     printf("\t\t-j <n>  Max parallel secureunwrapkey calls (default: 2; 1 = sequential; 0 = one per key; capped at 64)\n");
-    printf("\t\t-R <n>  Max retries on HTTP 429/5xx (default: 3)\n");
+    printf("\t\t-R <n>  Max retries on HTTP 429/5xx and transport errors (default: 3)\n");
     printf("\n");
     printf("\tRelease an exportable Managed HSM AES key and unwrap locally:\n");
     printf("\t\t%s -a <attestation-endpoint> -n <optional-nonce> -k KEYURL -c (imds|sp) -s base64url(wrappedKey) -L [-A algorithm]\n", programName);
