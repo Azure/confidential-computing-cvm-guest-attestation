@@ -186,7 +186,7 @@ attest::PcrQuote Tss2Wrapper::GetPCRQuote(
 
     ret = Tss2_MU_TPM2B_ATTEST_Marshal(quotePtr.get(), quote.data(), quote.size(), &offset);
     if (ret != TSS2_RC_SUCCESS) {
-        throw Tss2Exception("Failed to marshal TPMT_SIGNATURE", ret);
+        throw Tss2Exception("Failed to marshal TPM2B_ATTEST", ret);
     }
 
     // Shrink to fit
