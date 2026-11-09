@@ -285,6 +285,7 @@ The application returns structured exit codes for programmatic callers:
 | 4 | `EXIT_SKR_FAIL` | AKV/MHSM SKR HTTP error (policy, 403, key not found) |
 | 5 | `EXIT_CRYPTO_FAIL` | OpenSSL error (decrypt, parse, unwrap) |
 | 6 | `EXIT_NETWORK_FAIL` | curl/WinHTTP transport failure |
+| 7 | `EXIT_PARTIAL_FAIL` | `-S` batch: at least one key failed; the JSON on stdout has every key's result |
 
 ### Cross-Distro SSL CA Bundle Fix
 
@@ -341,6 +342,49 @@ sudo ./AzureAttestSKR ... -U -A A256KWPAD 2>/dev/null | my-consumer
 Secure unwrap requires Managed HSM API version `2026-07-01-preview`. It is a
 separate flow from `-u`: the existing `-u` operation first releases an
 exportable RSA key and then performs RSA-OAEP decryption locally.
+
+#### Batch Secure Unwrap (`-S`)
+
+`secureunwrapkey` accepts one wrapped value per call. `-S` unwraps a whole
+batch (for example every disk of a CVM) in one invocation:
+
+1. One MAA attestation and one access token for the whole batch.
+2. One `secureunwrapkey` call per key, spread across a small worker pool.
+   Each worker keeps its HTTPS connection alive between calls. HTTP 429 and
+   5xx responses are retried with exponential backoff.
+3. Each result is decrypted with the VM's TPM-bound ephemeral key using the
+   attestation library's `Decrypt()`, one key at a time.
+
+Like `-U`, this works with Managed HSM keys only and uses API version
+`2026-07-01-preview`.
+
+```sh
+sudo ./AzureAttestSKR -a <maa-url> -k <managed-hsm-key-url> -c imds -A A256KWPAD \
+  -S batch.json
+```
+
+The input is a JSON file path, `-` for stdin, or inline JSON:
+`{"keys":[{"id":"disk00","wrapped":"<base64url>","sha256":"<optional hex>"}, ...]}`.
+If `sha256` is present, the unwrapped bytes are checked against it.
+Output: `{"results":[{"id":"disk00","unwrapped":"<base64url>"} | {"id":"...","error":"..."}]}`.
+A failure for one key is reported in its entry and does not stop the others. If any key fails, the exit code is 7 (`EXIT_PARTIAL_FAIL`), so callers can't mistake a partial batch for success.
+
+| Flag | Meaning |
+|---|---|
+| `-j <n>` | Max parallel `secureunwrapkey` calls (default 2; `1` = sequential; `0` = one per key; capped at 64) |
+| `-R <n>` | Max retries on HTTP 429/5xx and transport errors (default 3) |
+
+Each `secureunwrapkey` request has a 10 s connect timeout and a 30 s request timeout
+(curl `CURLOPT_CONNECTTIMEOUT`/`CURLOPT_TIMEOUT` on Linux; on Windows, WinHTTP name resolution and
+connect get 10 s and each send, receive and the wait for response headers get 30 s, since WinHTTP has
+no single total timeout). These timeouts apply to `-S` only.
+
+Retries: HTTP 429, 500, 502, 503 and 504 and transport errors (connection reset or refused, unexpected
+EOF, timeout, e.g. WinHTTP 12002/12029/12030) are retried on a new connection, up to `-R` times per key.
+Each wait is exponential backoff from 250 ms with 50–100 % jitter, at least the server's `Retry-After`
+(delta-seconds), and at most 30 s. No retry starts once a key has used 60 s, so one key takes at most
+about 60 s plus one request timeout. Other HTTP errors (400, 401, 403, 404, ...) are not retried.
+A key that still fails is reported in its entry, and the process exits 7.
 
 ### Managed HSM AES Release and Local Unwrap
 
