@@ -43,25 +43,37 @@ sudo pip3 install mock
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
 
-sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
-    echo 2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281 openssl-3.3.2.tar.gz | sha256sum -c - && \
-    sudo tar -C /tmp -xzf openssl-3.3.2.tar.gz && \
-    sudo rm -rf openssl-3.3.2.tar.gz && \
-    cd /tmp/openssl-3.3.2 && \
-    sudo LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./config --prefix=/usr/local/attestationssl --openssldir=/usr/local/attestationssl && \
-    sudo make -j$(nproc) && \
-    sudo make install_sw
+# Reuse the pinned custom OpenSSL build; replace missing or different versions.
+if [ -x /usr/local/attestationssl/bin/openssl ] && \
+    [[ "$(/usr/local/attestationssl/bin/openssl version)" == "OpenSSL 3.3.2 "* ]]; then
+    echo "OpenSSL 3.3.2 is already installed in /usr/local/attestationssl; skipping installation."
+else
+    sudo wget https://www.openssl.org/source/openssl-3.3.2.tar.gz && \
+        echo 2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281 openssl-3.3.2.tar.gz | sha256sum -c - && \
+        sudo tar -C /tmp -xzf openssl-3.3.2.tar.gz && \
+        sudo rm -rf openssl-3.3.2.tar.gz && \
+        cd /tmp/openssl-3.3.2 && \
+        sudo LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./config --prefix=/usr/local/attestationssl --openssldir=/usr/local/attestationssl && \
+        sudo make -j$(nproc) && \
+        sudo make install_sw || exit 1
+fi
 
 cd ${CURRENT_DIR}
 
-sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
-    sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
-    sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
-    env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./configure \
-    --without-zstd --with-openssl \
-    --prefix=/usr/local/attestationcurl && \
-    sudo make -j$(nproc) && \
-    sudo make install
+# Reuse the pinned custom CURL build; replace missing or different versions.
+if [ -x /usr/local/attestationcurl/bin/curl-config ] && \
+    [ "$(/usr/local/attestationcurl/bin/curl-config --version)" = "libcurl 8.5.0" ]; then
+    echo "curl 8.5.0 is already installed in /usr/local/attestationcurl; skipping installation."
+else
+    sudo wget https://curl.se/download/curl-8.5.0.tar.gz --no-check-certificate && \
+        sudo tar -C /tmp -xzf curl-8.5.0.tar.gz && \
+        sudo rm -rf curl-8.5.0.tar.gz && cd /tmp/curl-8.5.0 && \
+        env PKG_CONFIG_PATH=/usr/local/attestationssl/lib64/pkgconfig LDFLAGS='-Wl,-R/usr/local/attestationssl/lib64' ./configure \
+        --without-zstd --with-openssl \
+        --prefix=/usr/local/attestationcurl && \
+        sudo make -j$(nproc) && \
+        sudo make install || exit 1
+fi
 
 cd ${CURRENT_DIR}
 
